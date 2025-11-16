@@ -54,7 +54,7 @@ class RoleSelection extends StatelessWidget {
                 button: CButton(
                   text: "Find Work",
                   onPressed: () {
-                    Navigator.pushNamed(context, '/login');
+                    Navigator.pushNamed(context, '/worker-login');
                   },
                 ),
               ),

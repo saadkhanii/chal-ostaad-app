@@ -2,6 +2,7 @@ import 'package:chal_ostaad/features/auth/screens/login.dart';
 import 'package:chal_ostaad/features/splash/role_selection.dart';
 import 'package:chal_ostaad/features/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
+import '../../features/auth/screens/worker_login.dart';
 import 'app_routes.dart';
 
 class AppRouter {
@@ -13,6 +14,8 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const RoleSelection());
       case AppRoutes.login:
         return MaterialPageRoute(builder: (_) => const Login());
+      case AppRoutes.workerLogin:
+        return MaterialPageRoute(builder: (_) => const WorkerLoginScreen());
       // case AppRoutes.home:
       //   return MaterialPageRoute(builder: (_) => const HomePage());
       // case AppRoutes.profile:
