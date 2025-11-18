@@ -30,6 +30,8 @@ environment:
 dependencies:
   firebase_core: ^4.2.1
   cloud_firestore: ^6.1.0
+  shared_preferences: ^2.5.3
+  logger: ^2.6.2
   google_fonts: ^6.3.2
   flutter:
     sdk: flutter

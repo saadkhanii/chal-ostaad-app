@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 
@@ -21,6 +22,25 @@ class CTextField extends StatelessWidget {
   final FocusNode? focusNode;
   final String? initialValue;
   final bool isRequired;
+  final List<TextInputFormatter>? inputFormatters;
+  final bool readOnly;
+  final void Function()? onTap;
+  final TextCapitalization textCapitalization;
+  final String? errorText;
+  final EdgeInsetsGeometry? contentPadding;
+  final bool expands;
+  final int? minLines;
+  final TextAlign textAlign;
+  final bool autocorrect;
+  final SmartDashesType? smartDashesType;
+  final SmartQuotesType? smartQuotesType;
+  final bool enableSuggestions;
+  final double? cursorHeight;
+  final Radius? cursorRadius;
+  final Color? cursorColor;
+  final Brightness? keyboardAppearance;
+  final String? counterText;
+  final bool? showCursor;
 
   const CTextField({
     super.key,
@@ -42,6 +62,25 @@ class CTextField extends StatelessWidget {
     this.focusNode,
     this.initialValue,
     this.isRequired = false,
+    this.inputFormatters,
+    this.readOnly = false,
+    this.onTap,
+    this.textCapitalization = TextCapitalization.none,
+    this.errorText,
+    this.contentPadding,
+    this.expands = false,
+    this.minLines,
+    this.textAlign = TextAlign.start,
+    this.autocorrect = true,
+    this.smartDashesType,
+    this.smartQuotesType,
+    this.enableSuggestions = true,
+    this.cursorHeight,
+    this.cursorRadius,
+    this.cursorColor,
+    this.keyboardAppearance,
+    this.counterText,
+    this.showCursor,
   });
 
   @override
@@ -53,26 +92,27 @@ class CTextField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Label with required indicator
-        Row(
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isDark ? CColors.white : CColors.textPrimary,
-              ),
-            ),
-            if (isRequired)
+        if (label.isNotEmpty) ...[
+          Row(
+            children: [
               Text(
-                ' *',
+                label,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: CColors.error,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? CColors.white : CColors.textPrimary,
                 ),
               ),
-          ],
-        ),
-
-        const SizedBox(height: CSizes.xs),
+              if (isRequired)
+                Text(
+                  ' *',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: CColors.error,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: CSizes.xs),
+        ],
 
         // Text Field
         TextFormField(
@@ -89,6 +129,22 @@ class CTextField extends StatelessWidget {
           textInputAction: textInputAction,
           focusNode: focusNode,
           initialValue: initialValue,
+          inputFormatters: inputFormatters,
+          readOnly: readOnly,
+          onTap: onTap,
+          textCapitalization: textCapitalization,
+          expands: expands,
+          minLines: minLines,
+          textAlign: textAlign,
+          autocorrect: autocorrect,
+          smartDashesType: smartDashesType,
+          smartQuotesType: smartQuotesType,
+          enableSuggestions: enableSuggestions,
+          cursorHeight: cursorHeight,
+          cursorRadius: cursorRadius,
+          cursorColor: cursorColor ?? (isDark ? CColors.white : CColors.primary),
+          keyboardAppearance: keyboardAppearance,
+          showCursor: showCursor,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: isDark ? CColors.white : CColors.textPrimary,
           ),
@@ -129,12 +185,20 @@ class CTextField extends StatelessWidget {
               borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
               borderSide: BorderSide(color: CColors.error, width: 2.0),
             ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+              borderSide: BorderSide(color: CColors.borderPrimary.withOpacity(0.5)),
+            ),
             filled: true,
             fillColor: isDark ? CColors.darkContainer : CColors.lightContainer,
-            contentPadding: const EdgeInsets.symmetric(
+            contentPadding: contentPadding ?? const EdgeInsets.symmetric(
               horizontal: CSizes.md,
               vertical: CSizes.sm,
             ),
+            errorText: errorText,
+            counterText: counterText,
+            // Add floating label behavior
+            floatingLabelBehavior: FloatingLabelBehavior.never,
           ),
         ),
       ],
