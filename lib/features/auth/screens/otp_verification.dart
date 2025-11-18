@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:chal_ostaad/core/constants/colors.dart';
 import 'package:chal_ostaad/core/constants/sizes.dart';
-import 'package:chal_ostaad/shared/logo/logo.dart';
-import 'package:chal_ostaad/shared/widgets/Cbutton.dart';
-import 'package:chal_ostaad/shared/widgets/Ccontainer.dart';
+import 'package:chal_ostaad/core/routes/app_routes.dart';
+import 'package:logger/logger.dart';
+
+import '../../../shared/widgets/common_header.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
-  const OTPVerificationScreen({super.key});
+  // 1. Add a final variable to hold the phone number
+  final String phoneNumber;
+
+  // 2. Update the constructor to require the phone number
+  const OTPVerificationScreen({
+    super.key,
+    required this.phoneNumber,
+  });
 
   @override
   State<OTPVerificationScreen> createState() => _OTPVerificationScreenState();
@@ -17,17 +25,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   List.generate(6, (index) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
   bool _isLoading = false;
+  final Logger _logger = Logger();
 
   @override
   void initState() {
     super.initState();
+    _logger.i('OTP screen initialized for phone number: ${widget.phoneNumber}');
     // Setup focus node listeners
     for (int i = 0; i < _focusNodes.length; i++) {
       _focusNodes[i].addListener(() {
         if (!_focusNodes[i].hasFocus && _otpControllers[i].text.isEmpty) {
-          if (i > 0) {
-            _focusNodes[i - 1].requestFocus();
-          }
+          // This logic helps move focus backward when a field is cleared.
+          // The requestFocus call is commented out to prevent aggressive focus jumping,
+          // but can be enabled if desired.
+          // if (i > 0) {
+          //   _focusNodes[i - 1].requestFocus();
+          // }
         }
       });
     }
@@ -50,20 +63,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           child: Column(
             children: [
               // Header with CustomShapeContainer
-              CustomShapeContainer(
-                height: size.height * 0.2,
-                color: CColors.primary,
-                padding: const EdgeInsets.only(top: 60),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AppLogo(
-                      fontSize: 28,
-                      minWidth: 180,
-                      maxWidth: 250,
-                    ),
-                  ],
-                ),
+              CommonHeader(
+                title: 'OTP',
               ),
 
               // Form Section
@@ -94,7 +95,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
                       // Description
                       Text(
-                        'Enter the 6-digit code sent to your mobile number',
+                        // 3. Display the phone number dynamically
+                        'Enter the 6-digit code sent to your mobile number at ${widget.phoneNumber}',
+                        textAlign: TextAlign.center,
                         style: textTheme.bodyMedium?.copyWith(
                           color: isDark ? CColors.lightGrey : CColors.darkGrey,
                         ),
@@ -130,7 +133,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                             Text(
                               "Didn't receive code? ",
                               style: textTheme.bodyMedium?.copyWith(
-                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                color:
+                                isDark ? CColors.lightGrey : CColors.darkGrey,
                               ),
                             ),
                             TextButton(
@@ -194,7 +198,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 borderSide: BorderSide(color: CColors.primary, width: 2.0),
               ),
               filled: true,
-              fillColor: isDark ? CColors.darkContainer : CColors.lightContainer,
+              fillColor:
+              isDark ? CColors.darkContainer : CColors.lightContainer,
             ),
             onChanged: (value) {
               if (value.length == 1 && index < 5) {
@@ -208,7 +213,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 _handleVerify();
               }
 
-              // Update UI when OTP changes
+              // Update UI when OTP changes to enable/disable button
               setState(() {});
             },
           ),
@@ -244,7 +249,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         child: ElevatedButton(
           onPressed: isEnabled ? _handleVerify : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: isEnabled ? CColors.primary : CColors.buttonDisabled,
+            backgroundColor:
+            isEnabled ? CColors.primary : CColors.buttonDisabled,
             foregroundColor: isEnabled ? CColors.white : CColors.darkGrey,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(CSizes.buttonRadius),
@@ -263,12 +269,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   bool _isOTPComplete() {
-    for (final controller in _otpControllers) {
-      if (controller.text.isEmpty) {
-        return false;
-      }
-    }
-    return true;
+    return _otpControllers.every((controller) => controller.text.isNotEmpty);
   }
 
   String _getOTP() {
@@ -278,26 +279,37 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   void _handleVerify() {
     if (!_isOTPComplete()) return;
 
+    final otp = _getOTP();
+    _logger.i('Verifying OTP: $otp for phone: ${widget.phoneNumber}');
+
     setState(() => _isLoading = true);
+
+    // TODO: Implement actual OTP verification logic with Firebase Auth here
 
     // Simulate OTP verification
     Future.delayed(const Duration(seconds: 2), () {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
 
-      // Navigate to set password screen
-      Navigator.pushNamed(context, '/set-password');
+        // On success, navigate to set new password screen
+        // You can pass the phone number here too if needed
+        Navigator.pushNamed(context, AppRoutes.setPassword);
+      }
     });
   }
 
   void _handleChangeNumber() {
-    Navigator.pop(context); // Go back to forgot password screen
+    Navigator.pop(context); // Go back to the previous screen
   }
 
   void _handleResendCode() {
+    _logger.i('Resending OTP to: ${widget.phoneNumber}');
+    // TODO: Implement actual OTP resend logic here
+
     // Show resend confirmation
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Verification code sent!'),
+        content: Text('A new verification code has been sent to ${widget.phoneNumber}'),
         backgroundColor: CColors.success,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(

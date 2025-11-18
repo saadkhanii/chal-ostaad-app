@@ -5,10 +5,12 @@ import 'package:logger/logger.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
+import '../../../core/routes/app_routes.dart';
 import '../../../shared/logo/logo.dart';
 import '../../../shared/widgets/Cbutton.dart';
 import '../../../shared/widgets/Ccontainer.dart';
 import '../../../shared/widgets/CtextField.dart';
+import '../../../shared/widgets/common_header.dart';
 
 class ClientSignUpScreen extends StatefulWidget {
   const ClientSignUpScreen({super.key});
@@ -48,29 +50,8 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
           child: Column(
             children: [
               // Header Section with CustomShapeContainer
-              CustomShapeContainer(
-                height: size.height * 0.25,
-                color: CColors.primary,
-                padding: const EdgeInsets.only(top: 60),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AppLogo(
-                      fontSize: 24,
-                      minWidth: 250,
-                      maxWidth: 350,
-                    ),
-                    const SizedBox(height: CSizes.sm),
-                    Text(
-                      'Client Portal',
-                      style: textTheme.titleMedium?.copyWith(
-                        color: CColors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
+              CommonHeader(
+                title: 'SignUp',
               ),
 
               // Sign Up Form Section
@@ -84,7 +65,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(CSizes.lg),
+                  padding: const EdgeInsets.symmetric(horizontal: CSizes.lg, vertical: CSizes.sm),
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -100,7 +81,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                               'Create Client Account!',
                               style: textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? CColors.white : CColors.textPrimary,
+                                color: isDark
+                                    ? CColors.white
+                                    : CColors.textPrimary,
                                 fontSize: 22,
                               ),
                             ),
@@ -108,7 +91,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                             Text(
                               'Register to post jobs and hire workers',
                               style: textTheme.bodyMedium?.copyWith(
-                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                color: isDark
+                                    ? CColors.lightGrey
+                                    : CColors.darkGrey,
                               ),
                             ),
                           ],
@@ -124,7 +109,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           keyboardType: TextInputType.name,
                           prefixIcon: Icon(
                             Icons.person_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            color: isDark
+                                ? CColors.lightGrey
+                                : CColors.darkGrey,
                             size: 20,
                           ),
                           isRequired: true,
@@ -142,7 +129,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           keyboardType: TextInputType.text,
                           prefixIcon: Icon(
                             Icons.badge_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            color: isDark
+                                ? CColors.lightGrey
+                                : CColors.darkGrey,
                             size: 20,
                           ),
                           isRequired: true,
@@ -164,7 +153,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           keyboardType: TextInputType.phone,
                           prefixIcon: Icon(
                             Icons.phone_iphone_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            color: isDark
+                                ? CColors.lightGrey
+                                : CColors.darkGrey,
                             size: 20,
                           ),
                           isRequired: true,
@@ -186,7 +177,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           keyboardType: TextInputType.emailAddress,
                           prefixIcon: Icon(
                             Icons.email_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            color: isDark
+                                ? CColors.lightGrey
+                                : CColors.darkGrey,
                             size: 20,
                           ),
                           isRequired: true,
@@ -217,29 +210,29 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
   Widget _buildSignUpButton(bool isDark) {
     return _isLoading
         ? SizedBox(
-      width: double.infinity,
-      height: CSizes.buttonHeight,
-      child: ElevatedButton(
-        onPressed: null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: CColors.primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-          ),
-        ),
-        child: const CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          strokeWidth: 2,
-        ),
-      ),
-    )
+            width: double.infinity,
+            height: CSizes.buttonHeight,
+            child: ElevatedButton(
+              onPressed: null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(CSizes.buttonRadius),
+                ),
+              ),
+              child: const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                strokeWidth: 2,
+              ),
+            ),
+          )
         : CButton(
-      text: 'SIGN UP AS CLIENT',
-      onPressed: _handleClientSignUp,
-      width: double.infinity,
-      backgroundColor: CColors.primary,
-      foregroundColor: CColors.white,
-    );
+            text: 'SIGN UP AS CLIENT',
+            onPressed: _handleClientSignUp,
+            width: double.infinity,
+            backgroundColor: CColors.primary,
+            foregroundColor: CColors.white,
+          );
   }
 
   Widget _buildHelpText(BuildContext context, TextTheme textTheme) {
@@ -312,10 +305,10 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
       _cnicController.text = cleanValue;
     } else if (cleanValue.length <= 12) {
       _cnicController.text =
-      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
+          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
     } else {
       _cnicController.text =
-      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
+          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
     }
 
     _cnicController.selection = TextSelection.collapsed(
@@ -330,7 +323,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
       _phoneController.text = cleanValue;
     } else {
       _phoneController.text =
-      '${cleanValue.substring(0, 4)}-${cleanValue.substring(4)}';
+          '${cleanValue.substring(0, 4)}-${cleanValue.substring(4)}';
     }
 
     _phoneController.selection = TextSelection.collapsed(
@@ -349,7 +342,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
       final phone = _phoneController.text.trim();
       final email = _emailController.text.trim().toLowerCase();
 
-      _logger.i('Client sign up attempt: Name=$fullName, CNIC=$cnic, Phone=$phone, Email=$email');
+      _logger.i(
+        'Client sign up attempt: Name=$fullName, CNIC=$cnic, Phone=$phone, Email=$email',
+      );
 
       // Check if client already exists with same CNIC or Email
       final cnicQuery = await FirebaseFirestore.instance
@@ -373,7 +368,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
       }
 
       // Create new client document
-      final newClientRef = FirebaseFirestore.instance.collection('clients').doc();
+      final newClientRef = FirebaseFirestore.instance
+          .collection('clients')
+          .doc();
 
       await newClientRef.set({
         'personalInfo': {
@@ -383,20 +380,24 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
           'email': email,
           'createdAt': FieldValue.serverTimestamp(),
         },
-        'accountStatus': 'active', // Clients are active immediately (no verification needed)
+        'accountStatus':
+            'active', // Clients are active immediately (no verification needed)
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       // Success - Show message
-      _showSuccessMessage('Client registration successful! You can now post jobs.');
+      _showSuccessMessage(
+        'Client registration successful! You can now post jobs.',
+      );
       _logger.i('Client sign up successful: ${newClientRef.id}');
 
       // TODO: Navigate to client dashboard or appropriate screen
-      // Navigator.pushReplacement(
-      //   context,
-      //   MaterialPageRoute(builder: (context) => ClientDashboard()),
-      // );
+      if (mounted) {
+        Navigator.pushNamed(context,
+          AppRoutes.otpVerification, // Use the constant from AppRoutes
+          arguments: phone,  );
+      }
 
     } on FirebaseException catch (e) {
       _logger.e('Firebase error: ${e.code} - ${e.message}');
@@ -421,10 +422,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white),
-        ),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
@@ -440,10 +438,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white),
-        ),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: CColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(

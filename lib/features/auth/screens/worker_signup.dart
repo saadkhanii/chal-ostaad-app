@@ -1,3 +1,4 @@
+import 'package:chal_ostaad/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
@@ -5,10 +6,9 @@ import 'package:logger/logger.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
-import '../../../shared/logo/logo.dart';
 import '../../../shared/widgets/Cbutton.dart';
-import '../../../shared/widgets/Ccontainer.dart';
 import '../../../shared/widgets/CtextField.dart';
+import '../../../shared/widgets/common_header.dart';
 
 class WorkerSignUpScreen extends StatefulWidget {
   const WorkerSignUpScreen({super.key});
@@ -45,39 +45,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
           child: Column(
             children: [
               // Header Section with Custom Shape
-              CustomShapeContainer(
-                height: size.height * 0.25, // Reduced height
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Spacer(flex: 1),
-                    AppLogo(
-                      fontSize: 24, // Smaller font
-                      minWidth: 250,
-                      maxWidth: 350,
-                    ),
-                    const SizedBox(height: CSizes.sm),
-                    Text(
-                      'Worker Portal',
-                      style: textTheme.titleMedium?.copyWith(
-                        color: CColors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      height: 3,
-                      width: 50,
-                      decoration: BoxDecoration(
-                        color: CColors.white.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: CSizes.md),
-                  ],
-                ),
-              ),
+              CommonHeader(title: 'SignUp'),
 
               // Sign Up Form Section
               Container(
@@ -103,18 +71,22 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Create Account!',
+                              'Verify Your Account',
                               style: textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? CColors.white : CColors.textPrimary,
+                                color: isDark
+                                    ? CColors.white
+                                    : CColors.textPrimary,
                                 fontSize: 22,
                               ),
                             ),
                             const SizedBox(height: CSizes.xs),
                             Text(
-                              'Register to create your worker account',
+                              'Enter your details to proceed',
                               style: textTheme.bodyMedium?.copyWith(
-                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                color: isDark
+                                    ? CColors.lightGrey
+                                    : CColors.darkGrey,
                               ),
                             ),
                           ],
@@ -130,7 +102,9 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
                           keyboardType: TextInputType.text,
                           prefixIcon: Icon(
                             Icons.badge_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            color: isDark
+                                ? CColors.lightGrey
+                                : CColors.darkGrey,
                             size: 20,
                           ),
                           isRequired: true,
@@ -152,7 +126,9 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
                           keyboardType: TextInputType.phone,
                           prefixIcon: Icon(
                             Icons.phone_iphone_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            color: isDark
+                                ? CColors.lightGrey
+                                : CColors.darkGrey,
                             size: 20,
                           ),
                           isRequired: true,
@@ -188,37 +164,37 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
   Widget _buildSignUpButton(bool isDark) {
     return _isLoading
         ? SizedBox(
-      width: double.infinity,
-      height: CSizes.buttonHeight,
-      child: ElevatedButton(
-        onPressed: null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: CColors.primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-          ),
-        ),
-        child: const CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          strokeWidth: 2,
-        ),
-      ),
-    )
+            width: double.infinity,
+            height: CSizes.buttonHeight,
+            child: ElevatedButton(
+              onPressed: null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(CSizes.buttonRadius),
+                ),
+              ),
+              child: const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                strokeWidth: 2,
+              ),
+            ),
+          )
         : CButton(
-      text: 'SIGN UP AS WORKER',
-      onPressed: _handleWorkerSignUp,
-      width: double.infinity,
-      backgroundColor: CColors.primary,
-      foregroundColor: CColors.white,
-    );
+            text: 'VERIFY & PROCEED',
+            onPressed: _handleWorkerSignUp,
+            width: double.infinity,
+            backgroundColor: CColors.primary,
+            foregroundColor: CColors.white,
+          );
   }
 
   Widget _buildHelpText(BuildContext context, TextTheme textTheme) {
     return Center(
       child: TextButton(
-        onPressed: _handleForgotCredentials,
+        onPressed: _handleBackToLogin,
         child: Text(
-          'Already have an account? Sign In',
+          'Want to sign in instead?',
           style: textTheme.bodyMedium?.copyWith(
             color: CColors.primary,
             decoration: TextDecoration.underline,
@@ -263,10 +239,10 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       _cnicController.text = cleanValue;
     } else if (cleanValue.length <= 12) {
       _cnicController.text =
-      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
+          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
     } else {
       _cnicController.text =
-      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
+          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
     }
 
     _cnicController.selection = TextSelection.collapsed(
@@ -281,7 +257,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       _phoneController.text = cleanValue;
     } else {
       _phoneController.text =
-      '${cleanValue.substring(0, 4)}-${cleanValue.substring(4)}';
+          '${cleanValue.substring(0, 4)}-${cleanValue.substring(4)}';
     }
 
     _phoneController.selection = TextSelection.collapsed(
@@ -298,52 +274,56 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       final cnic = _cnicController.text.trim();
       final phone = _phoneController.text.trim();
 
-      _logger.i('Worker sign up attempt: CNIC=$cnic, Phone=$phone');
+      _logger.i('Worker verification attempt: CNIC=$cnic, Phone=$phone');
 
-      // Check if worker already exists
+      // Check if a worker exists with the provided CNIC
       final querySnapshot = await FirebaseFirestore.instance
           .collection('workers')
           .where('personalInfo.cnic', isEqualTo: cnic)
           .limit(1)
           .get(const GetOptions(source: Source.server));
 
-      if (querySnapshot.docs.isNotEmpty) {
-        throw Exception('Worker with this CNIC already exists');
+      if (querySnapshot.docs.isEmpty) {
+        // If no document is found, the worker is not registered.
+        throw Exception(
+          'No worker found with this CNIC. Please contact support to register.',
+        );
       }
 
-      // Create new worker document
-      final newWorkerRef = FirebaseFirestore.instance.collection('workers').doc();
+      // Worker with CNIC exists, now check if the phone number matches.
+      final workerData = querySnapshot.docs.first.data();
+      final String existingPhone = workerData['personalInfo']['phone'];
 
-      await newWorkerRef.set({
-        'personalInfo': {
-          'cnic': cnic,
-          'phone': phone,
-          'createdAt': FieldValue.serverTimestamp(),
-        },
-        'verification': {
-          'status': 'pending',
-          'requestedAt': FieldValue.serverTimestamp(),
-        },
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      if (phone == existingPhone) {
+        // CNIC and Phone number match, proceed to OTP verification.
+        _logger.i('Worker found and verified. Navigating to OTP screen.');
+        _showSuccessMessage('Welcome back! Please verify your number.');
 
-      // Success - Show message
-      _showSuccessMessage('Registration successful! Your account is pending verification.');
-      _logger.i('Worker sign up successful: ${newWorkerRef.id}');
-
-      // TODO: Navigate to pending verification screen or back to login
-      // Navigator.pushReplacement(
-      //   context,
-      //   MaterialPageRoute(builder: (context) => PendingVerificationScreen()),
-      // );
-
+        if (mounted) {
+          Navigator.pushNamed(
+            context,
+            AppRoutes.otpVerification,
+            arguments: phone,
+          );
+        }
+      } else {
+        // CNIC exists but phone number does not match.
+        throw Exception('The phone number does not match the registered CNIC.');
+      }
     } on FirebaseException catch (e) {
-      _logger.e('Firebase error: ${e.code} - ${e.message}');
-      _showErrorMessage('Network error. Please try again.');
+      _logger.e(
+        'Firebase error during worker verification: ${e.code} - ${e.message}',
+      );
+      _showErrorMessage(
+        'A network error occurred. Please check your connection and try again.',
+      );
     } on Exception catch (e) {
-      _logger.e('Sign up error: $e');
-      _showErrorMessage(e.toString());
+      _logger.e('Worker verification error: $e');
+      // Remove 'Exception: ' prefix for a cleaner message
+      final errorMessage = e.toString().startsWith('Exception: ')
+          ? e.toString().substring(11)
+          : e.toString();
+      _showErrorMessage(errorMessage);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -351,8 +331,8 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
     }
   }
 
-  void _handleForgotCredentials() {
-    // Navigate back to login screen
+  void _handleBackToLogin() {
+    // Navigate back to the previous screen, likely the role or login page
     Navigator.pop(context);
   }
 
@@ -361,16 +341,13 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white),
-        ),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
         ),
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -380,10 +357,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white),
-        ),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: CColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
