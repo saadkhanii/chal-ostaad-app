@@ -1,19 +1,25 @@
+// D:/FlutterProjects/chal_ostaad/lib/features/auth/screens/otp_verification.dart
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:chal_ostaad/core/constants/colors.dart';
 import 'package:chal_ostaad/core/constants/sizes.dart';
 import 'package:chal_ostaad/core/routes/app_routes.dart';
 import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../shared/widgets/common_header.dart';
 
-class OTPVerificationScreen extends StatefulWidget {
-  // 1. Add a final variable to hold the phone number
-  final String phoneNumber;
+// firebase_auth is no longer needed here
+// import 'package:firebase_auth/firebase_auth.dart';
 
-  // 2. Update the constructor to require the phone number
+class OTPVerificationScreen extends StatefulWidget {
+  // 1. Now we only need the email to identify the user
+  final String email;
+
   const OTPVerificationScreen({
     super.key,
-    required this.phoneNumber,
+    required this.email,
   });
 
   @override
@@ -30,21 +36,18 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   @override
   void initState() {
     super.initState();
-    _logger.i('OTP screen initialized for phone number: ${widget.phoneNumber}');
+    _logger.i('OTP screen initialized for email: ${widget.email}');
     // Setup focus node listeners
-    for (int i = 0; i < _focusNodes.length; i++) {
-      _focusNodes[i].addListener(() {
-        if (!_focusNodes[i].hasFocus && _otpControllers[i].text.isEmpty) {
-          // This logic helps move focus backward when a field is cleared.
-          // The requestFocus call is commented out to prevent aggressive focus jumping,
-          // but can be enabled if desired.
-          // if (i > 0) {
-          //   _focusNodes[i - 1].requestFocus();
-          // }
+    for (int i = 0; i < _otpControllers.length - 1; i++) {
+      _otpControllers[i].addListener(() {
+        if (_otpControllers[i].text.length == 1) {
+          _focusNodes[i + 1].requestFocus();
         }
       });
     }
   }
+
+  // --- The `build` method and most of its children are updated slightly ---
 
   @override
   Widget build(BuildContext context) {
@@ -62,12 +65,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           ),
           child: Column(
             children: [
-              // Header with CustomShapeContainer
-              CommonHeader(
-                title: 'OTP',
-              ),
-
-              // Form Section
+              CommonHeader(title: 'OTP'),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -82,9 +80,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title
                       Text(
-                        'OTP Verification',
+                        'Email Verification', // Title changed
                         style: textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: isDark ? CColors.white : CColors.textPrimary,
@@ -92,29 +89,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                         ),
                       ),
                       const SizedBox(height: CSizes.sm),
-
-                      // Description
                       Text(
-                        // 3. Display the phone number dynamically
-                        'Enter the 6-digit code sent to your mobile number at ${widget.phoneNumber}',
+                        // Text changed to reflect email
+                        'Enter the 6-digit code sent to your email at ${widget.email}',
                         textAlign: TextAlign.center,
                         style: textTheme.bodyMedium?.copyWith(
                           color: isDark ? CColors.lightGrey : CColors.darkGrey,
                         ),
                       ),
                       const SizedBox(height: CSizes.xl),
-
-                      // OTP Input Fields
                       _buildOTPInputFields(isDark, textTheme),
-
                       const SizedBox(height: CSizes.md),
-
-                      // Change Number
                       Center(
                         child: TextButton(
-                          onPressed: _handleChangeNumber,
+                          onPressed: _handleChangeEmail,
                           child: Text(
-                            'Change Number',
+                            'Change Email', // Text changed
                             style: textTheme.bodyMedium?.copyWith(
                               color: CColors.primary,
                               fontWeight: FontWeight.w600,
@@ -122,38 +112,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: CSizes.xl),
-
-                      // Resend Code
-                      Center(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Didn't receive code? ",
-                              style: textTheme.bodyMedium?.copyWith(
-                                color:
-                                isDark ? CColors.lightGrey : CColors.darkGrey,
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: _handleResendCode,
-                              child: Text(
-                                'Resend',
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: CColors.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
+                      _buildResendRow(textTheme, isDark),
                       const SizedBox(height: CSizes.xl),
-
-                      // Verify Button
                       _buildVerifyButton(isDark),
                     ],
                   ),
@@ -165,6 +126,89 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       ),
     );
   }
+
+  // --- NEW: Handle verification against Firestore ---
+  Future<void> _handleVerify() async {
+    if (!_isOTPComplete()) return;
+    setState(() => _isLoading = true);
+
+    final otp = _getOTP();
+    _logger.i('Verifying email OTP: $otp for email: ${widget.email}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userRole = prefs.getString('user_role') ?? 'client';
+      final collectionName = userRole == 'client' ? 'clients' : 'workers';
+
+      // 1. Find the user document by email
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection(collectionName)
+          .where('personalInfo.email', isEqualTo: widget.email)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        throw Exception('No user found with this email. Please sign up again.');
+      }
+
+      final userDoc = querySnapshot.docs.first;
+      final userData = userDoc.data();
+      final String storedOtp = userData['verification']['otp'];
+      final Timestamp storedExpiry = userData['verification']['otpExpiry'];
+
+      // 2. Check if OTP has expired
+      if (DateTime.now().isAfter(storedExpiry.toDate())) {
+        throw Exception('The verification code has expired. Please request a new one.');
+      }
+
+      // 3. Check if OTP matches
+      if (otp != storedOtp) {
+        throw Exception('Invalid OTP. Please check the code and try again.');
+      }
+
+      // 4. Success! Update the user's account status
+      await userDoc.reference.update({
+        'accountStatus': 'active',
+        'verification': FieldValue.delete(), // Clean up the verification field
+      });
+
+      _logger.i('Email verification successful! User is now active.');
+      _showSuccessMessage('Verification Successful!');
+
+      // 5. Navigate to the correct dashboard
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          userRole == 'client' ? AppRoutes.clientDashboard : AppRoutes.workerDashboard,
+              (route) => false,
+        );
+      }
+    } on Exception catch (e) {
+      final errorMessage = e.toString().startsWith('Exception: ')
+          ? e.toString().substring(11)
+          : e.toString();
+      _logger.e('OTP Verification Failed: $errorMessage');
+      _showErrorMessage(errorMessage);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _handleChangeEmail() {
+    Navigator.pop(context); // Go back to the previous screen
+  }
+
+  void _handleResendCode() {
+    // TODO: Implement resend email logic.
+    // This would involve calling a function on the previous screen
+    // or re-running the `_handleClientSignUp` logic to generate and send a new OTP.
+    _logger.i('Resending OTP to: ${widget.email}');
+    _showSuccessMessage('A new verification code has been sent to your email.');
+  }
+
+  // --- All other private helper methods and widgets (_build..., _getOTP, _show..., dispose) can remain largely the same. ---
 
   Widget _buildOTPInputFields(bool isDark, TextTheme textTheme) {
     return Row(
@@ -207,13 +251,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               } else if (value.isEmpty && index > 0) {
                 _focusNodes[index - 1].requestFocus();
               }
-
-              // Auto-submit when all fields are filled
               if (_isOTPComplete() && index == 5) {
                 _handleVerify();
               }
-
-              // Update UI when OTP changes to enable/disable button
               setState(() {});
             },
           ),
@@ -223,100 +263,85 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   Widget _buildVerifyButton(bool isDark) {
-    if (_isLoading) {
-      return SizedBox(
-        width: double.infinity,
-        height: CSizes.buttonHeight,
-        child: ElevatedButton(
-          onPressed: null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: CColors.primary,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-            ),
-          ),
-          child: const CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            strokeWidth: 2,
+    final isEnabled = _isOTPComplete() && !_isLoading;
+    return SizedBox(
+      width: double.infinity,
+      height: CSizes.buttonHeight,
+      child: ElevatedButton(
+        onPressed: isEnabled ? _handleVerify : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isEnabled ? CColors.primary : CColors.buttonDisabled,
+          foregroundColor: isEnabled ? CColors.white : CColors.darkGrey,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
           ),
         ),
-      );
-    } else {
-      final isEnabled = _isOTPComplete();
-      return SizedBox(
-        width: double.infinity,
-        height: CSizes.buttonHeight,
-        child: ElevatedButton(
-          onPressed: isEnabled ? _handleVerify : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor:
-            isEnabled ? CColors.primary : CColors.buttonDisabled,
-            foregroundColor: isEnabled ? CColors.white : CColors.darkGrey,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-            ),
-          ),
-          child: Text(
-            'Verify',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: isEnabled ? CColors.white : CColors.darkGrey,
-            ),
+        child: _isLoading
+            ? const CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          strokeWidth: 2,
+        )
+            : Text(
+          'Verify',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: isEnabled ? CColors.white : CColors.darkGrey,
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
+
+  Widget _buildResendRow(TextTheme textTheme, bool isDark) {
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            "Didn't receive code? ",
+            style: textTheme.bodyMedium?.copyWith(
+              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+            ),
+          ),
+          TextButton(
+            onPressed: _handleResendCode,
+            child: Text(
+              'Resend',
+              style: textTheme.bodyMedium?.copyWith(
+                color: CColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   bool _isOTPComplete() {
-    return _otpControllers.every((controller) => controller.text.isNotEmpty);
+    return _otpControllers.every((controller) => controller.text.length == 1);
   }
 
   String _getOTP() {
     return _otpControllers.map((controller) => controller.text).join();
   }
 
-  void _handleVerify() {
-    if (!_isOTPComplete()) return;
-
-    final otp = _getOTP();
-    _logger.i('Verifying OTP: $otp for phone: ${widget.phoneNumber}');
-
-    setState(() => _isLoading = true);
-
-    // TODO: Implement actual OTP verification logic with Firebase Auth here
-
-    // Simulate OTP verification
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-
-        // On success, navigate to set new password screen
-        // You can pass the phone number here too if needed
-        Navigator.pushNamed(context, AppRoutes.setPassword);
-      }
-    });
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      backgroundColor: CColors.success,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
-  void _handleChangeNumber() {
-    Navigator.pop(context); // Go back to the previous screen
-  }
-
-  void _handleResendCode() {
-    _logger.i('Resending OTP to: ${widget.phoneNumber}');
-    // TODO: Implement actual OTP resend logic here
-
-    // Show resend confirmation
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('A new verification code has been sent to ${widget.phoneNumber}'),
-        backgroundColor: CColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        ),
-      ),
-    );
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      backgroundColor: CColors.error,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
@@ -6,9 +7,7 @@ import 'package:logger/logger.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/routes/app_routes.dart';
-import '../../../shared/logo/logo.dart';
 import '../../../shared/widgets/Cbutton.dart';
-import '../../../shared/widgets/Ccontainer.dart';
 import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
 
@@ -29,7 +28,6 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   final Logger _logger = Logger();
 
-  // CNIC validation regex (Pakistani format: XXXXX-XXXXXXX-X)
   static final RegExp _cnicRegex = RegExp(r'^\d{5}-\d{7}-\d{1}$');
   static final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
 
@@ -49,12 +47,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
           ),
           child: Column(
             children: [
-              // Header Section with CustomShapeContainer
-              CommonHeader(
-                title: 'SignUp',
-              ),
-
-              // Sign Up Form Section
+              CommonHeader(title: 'SignUp'),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -65,15 +58,16 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: CSizes.lg, vertical: CSizes.sm),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: CSizes.lg,
+                    vertical: CSizes.sm,
+                  ),
                   child: Form(
                     key: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: CSizes.lg),
-
-                        // Welcome Section
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -98,10 +92,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                             ),
                           ],
                         ),
-
                         const SizedBox(height: CSizes.xl),
-
-                        // Full Name Field
                         CTextField(
                           label: 'Full Name',
                           hintText: 'Enter your full name',
@@ -118,10 +109,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           validator: _validateFullName,
                           textCapitalization: TextCapitalization.words,
                         ),
-
                         const SizedBox(height: CSizes.lg),
-
-                        // CNIC Field
                         CTextField(
                           label: 'CNIC Number',
                           hintText: 'XXXXX-XXXXXXX-X',
@@ -142,10 +130,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                             FilteringTextInputFormatter.allow(RegExp(r'[\d-]')),
                           ],
                         ),
-
                         const SizedBox(height: CSizes.lg),
-
-                        // Phone Field
                         CTextField(
                           label: 'Phone Number',
                           hintText: '03XX-XXXXXXX',
@@ -166,10 +151,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                             FilteringTextInputFormatter.allow(RegExp(r'[\d-]')),
                           ],
                         ),
-
                         const SizedBox(height: CSizes.lg),
-
-                        // Email Field
                         CTextField(
                           label: 'Email Address',
                           hintText: 'your.email@example.com',
@@ -185,15 +167,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           isRequired: true,
                           validator: _validateEmail,
                         ),
-
                         const SizedBox(height: CSizes.xl),
-
-                        // Sign Up Button
                         _buildSignUpButton(isDark),
-
                         const SizedBox(height: CSizes.lg),
-
-                        // Help Text
                         _buildHelpText(context, textTheme),
                       ],
                     ),
@@ -210,29 +186,29 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
   Widget _buildSignUpButton(bool isDark) {
     return _isLoading
         ? SizedBox(
-            width: double.infinity,
-            height: CSizes.buttonHeight,
-            child: ElevatedButton(
-              onPressed: null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-                ),
-              ),
-              child: const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                strokeWidth: 2,
-              ),
-            ),
-          )
+      width: double.infinity,
+      height: CSizes.buttonHeight,
+      child: ElevatedButton(
+        onPressed: null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: CColors.primary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
+          ),
+        ),
+        child: const CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          strokeWidth: 2,
+        ),
+      ),
+    )
         : CButton(
-            text: 'SIGN UP AS CLIENT',
-            onPressed: _handleClientSignUp,
-            width: double.infinity,
-            backgroundColor: CColors.primary,
-            foregroundColor: CColors.white,
-          );
+      text: 'SIGN UP & VERIFY',
+      onPressed: _handleClientSignUp,
+      width: double.infinity,
+      backgroundColor: CColors.primary,
+      foregroundColor: CColors.white,
+    );
   }
 
   Widget _buildHelpText(BuildContext context, TextTheme textTheme) {
@@ -274,17 +250,13 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
     if (value == null || value.isEmpty) {
       return 'Please enter your phone number';
     }
-
-    final cleanPhone = value.replaceAll(RegExp(r'[^\d]'), '');
-
+    final cleanPhone = value.replaceAll(RegExp(r'[^\d-]'), '');
     if (cleanPhone.length < 10) {
       return 'Phone number must be at least 10 digits';
     }
-
-    if (!cleanPhone.startsWith('03') && !cleanPhone.startsWith('+92')) {
-      return 'Please enter a valid Pakistani phone number';
+    if (!cleanPhone.startsWith('03')) {
+      return 'Please enter a valid Pakistani mobile number (03XX-XXXXXXX)';
     }
-
     return null;
   }
 
@@ -300,17 +272,15 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   void _formatCnicInput(String value) {
     final cleanValue = value.replaceAll(RegExp(r'[^\d]'), '');
-
     if (cleanValue.length <= 5) {
       _cnicController.text = cleanValue;
     } else if (cleanValue.length <= 12) {
       _cnicController.text =
-          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
+      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
     } else {
       _cnicController.text =
-          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
+      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
     }
-
     _cnicController.selection = TextSelection.collapsed(
       offset: _cnicController.text.length,
     );
@@ -318,14 +288,12 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   void _formatPhoneInput(String value) {
     final cleanValue = value.replaceAll(RegExp(r'[^\d]'), '');
-
     if (cleanValue.length <= 4) {
       _phoneController.text = cleanValue;
     } else {
       _phoneController.text =
-          '${cleanValue.substring(0, 4)}-${cleanValue.substring(4)}';
+      '${cleanValue.substring(0, 4)}-${cleanValue.substring(4)}';
     }
-
     _phoneController.selection = TextSelection.collapsed(
       offset: _phoneController.text.length,
     );
@@ -333,28 +301,33 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   Future<void> _handleClientSignUp() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
+
+    final phone = _phoneController.text.trim();
+    final String formattedPhone;
+    if (phone.startsWith('03')) {
+      formattedPhone = '+92${phone.substring(1)}'.replaceAll('-', '');
+    } else {
+      _showErrorMessage('Please use the format 03XX-XXXXXXX for phone number.');
+      setState(() => _isLoading = false);
+      return;
+    }
 
     try {
       final fullName = _fullNameController.text.trim();
       final cnic = _cnicController.text.trim();
-      final phone = _phoneController.text.trim();
       final email = _emailController.text.trim().toLowerCase();
 
       _logger.i(
-        'Client sign up attempt: Name=$fullName, CNIC=$cnic, Phone=$phone, Email=$email',
-      );
+          'Client sign up attempt: Name=$fullName, CNIC=$cnic, Phone=$formattedPhone, Email=$email');
 
-      // Check if client already exists with same CNIC or Email
       final cnicQuery = await FirebaseFirestore.instance
           .collection('clients')
           .where('personalInfo.cnic', isEqualTo: cnic)
           .limit(1)
           .get(const GetOptions(source: Source.server));
-
       if (cnicQuery.docs.isNotEmpty) {
-        throw Exception('Client with this CNIC already exists');
+        throw Exception('A client with this CNIC already exists');
       }
 
       final emailQuery = await FirebaseFirestore.instance
@@ -362,64 +335,72 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
           .where('personalInfo.email', isEqualTo: email)
           .limit(1)
           .get(const GetOptions(source: Source.server));
-
       if (emailQuery.docs.isNotEmpty) {
-        throw Exception('Client with this email already exists');
+        throw Exception('A client with this email already exists');
       }
 
-      // Create new client document
-      final newClientRef = FirebaseFirestore.instance
-          .collection('clients')
-          .doc();
-
-      await newClientRef.set({
-        'personalInfo': {
-          'fullName': fullName,
-          'cnic': cnic,
-          'phone': phone,
-          'email': email,
-          'createdAt': FieldValue.serverTimestamp(),
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: formattedPhone,
+        verificationCompleted: (PhoneAuthCredential credential) {
+          _logger.i('Phone verification completed automatically.');
         },
-        'accountStatus':
-            'active', // Clients are active immediately (no verification needed)
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+        verificationFailed: (FirebaseAuthException e) {
+          _logger.e('Phone verification failed: ${e.code} - ${e.message}');
+          if (mounted) setState(() => _isLoading = false);
+          throw Exception(
+              'Failed to send code. Check the number or try again later.');
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          _logger.i('Verification code sent. verificationId: $verificationId');
 
-      // Success - Show message
-      _showSuccessMessage(
-        'Client registration successful! You can now post jobs.',
+          final newClientRef =
+          FirebaseFirestore.instance.collection('clients').doc();
+          newClientRef.set({
+            'personalInfo': {
+              'fullName': fullName,
+              'cnic': cnic,
+              'phone': phone,
+              'email': email,
+              'createdAt': FieldValue.serverTimestamp(),
+            },
+            'accountStatus': 'pending_verification',
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showSuccessMessage('Verification code sent to your number!');
+            Navigator.pushNamed(
+              context,
+              AppRoutes.otpVerification,
+              arguments: {
+                'verificationId': verificationId,
+                'phoneNumber': phone,
+              },
+            );
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _logger.w('Auto-retrieval timeout for: $verificationId');
+        },
       );
-      _logger.i('Client sign up successful: ${newClientRef.id}');
-
-      // TODO: Navigate to client dashboard or appropriate screen
-      if (mounted) {
-        Navigator.pushNamed(context,
-          AppRoutes.otpVerification, // Use the constant from AppRoutes
-          arguments: phone,  );
-      }
-
-    } on FirebaseException catch (e) {
-      _logger.e('Firebase error: ${e.code} - ${e.message}');
-      _showErrorMessage('Network error. Please try again.');
     } on Exception catch (e) {
       _logger.e('Sign up error: $e');
-      _showErrorMessage(e.toString());
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      final errorMessage = e.toString().startsWith('Exception: ')
+          ? e.toString().substring(11)
+          : e.toString();
+      _showErrorMessage(errorMessage);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _handleBackToLogin() {
-    // Navigate back to role selection or login screen
     Navigator.pop(context);
   }
 
   void _showSuccessMessage(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: const TextStyle(color: Colors.white)),
@@ -435,7 +416,6 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   void _showErrorMessage(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: const TextStyle(color: Colors.white)),

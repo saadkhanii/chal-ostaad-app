@@ -33,25 +33,30 @@ class AppRouter {
       case AppRoutes.setPassword:
         return MaterialPageRoute(builder: (_) => const SetPasswordScreen());
 
-    // --- Start of Change ---
+
+    // --- UPDATED OTP ROUTE LOGIC ---
       case AppRoutes.otpVerification:
-      // 1. Check if arguments are provided and are of the correct type (String)
-        if (settings.arguments is String) {
-          final phoneNumber = settings.arguments as String;
-          // 2. Pass the extracted phone number to the screen
-          return MaterialPageRoute(
-            builder: (_) => OTPVerificationScreen(phoneNumber: phoneNumber),
-          );
+        if (settings.arguments is Map<String, dynamic>) {
+          final args = settings.arguments as Map<String, dynamic>;
+          final email = args['email'];
+
+          if (email != null) {
+            return MaterialPageRoute(
+              builder: (_) => OTPVerificationScreen(
+                email: email,
+              ),
+            );
+          }
         }
-        // 3. Return an error route if arguments are missing or wrong
+        // Return an error route if arguments are missing or invalid
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
             body: Center(
-              child: Text('Error: Phone number is required for OTP screen.'),
+              child: Text('Error: Email address is required for OTP screen.'),
             ),
           ),
         );
-    // --- End of Change ---
+    // --- END OF CHANGE ---
 
       case AppRoutes.setPassword:
         return MaterialPageRoute(builder: (_) => const SetPasswordScreen());
