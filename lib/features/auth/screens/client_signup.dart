@@ -370,7 +370,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
           if (mounted) {
             setState(() => _isLoading = false);
-            _showSuccessMessage('Verification code sent to your number!');
+            _showSuccessMessage('Verification code sent to your email!');
             Navigator.pushNamed(
               context,
               AppRoutes.otpVerification,

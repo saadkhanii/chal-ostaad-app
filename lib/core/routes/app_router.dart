@@ -1,3 +1,5 @@
+// D:/FlutterProjects/chal_ostaad/lib/core/routes/app_router.dart
+
 import 'package:chal_ostaad/features/auth/screens/login.dart';
 import 'package:chal_ostaad/features/splash/role_selection.dart';
 import 'package:chal_ostaad/features/splash/splash_screen.dart';
@@ -5,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../features/auth/screens/client_signup.dart';
 import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
-import '../../features/auth/screens/set_password.dart';
 import '../../features/auth/screens/worker_signup.dart';
 import '../../features/client/client_dashboard.dart';
 import '../../features/worker/worker_dashboard.dart';
@@ -30,11 +31,8 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const WorkerDashboard());
       case AppRoutes.forgotPassword:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());
-      case AppRoutes.setPassword:
-        return MaterialPageRoute(builder: (_) => const SetPasswordScreen());
 
-
-    // --- UPDATED OTP ROUTE LOGIC ---
+    // --- OTP ROUTE LOGIC ---
       case AppRoutes.otpVerification:
         if (settings.arguments is Map<String, dynamic>) {
           final args = settings.arguments as Map<String, dynamic>;
@@ -56,10 +54,8 @@ class AppRouter {
             ),
           ),
         );
-    // --- END OF CHANGE ---
 
-      case AppRoutes.setPassword:
-        return MaterialPageRoute(builder: (_) => const SetPasswordScreen());
+    // --- THE SET_PASSWORD ROUTE CASE HAS BEEN REMOVED ---
 
       default:
         return MaterialPageRoute(

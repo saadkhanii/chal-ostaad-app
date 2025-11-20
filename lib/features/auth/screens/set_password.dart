@@ -1,13 +1,26 @@
+// lib/features/auth/screens/set_password.dart
+
+import 'package:chal_ostaad/core/routes/app_routes.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:chal_ostaad/core/constants/colors.dart';
-import 'package:chal_ostaad/core/constants/sizes.dart';
-import 'package:chal_ostaad/shared/logo/logo.dart';
-import 'package:chal_ostaad/shared/widgets/Cbutton.dart';
-import 'package:chal_ostaad/shared/widgets/Ccontainer.dart';
-import 'package:chal_ostaad/shared/widgets/CtextField.dart';
+import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/constants/colors.dart';
+import '../../../core/constants/sizes.dart';
+import '../../../shared/widgets/Cbutton.dart';
+import '../../../shared/widgets/CtextField.dart';
+import '../../../shared/widgets/common_header.dart';
 
 class SetPasswordScreen extends StatefulWidget {
-  const SetPasswordScreen({super.key});
+  final String email;
+
+  const SetPasswordScreen({
+    super.key,
+    required this.email,
+  });
 
   @override
   State<SetPasswordScreen> createState() => _SetPasswordScreenState();
@@ -20,9 +33,88 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  final Logger _logger = Logger();
+
+  Future<void> _handleSetPassword() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+
+    String? userRole;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      userRole = prefs.getString('user_role') ?? 'client';
+      _logger.i('Attempting to create user for role: $userRole');
+
+      final secondaryApp = Firebase.app(userRole);
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final password = _passwordController.text;
+
+      UserCredential userCredential = await secondaryAuth.createUserWithEmailAndPassword(
+        email: widget.email,
+        password: password,
+      );
+
+      _logger.i('Successfully created user in Firebase Auth. UID: ${userCredential.user?.uid}');
+
+      final collectionName = userRole == 'client' ? 'clients' : 'workers';
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection(collectionName)
+          .where('personalInfo.email', isEqualTo: widget.email)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        await userCredential.user?.delete();
+        throw Exception('Could not find your registration data. Please sign up again.');
+      }
+
+      final oldDoc = querySnapshot.docs.first;
+      final oldDocData = oldDoc.data();
+      final newDocRef = FirebaseFirestore.instance.collection(collectionName).doc(userCredential.user!.uid);
+
+      await newDocRef.set({
+        ...oldDocData,
+        'account': {
+          ...(oldDocData['account'] as Map<String, dynamic>? ?? {}),
+          'accountStatus': 'active',
+          'uid': userCredential.user!.uid,
+        },
+      });
+
+      await newDocRef.update({'verification': FieldValue.delete()});
+      await oldDoc.reference.delete();
+
+      _logger.i('Firestore document migrated to UID and activated for ${widget.email}.');
+
+      if (mounted) {
+        _showSuccessMessage('Account created successfully!');
+        Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (route) => false);
+      }
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') {
+        _showErrorMessage('This email is already registered for a ${userRole ?? 'user'} account.');
+      } else if (e.code == 'weak-password') {
+        _showErrorMessage('The password is too weak (must be at least 6 characters).');
+      } else {
+        _showErrorMessage('An authentication error occurred: ${e.message}');
+      }
+      _logger.e('FirebaseAuthException in Set Password: ${e.code}');
+    } on Exception catch (e) {
+      final errorMessage = e.toString().startsWith('Exception: ') ? e.toString().substring(11) : e.toString();
+      _logger.e('Set Password Failed: $errorMessage');
+      _showErrorMessage(errorMessage);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // This build method is also correct and does not need to change.
+    // ... all your existing UI code ...
     final size = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textTheme = Theme.of(context).textTheme;
@@ -37,24 +129,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           ),
           child: Column(
             children: [
-              // Header with CustomShapeContainer
-              CustomShapeContainer(
-                height: size.height * 0.2,
-                color: CColors.primary,
-                padding: const EdgeInsets.only(top: 60),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AppLogo(
-                      fontSize: 28,
-                      minWidth: 180,
-                      maxWidth: 250,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Form Section
+              CommonHeader(title: 'Pass..'),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -71,7 +146,6 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Title
                         Text(
                           'Set a new password',
                           style: textTheme.headlineSmall?.copyWith(
@@ -81,17 +155,13 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                           ),
                         ),
                         const SizedBox(height: CSizes.sm),
-
-                        // Description
                         Text(
-                          'Create a new password. Ensure it differs from previous ones for security',
+                          'Create a new, strong password to complete your account.',
                           style: textTheme.bodyMedium?.copyWith(
                             color: isDark ? CColors.lightGrey : CColors.darkGrey,
                           ),
                         ),
                         const SizedBox(height: CSizes.xl),
-
-                        // Password Field
                         CTextField(
                           label: 'Password',
                           hintText: 'Enter your new password',
@@ -99,18 +169,17 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                           keyboardType: TextInputType.visiblePassword,
                           obscureText: _obscurePassword,
                           prefixIcon: Icon(
-                            Icons.lock_outlined,
+                            Icons.lock_outline,
                             color: isDark ? CColors.lightGrey : CColors.darkGrey,
                             size: 20,
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                              size: 20,
-                            ),
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                size: 20),
                             onPressed: () {
                               setState(() {
                                 _obscurePassword = !_obscurePassword;
@@ -120,10 +189,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                           isRequired: true,
                           validator: _validatePassword,
                         ),
-
                         const SizedBox(height: CSizes.lg),
-
-                        // Confirm Password Field
                         CTextField(
                           label: 'Confirm Password',
                           hintText: 'Re-enter your password',
@@ -137,12 +203,11 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscureConfirmPassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                              size: 20,
-                            ),
+                                _obscureConfirmPassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                size: 20),
                             onPressed: () {
                               setState(() {
                                 _obscureConfirmPassword = !_obscureConfirmPassword;
@@ -152,10 +217,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                           isRequired: true,
                           validator: _validateConfirmPassword,
                         ),
-
                         const SizedBox(height: CSizes.xl),
-
-                        // Set Password Button
                         _buildSetPasswordButton(),
                       ],
                     ),
@@ -189,7 +251,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       ),
     )
         : CButton(
-      text: 'Set Password',
+      text: 'Create Account & Login',
       onPressed: _handleSetPassword,
       width: double.infinity,
       backgroundColor: CColors.primary,
@@ -217,29 +279,27 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
     return null;
   }
 
-  void _handleSetPassword() {
-    if (!_formKey.currentState!.validate()) return;
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      backgroundColor: CColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+      ),
+    ));
+  }
 
-    setState(() => _isLoading = true);
-
-    // Simulate password setting process
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() => _isLoading = false);
-
-      // Show success message and navigate to login
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Password set successfully!'),
-          backgroundColor: CColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-          ),
-        ),
-      );
-
-      // Navigate to login screen
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-    });
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      backgroundColor: CColors.error,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+      ),
+    ));
   }
 }

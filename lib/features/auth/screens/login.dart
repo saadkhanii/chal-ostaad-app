@@ -1,13 +1,18 @@
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:chal_ostaad/core/constants/colors.dart';
-import 'package:chal_ostaad/core/constants/sizes.dart';
-import 'package:chal_ostaad/shared/logo/logo.dart';
-import 'package:chal_ostaad/shared/widgets/Cbutton.dart';
-import 'package:chal_ostaad/shared/widgets/Ccontainer.dart';
-import 'package:chal_ostaad/shared/widgets/CtextField.dart';
-import 'package:chal_ostaad/features/splash/role_selection.dart';
+// lib/features/auth/screens/login.dart
 
+import 'package:chal_ostaad/core/routes/app_routes.dart';
+import 'package:chal_ostaad/features/splash/role_selection.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
+import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/constants/colors.dart';
+import '../../../core/constants/sizes.dart';
+import '../../../shared/widgets/Cbutton.dart';
+import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
 
 class Login extends StatefulWidget {
@@ -24,61 +29,112 @@ class _LoginState extends State<Login> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _userRole;
+  final Logger _logger = Logger();
 
   @override
   void initState() {
     super.initState();
-    print('🔍 [DEBUG] Login page initialized');
     _loadUserRole();
   }
 
-  // Load user role from multiple sources
   Future<void> _loadUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userRole = RoleSelection.tempUserRole ?? prefs.getString('user_role');
+    });
+    _logger.i('Login screen initialized for role: $_userRole');
+  }
+
+  // --- NEW & STRICT "LOGIN" LOGIC ---
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_userRole == null) {
+      _showErrorMessage('Could not determine user role. Please go back and select a role.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final collectionName = _userRole == 'client' ? 'clients' : 'workers';
+
     try {
-      print('🔍 [DEBUG] Starting to load user role...');
+      _logger.i('Attempting login for role: $_userRole with email: $email');
 
-      String? role;
+      // --- STEP 1: VERIFY THE USER EXISTS FOR THE CORRECT ROLE IN FIRESTORE ---
+      // This is the crucial new check.
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection(collectionName)
+          .where('personalInfo.email', isEqualTo: email)
+          .limit(1)
+          .get();
 
-      // Method 1: Try temporary storage first
-      role = RoleSelection.tempUserRole;
-      if (role != null) {
-        print('✅ [DEBUG] Role loaded from TEMPORARY storage: $role');
-      } else {
-        print('⚠️ [DEBUG] No role in temporary storage');
+      if (querySnapshot.docs.isEmpty) {
+        // If no document is found, the user is not registered for this role.
+        _logger.w('Login failed: Email $email not found in the "$collectionName" collection.');
+        throw Exception('This email is not registered as a $_userRole.');
       }
+      _logger.i('Firestore check passed: User exists in "$collectionName".');
 
-      // Method 2: Try SharedPreferences as backup
-      if (role == null) {
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          role = prefs.getString('user_role');
-          if (role != null) {
-            print('✅ [DEBUG] Role loaded from SHARED PREFERENCES: $role');
-          } else {
-            print('⚠️ [DEBUG] No role in SharedPreferences');
-          }
-        } catch (e) {
-          print('⚠️ [DEBUG] SharedPreferences failed: $e');
-        }
-      }
+      // --- STEP 2: IF THEY EXIST, NOW ATTEMPT FIREBASE AUTH LOGIN ---
+      final secondaryApp = Firebase.app(_userRole!);
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
 
-      setState(() {
-        _userRole = role;
-      });
+      final userCredential = await secondaryAuth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-      print('🔍 [DEBUG] Final user role set in state: $_userRole');
+      _logger.i('Firebase Auth login successful for UID: ${userCredential.user?.uid}');
 
-      if (_userRole != null) {
-        print(
-          '🎯 [DEBUG] Ready! User will go to ${_userRole!.toUpperCase()} dashboard after login',
+      // 3. Verify account status from the document we already found.
+      final docData = querySnapshot.docs.first.data();
+      if (docData['account']?['accountStatus'] != 'active') {
+        await secondaryAuth.signOut(); // Log out immediately
+        throw FirebaseAuthException(
+          code: 'user-disabled',
+          message: 'This account has been disabled or is not yet active.',
         );
-      } else {
-        print('⚠️ [DEBUG] No role found! User needs to select role first');
       }
-    } catch (e) {
-      print('❌ [DEBUG] Error loading role: $e');
+
+      _logger.i('Account status is active.');
+
+      // 4. Save session and navigate.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_email', email);
+      await prefs.setString('user_uid', userCredential.user!.uid);
+      await prefs.setString('user_role', _userRole!);
+
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          _userRole == 'client' ? AppRoutes.clientDashboard : AppRoutes.workerDashboard,
+              (route) => false,
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      _logger.e('FirebaseAuthException during login: ${e.code}');
+      if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        _showErrorMessage('Invalid email or password. Please try again.');
+      } else if (e.code == 'user-disabled') {
+        _showErrorMessage('Your account is not active or has been disabled by an admin.');
+      } else {
+        _showErrorMessage('An error occurred during login. Please try again.');
+      }
+    } on Exception catch (e) {
+      // This will now catch our custom "not registered" error.
+      final errorMessage = e.toString().startsWith('Exception: ') ? e.toString().substring(11) : e.toString();
+      _logger.e('Generic exception during login: $errorMessage');
+      _showErrorMessage(errorMessage);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
+
+  // --- The rest of your file (build method, etc.) remains unchanged ---
 
   @override
   Widget build(BuildContext context) {
@@ -94,11 +150,7 @@ class _LoginState extends State<Login> {
           constraints: BoxConstraints(minHeight: size.height),
           child: Column(
             children: [
-              CommonHeader(
-                title: 'Login',
-              ),
-
-              // Login Form
+              CommonHeader(title: 'Login'),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -115,132 +167,67 @@ class _LoginState extends State<Login> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Welcome Section
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hello Again!',
-                              style: textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: isDark
-                                    ? CColors.white
-                                    : CColors.textPrimary,
-                                fontSize: 24,
-                              ),
-                            ),
-                            const SizedBox(height: CSizes.xs),
-                            Text(
-                              'We\'re happy to see you. Log in and get started.',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: isDark
-                                    ? CColors.lightGrey
-                                    : CColors.darkGrey,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Hello Again!',
+                          style: textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? CColors.white : CColors.textPrimary,
+                            fontSize: 24,
+                          ),
                         ),
-
+                        const SizedBox(height: CSizes.xs),
+                        Text(
+                          'We\'re happy to see you. Log in as a ${_userRole ?? 'user'}.',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                          ),
+                        ),
                         const SizedBox(height: CSizes.xl),
-
-                        // Email Field
                         CTextField(
                           label: 'Email',
                           hintText: 'Enter your email address',
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
-                          prefixIcon: Icon(
-                            Icons.email_outlined,
-                            color: isDark
-                                ? CColors.lightGrey
-                                : CColors.darkGrey,
-                            size: 20,
-                          ),
+                          prefixIcon: Icon(Icons.email_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey, size: 20),
                           isRequired: true,
                           validator: _validateEmail,
                         ),
-
                         const SizedBox(height: CSizes.lg),
-
-                        // Password Field
                         CTextField(
                           label: 'Password',
                           hintText: 'Enter your password',
                           controller: _passwordController,
                           keyboardType: TextInputType.visiblePassword,
                           obscureText: _obscurePassword,
-                          prefixIcon: Icon(
-                            Icons.lock_outlined,
-                            color: isDark
-                                ? CColors.lightGrey
-                                : CColors.darkGrey,
-                            size: 20,
-                          ),
+                          prefixIcon: Icon(Icons.lock_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey, size: 20),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: isDark
-                                  ? CColors.lightGrey
-                                  : CColors.darkGrey,
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
+                                _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                size: 20),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                           ),
                           isRequired: true,
                           validator: _validatePassword,
                         ),
-
                         const SizedBox(height: CSizes.md),
-
-                        // Forgot Password
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
                             onPressed: _handleForgotPassword,
                             child: Text(
                               'Forgot Password?',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: CColors.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: textTheme.bodyMedium
+                                  ?.copyWith(color: CColors.primary, fontWeight: FontWeight.w600),
                             ),
                           ),
                         ),
-
                         const SizedBox(height: CSizes.xl),
-
-                        // Login Button
                         _buildLoginButton(),
-
                         const SizedBox(height: CSizes.xl),
-
-                        // Sign Up Section
                         _buildSignUpSection(context, textTheme, isDark),
-
-                        // Debug button to check role
-                        const SizedBox(height: CSizes.lg),
-                        Center(
-                          child: TextButton(
-                            onPressed: () {
-                              print(
-                                '🔍 [DEBUG MANUAL CHECK] Current role: $_userRole',
-                              );
-                              _loadUserRole(); // Reload to check
-                            },
-                            child: Text(
-                              'Debug: Check Current Role',
-                              style: textTheme.bodySmall?.copyWith(
-                                color: CColors.darkGrey,
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -255,65 +242,31 @@ class _LoginState extends State<Login> {
 
   Widget _buildLoginButton() {
     return _isLoading
-        ? SizedBox(
-            width: double.infinity,
-            height: CSizes.buttonHeight,
-            child: ElevatedButton(
-              onPressed: null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-                ),
-              ),
-              child: const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                strokeWidth: 2,
-              ),
-            ),
-          )
+        ? Center(child: CircularProgressIndicator(color: CColors.primary))
         : CButton(
-            text: 'Login',
-            onPressed: _handleLogin,
-            width: double.infinity,
-            backgroundColor: CColors.secondary,
-            foregroundColor: CColors.white,
-          );
+      text: 'Login',
+      onPressed: _handleLogin,
+      width: double.infinity,
+      backgroundColor: CColors.secondary,
+      foregroundColor: CColors.white,
+    );
   }
 
-  Widget _buildSignUpSection(
-    BuildContext context,
-    TextTheme textTheme,
-    bool isDark,
-  ) {
+  Widget _buildSignUpSection(BuildContext context, TextTheme textTheme, bool isDark) {
     return Center(
-
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            "Don't have an account? ",
-            style: textTheme.bodyMedium?.copyWith(
-              color: isDark ? CColors.lightGrey : CColors.darkGrey,
-            ),
-          ),
-          // Use a TextButton for the clickable part
+          Text("Don't have an account? ",
+              style: textTheme.bodyMedium?.copyWith(color: isDark ? CColors.lightGrey : CColors.darkGrey)),
           TextButton(
             onPressed: _navigateToRoleBasedSignup,
-            // Remove default padding for seamless alignment
             style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size(50, 30), // Adjust if needed
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                alignment: Alignment.centerLeft
-            ),
+                padding: EdgeInsets.zero, minimumSize: const Size(50, 30), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             child: Text(
               'Sign Up!',
-              style: textTheme.bodyMedium?.copyWith(
-                color: CColors.primary,
-                fontWeight: FontWeight.w600,
-                decoration: TextDecoration.underline,
-              ),
+              style: textTheme.bodyMedium
+                  ?.copyWith(color: CColors.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
             ),
           ),
         ],
@@ -321,98 +274,39 @@ class _LoginState extends State<Login> {
     );
   }
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your email address';
-    }
-    if (!value.contains('@') || !value.contains('.')) {
-      return 'Please enter a valid email address';
-    }
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your password';
-    }
-    if (value.length < 6) {
-      return 'Password must be at least 6 characters long';
-    }
-    return null;
-  }
-
-  void _handleLogin() {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    // Simulate login process
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() => _isLoading = false);
-
-      // Navigate to dashboard based on user role
-      _navigateToDashboard();
-    });
-  }
-
-  void _navigateToDashboard() {
-    print('🔍 [DEBUG] Navigating to dashboard. Current role: $_userRole');
-
-    if (_userRole == 'client') {
-      print('🚀 [DEBUG] Navigating to CLIENT dashboard');
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/client-dashboard',
-        (route) => false,
-      );
-    } else if (_userRole == 'worker') {
-      print('🚀 [DEBUG] Navigating to WORKER dashboard');
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/worker-dashboard',
-        (route) => false,
-      );
-    } else {
-      print('⚠️ [DEBUG] No role found! Navigating to role selection');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please select your role first'),
-          backgroundColor: CColors.error,
-        ),
-      );
-      Navigator.pushNamedAndRemoveUntil(context, '/role', (route) => false);
-    }
-  }
-
   void _navigateToRoleBasedSignup() {
-    print('🔍 [DEBUG] Navigating to signup. Current role: $_userRole');
-
     if (_userRole == 'client') {
-      print('🚀 [DEBUG] Navigating to CLIENT signup');
-      Navigator.pushNamed(context, '/client-signup');
+      Navigator.pushNamed(context, AppRoutes.clientSignUp);
     } else if (_userRole == 'worker') {
-      print('🚀 [DEBUG] Navigating to WORKER signup');
-      Navigator.pushNamed(context, '/worker-login');
+      Navigator.pushNamed(context, AppRoutes.workerLogin);
     } else {
-      print('⚠️ [DEBUG] No role found! Navigating to role selection');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please select your role first'),
-          backgroundColor: CColors.error,
-        ),
-      );
-      Navigator.pushNamed(context, '/role');
+      _showErrorMessage('Please select a role first.');
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.role, (route) => false);
     }
   }
 
   void _handleForgotPassword() {
-    Navigator.pushNamed(context, '/forgot-password');
+    Navigator.pushNamed(context, AppRoutes.forgotPassword);
   }
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
+  String? _validateEmail(String? value) {
+    if (value == null || value.isEmpty) return 'Please enter your email address';
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'Please enter a valid email address';
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) return 'Please enter your password';
+    return null;
+  }
+
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      backgroundColor: CColors.error,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+    ));
   }
 }
