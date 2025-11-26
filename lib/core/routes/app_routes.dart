@@ -10,5 +10,7 @@ class AppRoutes {
   static const String workerDashboard = '/worker-dashboard';
   static const String forgotPassword = '/forgot-password';
   static const String otpVerification = '/otp-verification';
+  static const String postJob = '/post-job';
+
 // The '/set-password' route has been removed as it's no longer used.
 }

@@ -4,7 +4,7 @@ import 'package:chal_ostaad/core/routes/app_routes.dart';
 import 'package:chal_ostaad/features/splash/role_selection.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,7 +45,6 @@ class _LoginState extends State<Login> {
     _logger.i('Login screen initialized for role: $_userRole');
   }
 
-  // --- NEW & STRICT "LOGIN" LOGIC ---
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
     if (_userRole == null) {
@@ -62,8 +61,7 @@ class _LoginState extends State<Login> {
     try {
       _logger.i('Attempting login for role: $_userRole with email: $email');
 
-      // --- STEP 1: VERIFY THE USER EXISTS FOR THE CORRECT ROLE IN FIRESTORE ---
-      // This is the crucial new check.
+      // STEP 1: Verify user exists in Firestore
       final querySnapshot = await FirebaseFirestore.instance
           .collection(collectionName)
           .where('personalInfo.email', isEqualTo: email)
@@ -71,13 +69,12 @@ class _LoginState extends State<Login> {
           .get();
 
       if (querySnapshot.docs.isEmpty) {
-        // If no document is found, the user is not registered for this role.
-        _logger.w('Login failed: Email $email not found in the "$collectionName" collection.');
+        _logger.w('Login failed: Email $email not found in "$collectionName" collection.');
         throw Exception('This email is not registered as a $_userRole.');
       }
       _logger.i('Firestore check passed: User exists in "$collectionName".');
 
-      // --- STEP 2: IF THEY EXIST, NOW ATTEMPT FIREBASE AUTH LOGIN ---
+      // STEP 2: Firebase Auth login
       final secondaryApp = Firebase.app(_userRole!);
       final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
 
@@ -88,10 +85,10 @@ class _LoginState extends State<Login> {
 
       _logger.i('Firebase Auth login successful for UID: ${userCredential.user?.uid}');
 
-      // 3. Verify account status from the document we already found.
+      // STEP 3: Verify account status
       final docData = querySnapshot.docs.first.data();
       if (docData['account']?['accountStatus'] != 'active') {
-        await secondaryAuth.signOut(); // Log out immediately
+        await secondaryAuth.signOut();
         throw FirebaseAuthException(
           code: 'user-disabled',
           message: 'This account has been disabled or is not yet active.',
@@ -100,11 +97,17 @@ class _LoginState extends State<Login> {
 
       _logger.i('Account status is active.');
 
-      // 4. Save session and navigate.
+      // STEP 4: Enhanced Name Extraction
+      String userName = _extractUserName(docData, email, _userRole!);
+
+      // STEP 5: Save session and navigate
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_email', email);
       await prefs.setString('user_uid', userCredential.user!.uid);
       await prefs.setString('user_role', _userRole!);
+      await prefs.setString('user_name', userName);
+
+      _logger.i('User session saved - Name: $userName, Email: $email, Role: $_userRole');
 
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
@@ -123,7 +126,6 @@ class _LoginState extends State<Login> {
         _showErrorMessage('An error occurred during login. Please try again.');
       }
     } on Exception catch (e) {
-      // This will now catch our custom "not registered" error.
       final errorMessage = e.toString().startsWith('Exception: ') ? e.toString().substring(11) : e.toString();
       _logger.e('Generic exception during login: $errorMessage');
       _showErrorMessage(errorMessage);
@@ -134,7 +136,51 @@ class _LoginState extends State<Login> {
     }
   }
 
-  // --- The rest of your file (build method, etc.) remains unchanged ---
+  String _extractUserName(Map<String, dynamic> docData, String email, String userRole) {
+    String userName = email.split('@').first; // Default to email username
+
+    // Try multiple possible field locations for name
+    final possibleNameFields = [
+      docData['name'],
+      docData['fullName'],
+      docData['displayName'],
+      docData['firstName'],
+    ];
+
+    // Check personalInfo for both workers and clients
+    if (docData['personalInfo'] is Map) {
+      final personalInfo = docData['personalInfo'] as Map<String, dynamic>;
+      possibleNameFields.addAll([
+        personalInfo['name'],
+        personalInfo['fullName'],
+        personalInfo['firstName'],
+      ]);
+    }
+
+    // Check userInfo if exists
+    if (docData['userInfo'] is Map) {
+      final userInfo = docData['userInfo'] as Map<String, dynamic>;
+      possibleNameFields.addAll([
+        userInfo['name'],
+        userInfo['fullName'],
+      ]);
+    }
+
+    // Find the first non-null, non-empty name
+    for (var name in possibleNameFields) {
+      if (name != null && name.toString().isNotEmpty) {
+        userName = name.toString();
+        _logger.i('Extracted $userRole name: $userName');
+        break;
+      }
+    }
+
+    if (userName == email.split('@').first) {
+      _logger.i('No name found in document, using email username: $userName');
+    }
+
+    return userName;
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -1,88 +1,149 @@
-// lib/features/client/widgets/client_dashboard_header.dart
-
+// lib/features/client/client_dashboard_header.dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-import '../../../shared/widgets/Ccontainer.dart';
-import '../../../core/constants/colors.dart';
-import '../../../core/constants/sizes.dart';
+import '../../core/constants/colors.dart';
+import '../../core/constants/sizes.dart';
+import '../../shared/widgets/Ccontainer.dart';
 
 class ClientDashboardHeader extends StatefulWidget {
-  const ClientDashboardHeader({super.key});
+  final String userName;
+  final VoidCallback? onNotificationTap;
+
+  const ClientDashboardHeader({
+    super.key,
+    required this.userName,
+    this.onNotificationTap,
+  });
 
   @override
   State<ClientDashboardHeader> createState() => _ClientDashboardHeaderState();
 }
 
 class _ClientDashboardHeaderState extends State<ClientDashboardHeader> {
-  String _userName = 'User';
+  int _notificationCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadUserName();
+    _loadNotificationCount();
   }
 
-  Future<void> _loadUserName() async {
-    final prefs = await SharedPreferences.getInstance();
-    // We get the full name that we stored during the signup process.
-    final fullName = prefs.getString('user_name');
-    if (fullName != null && fullName.isNotEmpty) {
-      if (mounted) {
-        setState(() {
-          // We split the full name by space and take only the first part.
-          _userName = fullName.split(' ').first;
-        });
-      }
-    }
+  void _loadNotificationCount() {
+    // Implementation for loading notification count
   }
 
   @override
   Widget build(BuildContext context) {
     return CustomShapeContainer(
-      height: 180, // Sets the height of the curved header
-      color: CColors.primary, // Sets the background color
+      height: 200,
+      color: CColors.primary,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(CSizes.defaultSpace, 0, CSizes.defaultSpace, 20),
+        padding: const EdgeInsets.fromLTRB(CSizes.defaultSpace, 24, CSizes.defaultSpace, 24),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Welcome Text on the left
-            Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: CColors.secondary.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '👋 WELCOME CLIENT',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: CColors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello,',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: CColors.white.withOpacity(0.9),
+                          fontWeight: FontWeight.w400,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.userName,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 32,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Row(
               children: [
-                Text(
-                  'Welcome Back,',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: CColors.light),
-                ),
-                Text(
-                  _userName,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                if (widget.onNotificationTap != null)
+                  Stack(
+                    children: [
+                      IconButton(
+                        onPressed: widget.onNotificationTap,
+                        icon: const Icon(Icons.notifications_outlined, color: CColors.white),
+                      ),
+                      if (_notificationCount > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: CColors.error,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                            child: Text(
+                              '$_notificationCount',
+                              style: const TextStyle(color: CColors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () => Scaffold.of(context).openEndDrawer(),
+                  borderRadius: BorderRadius.circular(35),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [CColors.secondary, CColors.secondary.withOpacity(0.9)],
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.person, color: CColors.primary, size: 32),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-
-            // Profile Icon Button on the right
-            InkWell(
-              onTap: () {
-                // This command finds the Scaffold in the widget tree and tells it to open its endDrawer.
-                Scaffold.of(context).openEndDrawer();
-              },
-              borderRadius: BorderRadius.circular(30),
-              child: const CircleAvatar(
-                radius: 25,
-                backgroundColor: CColors.white,
-                child: Icon(
-                  Icons.person,
-                  color: CColors.primary,
-                  size: 30,
-                ),
-              ),
             ),
           ],
         ),

@@ -9,6 +9,7 @@ import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
 import '../../features/auth/screens/worker_signup.dart';
 import '../../features/client/client_dashboard.dart';
+import '../../features/client/post_job_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
 import 'app_routes.dart';
 
@@ -29,6 +30,8 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const ClientDashboard());
       case AppRoutes.workerDashboard:
         return MaterialPageRoute(builder: (_) => const WorkerDashboard());
+      case AppRoutes.postJob:
+        return MaterialPageRoute(builder: (_) => const PostJobScreen());
       case AppRoutes.forgotPassword:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());
 
