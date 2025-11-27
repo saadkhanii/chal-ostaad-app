@@ -34,6 +34,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   final List<String> _filterOptions = ['All Jobs', 'My Category'];
   final CategoryService _categoryService = CategoryService();
   String _workerCategoryName = '';
+
   @override
   void initState() {
     super.initState();
@@ -89,7 +90,6 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     }
   }
 
-
   void _showJobDetails(JobModel job) {
     Navigator.push(
       context,
@@ -108,7 +108,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       endDrawer: const DashboardDrawer(),
-      backgroundColor: Theme.of(context).brightness == Brightness.dark ? CColors.dark : CColors.light,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark ? CColors.dark : CColors.lightGrey,
       body: _isLoading
           ? _buildLoadingScreen()
           : CustomScrollView(
@@ -141,7 +141,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                   showAction: false,
                 ),
                 const SizedBox(height: CSizes.spaceBtwItems),
-                _buildStatsRow(context),
+                _buildStatsRow(context), // This was the problematic widget
                 const SizedBox(height: CSizes.spaceBtwSections),
                 _buildSectionHeader(
                   context,
@@ -175,7 +175,13 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
       children: [
         Container(
           height: 200,
-          color: CColors.primary,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [CColors.primary, CColors.secondary],
+            ),
+          ),
           child: const Center(
             child: CircularProgressIndicator(color: CColors.white),
           ),
@@ -206,22 +212,27 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(CSizes.lg),
+      padding: const EdgeInsets.all(CSizes.xl),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            CColors.secondary,
-            CColors.primary.withOpacity(0.8),
+            CColors.primary.withOpacity(0.95),
+            CColors.secondary.withOpacity(0.95),
           ],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color: CColors.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: CColors.primary.withOpacity(0.4),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: CColors.secondary.withOpacity(0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -232,43 +243,46 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: CColors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
+                    color: CColors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: CColors.white.withOpacity(0.3)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.rocket_launch_rounded, size: 14, color: CColors.white),
-                      const SizedBox(width: 6),
+                      Icon(Icons.rocket_launch_rounded, size: 16, color: CColors.white),
+                      const SizedBox(width: 8),
                       Text(
                         'BIDDING PLATFORM',
                         style: Theme.of(context).textTheme.labelSmall!.copyWith(
                           color: CColors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 10,
-                          letterSpacing: 1,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 Text(
                   'Find Your Next Project',
                   style: Theme.of(context).textTheme.headlineSmall!.copyWith(
                     color: CColors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 24,
+                    height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Text(
                   'Place competitive bids and win projects in your category. Start earning today!',
                   style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                    color: CColors.white.withOpacity(0.9),
-                    height: 1.5,
+                    color: CColors.white.withOpacity(0.95),
+                    height: 1.6,
+                    fontSize: 15,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -276,21 +290,31 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 20),
           Container(
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: CColors.white.withOpacity(0.2),
+              color: CColors.white.withOpacity(0.25),
+              border: Border.all(color: CColors.white.withOpacity(0.4)),
+              boxShadow: [
+                BoxShadow(
+                  color: CColors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: IconButton(
               onPressed: () {
                 Scrollable.ensureVisible(
                   context,
-                  duration: const Duration(milliseconds: 500),
-                  curve: Curves.easeInOut,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeInOutCubic,
                 );
               },
-              icon: Icon(Icons.arrow_downward_rounded, color: CColors.white, size: 24),
+              icon: Icon(Icons.arrow_downward_rounded, color: CColors.white, size: 28),
               tooltip: 'Browse Jobs',
             ),
           ),
@@ -312,27 +336,30 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         Text(
           title,
           style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
             color: isDark ? CColors.textWhite : CColors.textPrimary,
-            fontSize: 20,
+            fontSize: 22,
+            letterSpacing: -0.5,
           ),
         ),
         if (showAction && actionText != null && onAction != null)
           InkWell(
             onTap: onAction,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [CColors.primary, CColors.secondary],
+                  colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: CColors.primary.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    color: CColors.primary.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
@@ -343,11 +370,12 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                     actionText,
                     style: Theme.of(context).textTheme.labelMedium!.copyWith(
                       color: CColors.white,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded, size: 16, color: CColors.white),
+                  const SizedBox(width: 6),
+                  Icon(Icons.arrow_forward_rounded, size: 18, color: CColors.white),
                 ],
               ),
             ),
@@ -355,6 +383,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
       ],
     );
   }
+
   Future<String> _getClientName(String clientId) async {
     try {
       final clientDoc = await FirebaseFirestore.instance
@@ -385,53 +414,73 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               label: const Text('My Category'),
               selected: true,
               onSelected: null,
-              backgroundColor: CColors.primary.withOpacity(0.1),
+              backgroundColor: CColors.primary.withOpacity(0.15),
               selectedColor: CColors.primary,
               labelStyle: const TextStyle(
                 color: CColors.white,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: CColors.primary, width: 1.5),
+                borderRadius: BorderRadius.circular(24),
+                side: const BorderSide(color: CColors.primary, width: 2),
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
           ),
           // Show worker's category name as a label
           if (_workerCategoryName.isNotEmpty)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: CColors.secondary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: CColors.secondary),
+                gradient: LinearGradient(
+                  colors: [CColors.secondary.withOpacity(0.1), CColors.secondary.withOpacity(0.05)],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: CColors.secondary.withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: CColors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Text(
                 _workerCategoryName,
                 style: Theme.of(context).textTheme.labelMedium!.copyWith(
                   color: CColors.secondary,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
                 ),
               ),
             ),
           // Show warning if no category assigned
           if (_workerCategory.isEmpty)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 color: CColors.warning.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: CColors.warning),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: CColors.warning.withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: CColors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, size: 16, color: CColors.warning),
-                  const SizedBox(width: 6),
+                  Icon(Icons.warning_amber_rounded, size: 18, color: CColors.warning),
+                  const SizedBox(width: 8),
                   Text(
                     'No Category Assigned',
                     style: Theme.of(context).textTheme.labelMedium!.copyWith(
                       color: CColors.warning,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
                     ),
                   ),
                 ],
@@ -460,43 +509,47 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
             .where((doc) => (doc.data() as Map<String, dynamic>)['status'] == 'accepted')
             .fold(0.0, (sum, doc) => sum + (doc.data() as Map<String, dynamic>)['amount']);
 
-        return GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          childAspectRatio: 1.3,
-          mainAxisSpacing: CSizes.spaceBtwItems,
-          crossAxisSpacing: CSizes.spaceBtwItems,
-          children: [
-            _buildStatCard(
-              context,
-              icon: Icons.pending_actions_rounded,
-              value: pendingBids.toString(),
-              label: 'Pending Bids',
-              color: CColors.warning,
-            ),
-            _buildStatCard(
-              context,
-              icon: Icons.emoji_events_rounded,
-              value: acceptedBids.toString(),
-              label: 'Projects Won',
-              color: CColors.success,
-            ),
-            _buildStatCard(
-              context,
-              icon: Icons.assignment_rounded,
-              value: bids.length.toString(),
-              label: 'Total Bids',
-              color: CColors.info,
-            ),
-            _buildStatCard(
-              context,
-              icon: Icons.account_balance_wallet_rounded,
-              value: 'Rs. ${totalEarnings.toStringAsFixed(0)}',
-              label: 'Total Earnings',
-              color: CColors.primary,
-            ),
-          ],
+        return SizedBox(
+          height: 160, // Increased height for bigger cards
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            children: [
+              const SizedBox(width: CSizes.defaultSpace),
+              _buildStatCard(
+                context,
+                icon: Icons.pending_actions_rounded,
+                value: pendingBids.toString(),
+                label: 'Pending Bids',
+                color: CColors.warning,
+              ),
+              const SizedBox(width: CSizes.spaceBtwItems),
+              _buildStatCard(
+                context,
+                icon: Icons.emoji_events_rounded,
+                value: acceptedBids.toString(),
+                label: 'Projects Won',
+                color: CColors.success,
+              ),
+              const SizedBox(width: CSizes.spaceBtwItems),
+              _buildStatCard(
+                context,
+                icon: Icons.assignment_rounded,
+                value: bids.length.toString(),
+                label: 'Total Bids',
+                color: CColors.info,
+              ),
+              const SizedBox(width: CSizes.spaceBtwItems),
+              _buildStatCard(
+                context,
+                icon: Icons.account_balance_wallet_rounded,
+                value: 'Rs. ${totalEarnings.toStringAsFixed(0)}',
+                label: 'Total Earnings',
+                color: CColors.primary,
+              ),
+              const SizedBox(width: CSizes.defaultSpace),
+            ],
+          ),
         );
       },
     );
@@ -511,46 +564,74 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(CSizes.md),
+      width: 280, // Wide cards
+      height: 160, // Tall cards
+      padding: const EdgeInsets.all(CSizes.xl),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
           ),
         ],
-        border: Border.all(color: isDark ? CColors.darkerGrey : Colors.transparent),
+        border: Border.all(
+          color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.grey.withOpacity(0.4),
+        ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withOpacity(0.3)),
+                ),
+                child: Icon(icon, size: 32, color: color), // Bigger icon
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? CColors.textWhite : CColors.textPrimary,
+                        fontSize: 36, // Very big numbers
+                        letterSpacing: -1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                        color: CColors.darkGrey,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(8),
+            height: 6,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 20, color: color),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleLarge!.copyWith(
-              fontWeight: FontWeight.w800,
-              color: isDark ? CColors.textWhite : CColors.textPrimary,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-              color: CColors.darkGrey,
-              fontWeight: FontWeight.w500,
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
             ),
           ),
         ],
@@ -559,43 +640,47 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   }
 
   Widget _buildStatsLoading(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      childAspectRatio: 1.3,
-      mainAxisSpacing: CSizes.spaceBtwItems,
-      crossAxisSpacing: CSizes.spaceBtwItems,
-      children: [
-        _buildStatCard(
-          context,
-          icon: Icons.pending_actions_rounded,
-          value: '0',
-          label: 'Loading...',
-          color: CColors.grey,
-        ),
-        _buildStatCard(
-          context,
-          icon: Icons.emoji_events_rounded,
-          value: '0',
-          label: 'Loading...',
-          color: CColors.grey,
-        ),
-        _buildStatCard(
-          context,
-          icon: Icons.assignment_rounded,
-          value: '0',
-          label: 'Loading...',
-          color: CColors.grey,
-        ),
-        _buildStatCard(
-          context,
-          icon: Icons.account_balance_wallet_rounded,
-          value: 'Rs. 0',
-          label: 'Loading...',
-          color: CColors.grey,
-        ),
-      ],
+    return SizedBox(
+      height: 160,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        children: [
+          const SizedBox(width: CSizes.defaultSpace),
+          _buildStatCard(
+            context,
+            icon: Icons.pending_actions_rounded,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.spaceBtwItems),
+          _buildStatCard(
+            context,
+            icon: Icons.emoji_events_rounded,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.spaceBtwItems),
+          _buildStatCard(
+            context,
+            icon: Icons.assignment_rounded,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.spaceBtwItems),
+          _buildStatCard(
+            context,
+            icon: Icons.account_balance_wallet_rounded,
+            value: 'Rs. 0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.defaultSpace),
+        ],
+      ),
     );
   }
 
@@ -649,10 +734,15 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                         foregroundColor: CColors.primary,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(24),
+                          side: BorderSide(color: CColors.primary.withOpacity(0.3)),
                         ),
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                       ),
-                      child: const Text('View More Jobs'),
+                      child: const Text(
+                        'View More Jobs',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
               ],
@@ -697,8 +787,6 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     return filteredJobs;
   }
 
-// In worker_dashboard.dart, update the _buildJobCard method:
-
   Widget _buildJobCard(JobModel job) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -709,12 +797,14 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
-        border: Border.all(color: isDark ? CColors.darkerGrey : Colors.transparent),
+        border: Border.all(
+          color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.grey.withOpacity(0.4),
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -722,9 +812,10 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
           onTap: () => _showJobDetails(job),
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
           child: Padding(
-            padding: const EdgeInsets.all(CSizes.lg),
+            padding: const EdgeInsets.all(CSizes.lg), // Reduced padding
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min, // Added to prevent overflow
               children: [
                 // Header row with category and time - FIXED LAYOUT
                 Row(
@@ -732,16 +823,20 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                     Expanded(
                       flex: 2,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // Reduced padding
                         decoration: BoxDecoration(
-                          color: CColors.primary.withOpacity(0.1),
+                          gradient: LinearGradient(
+                            colors: [CColors.primary.withOpacity(0.15), CColors.primary.withOpacity(0.08)],
+                          ),
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: CColors.primary.withOpacity(0.2)),
                         ),
                         child: Text(
                           job.category,
                           style: Theme.of(context).textTheme.labelSmall!.copyWith(
                             color: CColors.primary,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10, // Smaller font
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -756,6 +851,8 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                         timeago.format(job.createdAt.toDate()),
                         style: Theme.of(context).textTheme.labelSmall!.copyWith(
                           color: CColors.darkGrey,
+                          fontSize: 10, // Smaller font
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -764,34 +861,42 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12), // Reduced spacing
 
-                // Job Title - MAKE SURE THIS IS VISIBLE
-                Text(
-                  job.title,
-                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? CColors.textWhite : CColors.textPrimary,
-                    fontSize: 18,
+                // Job Title - FIXED HEIGHT
+                SizedBox(
+                  height: 40, // Fixed height for title
+                  child: Text(
+                    job.title,
+                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? CColors.textWhite : CColors.textPrimary,
+                      fontSize: 16, // Smaller font
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 8), // Reduced spacing
 
-                // Job Description - MAKE SURE THIS IS VISIBLE
-                Text(
-                  job.description,
-                  style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                    color: isDark ? CColors.textWhite.withOpacity(0.7) : CColors.darkerGrey,
-                    height: 1.4,
+                // Job Description - FIXED HEIGHT
+                SizedBox(
+                  height: 36, // Fixed height for description
+                  child: Text(
+                    job.description,
+                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                      color: isDark ? CColors.textWhite.withOpacity(0.75) : CColors.darkerGrey,
+                      height: 1.4,
+                      fontSize: 12, // Smaller font
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12), // Reduced spacing
 
-                // Footer row with client info and bid button - FIXED LAYOUT
+                // Footer row with client info and bid button - FIXED HEIGHT
                 Row(
                   children: [
                     // Client info - FIXED: Use proper constraints
@@ -816,8 +921,9 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                               Container(
                                 padding: const EdgeInsets.all(6),
                                 decoration: BoxDecoration(
-                                  color: CColors.primary.withOpacity(0.1),
+                                  color: CColors.primary.withOpacity(0.12),
                                   shape: BoxShape.circle,
+                                  border: Border.all(color: CColors.primary.withOpacity(0.2)),
                                 ),
                                 child: Icon(Icons.person_rounded, size: 16, color: CColors.primary),
                               ),
@@ -827,7 +933,8 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                                   'By: $clientName',
                                   style: Theme.of(context).textTheme.bodySmall!.copyWith(
                                     color: CColors.darkGrey,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11, // Smaller font
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -842,16 +949,19 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
 
                     // Bid button - Fixed width to prevent overflow
                     SizedBox(
-                      width: 100, // Fixed width to prevent layout issues
+                      width: 90, // Slightly smaller width
+                      height: 36, // Fixed height
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [CColors.primary, CColors.secondary],
+                            colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
                           boxShadow: [
                             BoxShadow(
-                              color: CColors.primary.withOpacity(0.3),
+                              color: CColors.primary.withOpacity(0.4),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -866,12 +976,15 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            minimumSize: const Size(0, 36),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Reduced padding
+                            minimumSize: const Size(0, 0),
                           ),
                           child: const Text(
                             'Place Bid',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 11, // Smaller font
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
@@ -885,6 +998,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
       ),
     );
   }
+
   Widget _buildMyBidsList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -936,10 +1050,15 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                     foregroundColor: CColors.primary,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24),
+                      side: BorderSide(color: CColors.primary.withOpacity(0.3)),
                     ),
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   ),
-                  child: const Text('View All Bids'),
+                  child: const Text(
+                    'View All Bids',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
           ],
@@ -958,24 +1077,27 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: isDark ? CColors.darkerGrey : Colors.transparent),
+        border: Border.all(
+          color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.grey.withOpacity(0.4),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(CSizes.lg),
+        padding: const EdgeInsets.all(CSizes.xl),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _getBidStatusColor(bid.status).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                color: _getBidStatusColor(bid.status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _getBidStatusColor(bid.status).withOpacity(0.2)),
               ),
-              child: Icon(Icons.gavel_rounded, size: 24, color: _getBidStatusColor(bid.status)),
+              child: Icon(Icons.gavel_rounded, size: 26, color: _getBidStatusColor(bid.status)),
             ),
             const SizedBox(width: CSizes.lg),
             Expanded(
@@ -985,24 +1107,29 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                   Text(
                     'Rs. ${bid.amount.toStringAsFixed(0)}',
                     style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w900,
                       color: isDark ? CColors.textWhite : CColors.textPrimary,
+                      fontSize: 18,
+                      letterSpacing: -0.3,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     'Job: ${bid.jobId.substring(0, 8)}...',
                     style: Theme.of(context).textTheme.bodySmall!.copyWith(
                       color: CColors.darkGrey,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
                     ),
                   ),
                   if (bid.message != null && bid.message!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
                       '"${bid.message!}"',
                       style: Theme.of(context).textTheme.bodySmall!.copyWith(
                         color: CColors.darkGrey,
                         fontStyle: FontStyle.italic,
+                        fontSize: 12,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1012,16 +1139,19 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: _getBidStatusColor(bid.status).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                color: _getBidStatusColor(bid.status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _getBidStatusColor(bid.status).withOpacity(0.2)),
               ),
               child: Text(
                 bid.status.toUpperCase(),
                 style: Theme.of(context).textTheme.labelSmall!.copyWith(
                   color: _getBidStatusColor(bid.status),
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  letterSpacing: 0.5,
                 ),
               ),
             ),
@@ -1047,15 +1177,30 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   // Loading, Error, and Empty States for Jobs
   Widget _buildJobLoadingState() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 60.0),
+      padding: const EdgeInsets.symmetric(vertical: 80.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        color: Theme.of(context).brightness == Brightness.dark ? CColors.darkContainer : CColors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          CircularProgressIndicator(color: CColors.primary),
-          const SizedBox(height: CSizes.lg),
+          CircularProgressIndicator(
+            color: CColors.primary,
+            strokeWidth: 2.5,
+          ),
+          const SizedBox(height: CSizes.xl),
           Text(
             'Loading available jobs...',
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: CColors.darkGrey,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -1073,41 +1218,64 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
           ),
         ],
+        border: Border.all(
+          color: CColors.error.withOpacity(0.2),
+        ),
       ),
       child: Column(
         children: [
-          Icon(Icons.error_outline_rounded, size: 48, color: CColors.error),
-          const SizedBox(height: CSizes.lg),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: CColors.error.withOpacity(0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: CColors.error.withOpacity(0.2)),
+            ),
+            child: Icon(Icons.error_outline_rounded, size: 48, color: CColors.error),
+          ),
+          const SizedBox(height: CSizes.xl),
           Text(
             'Unable to Load Jobs',
             style: Theme.of(context).textTheme.titleMedium!.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w900,
               color: isDark ? CColors.textWhite : CColors.textPrimary,
+              fontSize: 18,
             ),
           ),
           const SizedBox(height: CSizes.sm),
-          Text(
-            error,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: CColors.darkGrey),
-            textAlign: TextAlign.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            child: Text(
+              error,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: CColors.darkGrey,
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
           if (onRetry != null) ...[
-            const SizedBox(height: CSizes.lg),
+            const SizedBox(height: CSizes.xl),
             ElevatedButton(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(
                 backgroundColor: CColors.primary,
                 foregroundColor: CColors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(24),
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                elevation: 4,
               ),
-              child: const Text('Try Again'),
+              child: const Text(
+                'Try Again',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ],
@@ -1119,14 +1287,14 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 60.0, horizontal: 20.0),
+      padding: const EdgeInsets.symmetric(vertical: 80.0, horizontal: 20.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -1134,13 +1302,22 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.work_outline_rounded, size: 64, color: CColors.primary.withOpacity(0.5)),
-          const SizedBox(height: CSizes.lg),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: CColors.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: CColors.primary.withOpacity(0.2)),
+            ),
+            child: Icon(Icons.work_outline_rounded, size: 56, color: CColors.primary.withOpacity(0.7)),
+          ),
+          const SizedBox(height: CSizes.xl),
           Text(
             'No Jobs Available',
             style: Theme.of(context).textTheme.titleLarge!.copyWith(
               color: isDark ? CColors.textWhite : CColors.textPrimary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
             ),
           ),
           const SizedBox(height: CSizes.sm),
@@ -1152,6 +1329,8 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                   : 'Check back later for new job opportunities',
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color: CColors.darkGrey,
+                fontSize: 14,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1164,15 +1343,30 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
   // Loading, Error, and Empty States for Bids
   Widget _buildBidsLoadingState() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 60.0),
+      padding: const EdgeInsets.symmetric(vertical: 80.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        color: Theme.of(context).brightness == Brightness.dark ? CColors.darkContainer : CColors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          CircularProgressIndicator(color: CColors.primary),
-          const SizedBox(height: CSizes.lg),
+          CircularProgressIndicator(
+            color: CColors.primary,
+            strokeWidth: 2.5,
+          ),
+          const SizedBox(height: CSizes.xl),
           Text(
             'Loading your bids...',
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: CColors.darkGrey,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -1190,41 +1384,64 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
           ),
         ],
+        border: Border.all(
+          color: CColors.error.withOpacity(0.2),
+        ),
       ),
       child: Column(
         children: [
-          Icon(Icons.error_outline_rounded, size: 48, color: CColors.error),
-          const SizedBox(height: CSizes.lg),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: CColors.error.withOpacity(0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: CColors.error.withOpacity(0.2)),
+            ),
+            child: Icon(Icons.error_outline_rounded, size: 48, color: CColors.error),
+          ),
+          const SizedBox(height: CSizes.xl),
           Text(
             'Unable to Load Bids',
             style: Theme.of(context).textTheme.titleMedium!.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w900,
               color: isDark ? CColors.textWhite : CColors.textPrimary,
+              fontSize: 18,
             ),
           ),
           const SizedBox(height: CSizes.sm),
-          Text(
-            error,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: CColors.darkGrey),
-            textAlign: TextAlign.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            child: Text(
+              error,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: CColors.darkGrey,
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
           if (onRetry != null) ...[
-            const SizedBox(height: CSizes.lg),
+            const SizedBox(height: CSizes.xl),
             ElevatedButton(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(
                 backgroundColor: CColors.primary,
                 foregroundColor: CColors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(24),
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                elevation: 4,
               ),
-              child: const Text('Try Again'),
+              child: const Text(
+                'Try Again',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ],
@@ -1242,15 +1459,32 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.lightContainer,
         border: Border.all(color: CColors.error.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline_rounded, size: 20, color: CColors.error),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: CColors.error.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.error_outline_rounded, size: 18, color: CColors.error),
+          ),
           const SizedBox(width: CSizes.md),
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: CColors.darkGrey),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: CColors.darkGrey,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -1262,14 +1496,14 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 60.0, horizontal: 20.0),
+      padding: const EdgeInsets.symmetric(vertical: 80.0, horizontal: 20.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -1277,13 +1511,22 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.gavel_rounded, size: 64, color: CColors.primary.withOpacity(0.5)),
-          const SizedBox(height: CSizes.lg),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: CColors.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: CColors.primary.withOpacity(0.2)),
+            ),
+            child: Icon(Icons.gavel_rounded, size: 56, color: CColors.primary.withOpacity(0.7)),
+          ),
+          const SizedBox(height: CSizes.xl),
           Text(
             'No Bids Yet',
             style: Theme.of(context).textTheme.titleLarge!.copyWith(
               color: isDark ? CColors.textWhite : CColors.textPrimary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
             ),
           ),
           const SizedBox(height: CSizes.sm),
@@ -1293,6 +1536,8 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
               'Start bidding on available jobs to see them here',
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color: CColors.darkGrey,
+                fontSize: 14,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),

@@ -9,8 +9,27 @@ class WorkerDashboardHeader extends StatelessWidget {
 
   const WorkerDashboardHeader({super.key, required this.userName});
 
+  String _getDisplayName(String fullName) {
+    if (fullName.isEmpty) return 'Worker';
+
+    final nameParts = fullName.trim().split(' ');
+    if (nameParts.isEmpty) return 'Worker';
+
+    final firstName = nameParts.first;
+
+    // If first name is "Muhammad" and there's a last name, show the last name
+    if (firstName.toLowerCase() == 'muhammad' && nameParts.length > 1) {
+      return nameParts.last;
+    }
+
+    // Otherwise show the first name
+    return firstName;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final displayName = _getDisplayName(userName);
+
     return CustomShapeContainer(
       height: 200,
       color: CColors.primary,
@@ -56,7 +75,7 @@ class WorkerDashboardHeader extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        userName,
+                        displayName,
                         style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,

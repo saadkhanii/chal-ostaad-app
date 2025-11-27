@@ -185,15 +185,30 @@ class _ClientDashboardState extends State<ClientDashboard> {
       context: context,
       builder: (context) {
         return Container(
-          padding: const EdgeInsets.all(CSizes.md),
+          padding: const EdgeInsets.all(CSizes.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 'Job Actions',
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              const SizedBox(height: CSizes.md),
+              const SizedBox(height: CSizes.lg),
+
+              // View Details - Always available
+              _buildActionTile(
+                context,
+                icon: Icons.remove_red_eye,
+                title: 'View Details',
+                color: CColors.info,
+                onTap: () {
+                  Navigator.pop(context);
+                  _showJobDetails(job);
+                },
+              ),
+              const SizedBox(height: CSizes.sm),
 
               if (job.status == 'open') ...[
                 _buildActionTile(
@@ -203,6 +218,7 @@ class _ClientDashboardState extends State<ClientDashboard> {
                   color: CColors.info,
                   onTap: () => _editJob(job),
                 ),
+                const SizedBox(height: CSizes.sm),
                 _buildActionTile(
                   context,
                   icon: Icons.cancel,
@@ -210,16 +226,18 @@ class _ClientDashboardState extends State<ClientDashboard> {
                   color: CColors.warning,
                   onTap: () => _cancelJob(job.id!),
                 ),
+                const SizedBox(height: CSizes.sm),
               ],
 
               if (job.status == 'in-progress') ...[
                 _buildActionTile(
                   context,
                   icon: Icons.check_circle,
-                  title: 'Mark Complete',
+                  title: 'Mark as Completed',
                   color: CColors.success,
                   onTap: () => _markJobAsCompleted(job.id!),
                 ),
+                const SizedBox(height: CSizes.sm),
                 _buildActionTile(
                   context,
                   icon: Icons.cancel,
@@ -227,6 +245,7 @@ class _ClientDashboardState extends State<ClientDashboard> {
                   color: CColors.warning,
                   onTap: () => _cancelJob(job.id!),
                 ),
+                const SizedBox(height: CSizes.sm),
               ],
 
               if (job.status == 'completed') ...[
@@ -237,8 +256,10 @@ class _ClientDashboardState extends State<ClientDashboard> {
                   color: CColors.info,
                   onTap: () => _reopenJob(job.id!),
                 ),
+                const SizedBox(height: CSizes.sm),
               ],
 
+              // Delete Job - Always available (with confirmation)
               _buildActionTile(
                 context,
                 icon: Icons.delete,
@@ -247,7 +268,7 @@ class _ClientDashboardState extends State<ClientDashboard> {
                 onTap: () => _deleteJob(job.id!),
               ),
 
-              const SizedBox(height: CSizes.md),
+              const SizedBox(height: CSizes.lg),
               OutlinedButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
@@ -318,7 +339,7 @@ class _ClientDashboardState extends State<ClientDashboard> {
 
     return Scaffold(
       endDrawer: const DashboardDrawer(),
-      backgroundColor: isDark ? CColors.dark : CColors.light,
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToPostJob,
         backgroundColor: CColors.primary,
@@ -335,21 +356,24 @@ class _ClientDashboardState extends State<ClientDashboard> {
             SliverToBoxAdapter(
               child: Column(
                 children: [
-                  ClientDashboardHeader(
-                    userName: _userName,
-                    onNotificationTap: _showNotifications,
+                  ClientDashboardHeader(userName: _userName),
+                  Padding(
+                    padding: const EdgeInsets.all(CSizes.defaultSpace),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildOpportunityCard(context),
+                        const SizedBox(height: CSizes.spaceBtwSections),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-
             SliverPadding(
-              padding: const EdgeInsets.all(CSizes.defaultSpace),
+              padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  _buildWelcomeSection(context),
-                  const SizedBox(height: CSizes.spaceBtwSections),
-
                   _buildSectionHeader(
                     context,
                     'Project Overview',
@@ -358,7 +382,6 @@ class _ClientDashboardState extends State<ClientDashboard> {
                   const SizedBox(height: CSizes.spaceBtwItems),
                   _buildStatsRow(context),
                   const SizedBox(height: CSizes.spaceBtwSections),
-
                   _buildSectionHeader(
                     context,
                     'My Posted Jobs',
@@ -370,7 +393,6 @@ class _ClientDashboardState extends State<ClientDashboard> {
                   const SizedBox(height: CSizes.spaceBtwItems),
                   _buildMyJobsList(),
                   const SizedBox(height: CSizes.spaceBtwSections),
-
                   _buildSectionHeader(
                     context,
                     'Recent Bids',
@@ -389,6 +411,7 @@ class _ClientDashboardState extends State<ClientDashboard> {
       ),
     );
   }
+
 
   void _showAllJobs() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -447,88 +470,132 @@ class _ClientDashboardState extends State<ClientDashboard> {
   }
 
   // UI Building Methods
-  Widget _buildWelcomeSection(BuildContext context) {
+  Widget _buildOpportunityCard(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(CSizes.lg),
+      padding: const EdgeInsets.all(CSizes.xl),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+          colors: [
+            CColors.primary.withOpacity(0.95),
+            CColors.secondary.withOpacity(0.95),
+          ],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color: CColors.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: CColors.primary.withOpacity(0.4),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: CColors.secondary.withOpacity(0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: CColors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.rocket_launch_outlined, size: 14, color: CColors.white),
-                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: CColors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: CColors.white.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.rocket_launch_rounded, size: 16, color: CColors.white),
+                      const SizedBox(width: 8),
+                      Text(
+                        'HIRING PLATFORM',
+                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                          color: CColors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
                 Text(
-                  'WELCOME BACK',
-                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                  'Find Your Perfect Worker',
+                  style: Theme.of(context).textTheme.headlineSmall!.copyWith(
                     color: CColors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 10,
-                    letterSpacing: 1,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 24,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Post your project and receive competitive bids from skilled professionals in your area.',
+                  style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                    color: CColors.white.withOpacity(0.95),
+                    height: 1.6,
+                    fontSize: 15,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _navigateToPostJob,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.white,
+                    foregroundColor: CColors.primary,
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  child: const Text(
+                    'Post New Job',
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Hello, $_userName!',
-            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-              color: CColors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 20,
+          const SizedBox(width: 20),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: CColors.white.withOpacity(0.25),
+              border: Border.all(color: CColors.white.withOpacity(0.4)),
+              boxShadow: [
+                BoxShadow(
+                  color: CColors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Ready to find the perfect professional for your project?',
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-              color: CColors.white.withOpacity(0.9),
-              height: 1.4,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _navigateToPostJob,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.white,
-              foregroundColor: CColors.primary,
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            ),
-            child: const Text(
-              'Post New Job',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            child: IconButton(
+              onPressed: () {
+                Scrollable.ensureVisible(
+                  context,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeInOutCubic,
+                );
+              },
+              icon: Icon(Icons.arrow_downward_rounded, color: CColors.white, size: 28),
+              tooltip: 'Browse Jobs',
             ),
           ),
         ],
@@ -537,40 +604,59 @@ class _ClientDashboardState extends State<ClientDashboard> {
   }
 
   Widget _buildSectionHeader(BuildContext context, String title, {
-    String? actionText, VoidCallback? onAction, bool showAction = true,
+    String? actionText,
+    VoidCallback? onAction,
+    bool showAction = true,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-              fontWeight: FontWeight.w700,
-              color: isDark ? CColors.textWhite : CColors.textPrimary,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        Text(
+          title,
+          style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+            fontWeight: FontWeight.w900,
+            color: isDark ? CColors.textWhite : CColors.textPrimary,
+            fontSize: 22,
+            letterSpacing: -0.5,
           ),
         ),
         if (showAction && actionText != null && onAction != null)
-          GestureDetector(
+          InkWell(
             onTap: onAction,
+            borderRadius: BorderRadius.circular(24),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: CColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: CColors.primary.withOpacity(0.3)),
-              ),
-              child: Text(
-                actionText,
-                style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                  color: CColors.primary,
-                  fontWeight: FontWeight.w600,
+                gradient: LinearGradient(
+                  colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: CColors.primary.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    actionText,
+                    style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                      color: CColors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.arrow_forward_rounded, size: 18, color: CColors.white),
+                ],
               ),
             ),
           ),
@@ -578,12 +664,35 @@ class _ClientDashboardState extends State<ClientDashboard> {
     );
   }
 
+
   Widget _buildJobFilterChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _buildFilterChip('All Jobs', 'all', _jobFilter, (value) => setState(() => _jobFilter = value)),
+          Container(
+            margin: const EdgeInsets.only(right: 12),
+            child: ChoiceChip(
+              label: const Text('All Jobs'),
+              selected: _jobFilter == 'all',
+              onSelected: (selected) => setState(() => _jobFilter = 'all'),
+              backgroundColor: _jobFilter == 'all' ? CColors.primary.withOpacity(0.15) : Colors.transparent,
+              selectedColor: CColors.primary,
+              labelStyle: TextStyle(
+                color: _jobFilter == 'all' ? CColors.white : CColors.darkGrey,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: BorderSide(
+                  color: _jobFilter == 'all' ? CColors.primary : CColors.borderPrimary,
+                  width: _jobFilter == 'all' ? 2 : 1,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+          ),
           _buildFilterChip('Open', 'open', _jobFilter, (value) => setState(() => _jobFilter = value)),
           _buildFilterChip('In Progress', 'in-progress', _jobFilter, (value) => setState(() => _jobFilter = value)),
           _buildFilterChip('Completed', 'completed', _jobFilter, (value) => setState(() => _jobFilter = value)),
@@ -592,12 +701,35 @@ class _ClientDashboardState extends State<ClientDashboard> {
     );
   }
 
+
   Widget _buildBidFilterChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _buildFilterChip('All Bids', 'all', _bidFilter, (value) => setState(() => _bidFilter = value)),
+          Container(
+            margin: const EdgeInsets.only(right: 12),
+            child: ChoiceChip(
+              label: const Text('All Bids'),
+              selected: _bidFilter == 'all',
+              onSelected: (selected) => setState(() => _bidFilter = 'all'),
+              backgroundColor: _bidFilter == 'all' ? CColors.primary.withOpacity(0.15) : Colors.transparent,
+              selectedColor: CColors.primary,
+              labelStyle: TextStyle(
+                color: _bidFilter == 'all' ? CColors.white : CColors.darkGrey,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: BorderSide(
+                  color: _bidFilter == 'all' ? CColors.primary : CColors.borderPrimary,
+                  width: _bidFilter == 'all' ? 2 : 1,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+          ),
           _buildFilterChip('Pending', 'pending', _bidFilter, (value) => setState(() => _bidFilter = value)),
           _buildFilterChip('Accepted', 'accepted', _bidFilter, (value) => setState(() => _bidFilter = value)),
           _buildFilterChip('Rejected', 'rejected', _bidFilter, (value) => setState(() => _bidFilter = value)),
@@ -607,23 +739,27 @@ class _ClientDashboardState extends State<ClientDashboard> {
   }
 
   Widget _buildFilterChip(String label, String value, String currentValue, ValueChanged<String> onSelected) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: FilterChip(
+    return Container(
+      margin: const EdgeInsets.only(right: 12),
+      child: ChoiceChip(
         label: Text(label),
         selected: currentValue == value,
         onSelected: (selected) => onSelected(value),
-        backgroundColor: Colors.transparent,
-        selectedColor: CColors.primary.withOpacity(0.2),
-        checkmarkColor: CColors.primary,
+        backgroundColor: currentValue == value ? CColors.primary.withOpacity(0.15) : Colors.transparent,
+        selectedColor: CColors.primary,
         labelStyle: TextStyle(
-          color: currentValue == value ? CColors.primary : CColors.darkGrey,
+          color: currentValue == value ? CColors.white : CColors.darkGrey,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
         ),
-        shape: StadiumBorder(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
           side: BorderSide(
             color: currentValue == value ? CColors.primary : CColors.borderPrimary,
+            width: currentValue == value ? 2 : 1,
           ),
         ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       ),
     );
   }
@@ -633,8 +769,16 @@ class _ClientDashboardState extends State<ClientDashboard> {
       children: [
         Container(
           height: 200,
-          color: CColors.primary,
-          child: const Center(child: CircularProgressIndicator(color: CColors.white)),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [CColors.primary, CColors.secondary],
+            ),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(color: CColors.white),
+          ),
         ),
         Expanded(
           child: Center(
@@ -645,7 +789,9 @@ class _ClientDashboardState extends State<ClientDashboard> {
                 const SizedBox(height: CSizes.md),
                 Text(
                   'Loading your dashboard...',
-                  style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: CColors.textSecondary),
+                  style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                    color: CColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -656,12 +802,10 @@ class _ClientDashboardState extends State<ClientDashboard> {
   }
 
   Widget _buildStatsRow(BuildContext context) {
-    if (_clientId.isEmpty) return _buildStatsLoading();
-
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('jobs').where('clientId', isEqualTo: _clientId).snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return _buildStatsLoading();
+        if (!snapshot.hasData) return _buildStatsLoading(context);
 
         final jobs = snapshot.data!.docs;
         final activeJobs = jobs.where((doc) => (doc.data() as Map<String, dynamic>)['status'] == 'open').length;
@@ -671,23 +815,51 @@ class _ClientDashboardState extends State<ClientDashboard> {
         return StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('bids').where('clientId', isEqualTo: _clientId).snapshots(),
           builder: (context, bidSnapshot) {
-            if (!bidSnapshot.hasData) return _buildStatsLoading();
+            if (!bidSnapshot.hasData) return _buildStatsLoading(context);
 
             final totalBids = bidSnapshot.data!.docs.length;
 
-            return GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              childAspectRatio: 2.2,
-              mainAxisSpacing: CSizes.spaceBtwItems,
-              crossAxisSpacing: CSizes.spaceBtwItems,
-              children: [
-                _buildStatCard(context, icon: Icons.assignment_outlined, value: activeJobs.toString(), label: 'Active Jobs', color: CColors.info),
-                _buildStatCard(context, icon: Icons.timelapse_outlined, value: inProgressJobs.toString(), label: 'In Progress', color: CColors.warning),
-                _buildStatCard(context, icon: Icons.gavel_outlined, value: totalBids.toString(), label: 'Total Bids', color: CColors.primary),
-                _buildStatCard(context, icon: Icons.check_circle_outlined, value: completedJobs.toString(), label: 'Completed', color: CColors.success),
-              ],
+            return SizedBox(
+              height: 160,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  const SizedBox(width: CSizes.defaultSpace),
+                  _buildStatCard(
+                    context,
+                    icon: Icons.assignment_outlined,
+                    value: activeJobs.toString(),
+                    label: 'Active Jobs',
+                    color: CColors.info,
+                  ),
+                  const SizedBox(width: CSizes.spaceBtwItems),
+                  _buildStatCard(
+                    context,
+                    icon: Icons.timelapse_outlined,
+                    value: inProgressJobs.toString(),
+                    label: 'In Progress',
+                    color: CColors.warning,
+                  ),
+                  const SizedBox(width: CSizes.spaceBtwItems),
+                  _buildStatCard(
+                    context,
+                    icon: Icons.gavel_outlined,
+                    value: totalBids.toString(),
+                    label: 'Total Bids',
+                    color: CColors.primary,
+                  ),
+                  const SizedBox(width: CSizes.spaceBtwItems),
+                  _buildStatCard(
+                    context,
+                    icon: Icons.check_circle_outlined,
+                    value: completedJobs.toString(),
+                    label: 'Completed',
+                    color: CColors.success,
+                  ),
+                  const SizedBox(width: CSizes.defaultSpace),
+                ],
+              ),
             );
           },
         );
@@ -696,53 +868,131 @@ class _ClientDashboardState extends State<ClientDashboard> {
   }
 
   Widget _buildStatCard(BuildContext context, {
-    required IconData icon, required String value, required String label, required Color color,
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(CSizes.sm),
+      width: 280,
+      height: 160,
+      padding: const EdgeInsets.all(CSizes.xl),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.white,
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(icon, size: 14, color: color),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
           ),
-          const SizedBox(width: 6),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+        border: Border.all(
+          color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.grey.withOpacity(0.4),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(value, style: Theme.of(context).textTheme.bodyLarge!.copyWith(fontWeight: FontWeight.w700, color: isDark ? CColors.textWhite : CColors.textPrimary, fontSize: 12)),
-              Text(label, style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CColors.darkGrey, fontSize: 8)),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withOpacity(0.3)),
+                ),
+                child: Icon(icon, size: 32, color: color),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: isDark ? CColors.textWhite : CColors.textPrimary,
+                        fontSize: 36,
+                        letterSpacing: -1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                        color: CColors.darkGrey,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            height: 6,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsLoading() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      childAspectRatio: 2.5,
-      mainAxisSpacing: CSizes.spaceBtwItems,
-      crossAxisSpacing: CSizes.spaceBtwItems,
-      children: [
-        _buildStatCard(context, icon: Icons.assignment_outlined, value: '0', label: 'Loading...', color: CColors.grey),
-        _buildStatCard(context, icon: Icons.timelapse_outlined, value: '0', label: 'Loading...', color: CColors.grey),
-        _buildStatCard(context, icon: Icons.gavel_outlined, value: '0', label: 'Loading...', color: CColors.grey),
-        _buildStatCard(context, icon: Icons.check_circle_outlined, value: '0', label: 'Loading...', color: CColors.grey),
-      ],
+  Widget _buildStatsLoading(BuildContext context) {
+    return SizedBox(
+      height: 160,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        children: [
+          const SizedBox(width: CSizes.defaultSpace),
+          _buildStatCard(
+            context,
+            icon: Icons.assignment_outlined,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.spaceBtwItems),
+          _buildStatCard(
+            context,
+            icon: Icons.timelapse_outlined,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.spaceBtwItems),
+          _buildStatCard(
+            context,
+            icon: Icons.gavel_outlined,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.spaceBtwItems),
+          _buildStatCard(
+            context,
+            icon: Icons.check_circle_outlined,
+            value: '0',
+            label: 'Loading...',
+            color: CColors.grey,
+          ),
+          const SizedBox(width: CSizes.defaultSpace),
+        ],
+      ),
     );
   }
 
@@ -805,64 +1055,203 @@ class _ClientDashboardState extends State<ClientDashboard> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.white,
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+        border: Border.all(
+          color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.grey.withOpacity(0.4),
+        ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _showJobDetails(job),
-          onLongPress: () => _showJobActions(job),
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
           child: Padding(
-            padding: const EdgeInsets.all(CSizes.md),
+            padding: const EdgeInsets.all(CSizes.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // Header row with status and actions
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Flexible(
+                    Expanded(
+                      flex: 2,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: _getStatusColor(job.status).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                        child: Text(job.status.toUpperCase(), style: Theme.of(context).textTheme.labelSmall!.copyWith(color: _getStatusColor(job.status), fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [_getStatusColor(job.status).withOpacity(0.15), _getStatusColor(job.status).withOpacity(0.08)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _getStatusColor(job.status).withOpacity(0.2)),
+                        ),
+                        child: Text(
+                          job.status.toUpperCase(),
+                          style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                            color: _getStatusColor(job.status),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: CColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                        child: Text(job.category, style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CColors.primary, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Expanded(
+                      flex: 1,
+                      child: Text(
+                        timeago.format(job.createdAt.toDate()),
+                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                          color: CColors.darkGrey,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.more_vert, size: 18, color: CColors.darkGrey),
-                      onPressed: () => _showJobActions(job),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 36),
+                    const SizedBox(width: 8),
+                    // Action button - more prominent
+                    Container(
+                      decoration: BoxDecoration(
+                        color: CColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IconButton(
+                        icon: Icon(Icons.more_vert, size: 18, color: CColors.primary),
+                        onPressed: () => _showJobActions(job),
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(job.title, style: Theme.of(context).textTheme.titleLarge!.copyWith(fontWeight: FontWeight.w600, color: isDark ? CColors.textWhite : CColors.textPrimary), maxLines: 2, overflow: TextOverflow.ellipsis),
+
+                // Job Title
+                SizedBox(
+                  height: 40,
+                  child: Text(
+                    job.title,
+                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? CColors.textWhite : CColors.textPrimary,
+                      fontSize: 16,
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text(job.description, style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: isDark ? CColors.textWhite.withOpacity(0.7) : CColors.darkerGrey), maxLines: 2, overflow: TextOverflow.ellipsis),
+
+                // Job Description
+                SizedBox(
+                  height: 36,
+                  child: Text(
+                    job.description,
+                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                      color: isDark ? CColors.textWhite.withOpacity(0.75) : CColors.darkerGrey,
+                      height: 1.4,
+                      fontSize: 12,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                FutureBuilder<int>(
-                  future: _getBidCountForJob(job.id!),
-                  builder: (context, snapshot) {
-                    final bidCount = snapshot.data ?? 0;
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Flexible(
-                          child: Text('$bidCount ${bidCount == 1 ? 'Bid' : 'Bids'} Received', style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.primary, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                        Text('Details →', style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.primary, fontWeight: FontWeight.w600)),
-                      ],
-                    );
-                  },
+
+                // Footer row with bids and category
+                Row(
+                  children: [
+                    // Category and bids info
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: CColors.primary.withOpacity(0.12),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: CColors.primary.withOpacity(0.2)),
+                            ),
+                            child: Icon(Icons.category_rounded, size: 16, color: CColors.primary),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              job.category,
+                              style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                                color: CColors.darkGrey,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Bids count and view button
+                    FutureBuilder<int>(
+                      future: _getBidCountForJob(job.id!),
+                      builder: (context, snapshot) {
+                        final bidCount = snapshot.data ?? 0;
+                        return SizedBox(
+                          width: 120,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: CColors.primary.withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: () => _showJobDetails(job),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                foregroundColor: CColors.white,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                minimumSize: const Size(0, 36),
+                              ),
+                              child: Text(
+                                '$bidCount ${bidCount == 1 ? 'Bid' : 'Bids'}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -932,54 +1321,104 @@ class _ClientDashboardState extends State<ClientDashboard> {
     return Container(
       margin: const EdgeInsets.only(bottom: CSizes.spaceBtwItems),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         color: isDark ? CColors.darkContainer : CColors.white,
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(
+          color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.grey.withOpacity(0.4),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(CSizes.md),
+        padding: const EdgeInsets.all(CSizes.xl),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: CColors.primary.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(Icons.person_outline, size: 20, color: CColors.primary),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _getBidStatusColor(bid.status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _getBidStatusColor(bid.status).withOpacity(0.2)),
+              ),
+              child: Icon(Icons.gavel_rounded, size: 26, color: _getBidStatusColor(bid.status)),
             ),
-            const SizedBox(width: CSizes.md),
+            const SizedBox(width: CSizes.lg),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Bid: Rs. ${bid.amount}', style: Theme.of(context).textTheme.bodyMedium!.copyWith(fontWeight: FontWeight.w600, color: isDark ? CColors.textWhite : CColors.textPrimary)),
+                  Text(
+                    'Rs. ${bid.amount.toStringAsFixed(0)}',
+                    style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? CColors.textWhite : CColors.textPrimary,
+                      fontSize: 18,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   FutureBuilder<DocumentSnapshot>(
                     future: FirebaseFirestore.instance.collection('workers').doc(bid.workerId).get(),
                     builder: (context, snapshot) {
                       if (snapshot.hasData && snapshot.data!.exists) {
                         final workerData = snapshot.data!.data() as Map<String, dynamic>;
                         final workerName = workerData['name'] ?? 'Unknown Worker';
-                        final workerEmail = workerData['email'] ?? '';
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Worker: $workerName', style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey)),
-                            if (workerEmail.isNotEmpty) Text(workerEmail, style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey, fontSize: 10)),
-                          ],
+                        return Text(
+                          'Worker: $workerName',
+                          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                            color: CColors.darkGrey,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
                         );
                       }
-                      return Text('Worker: ${bid.workerId.substring(0, 8)}...', style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey));
+                      return Text(
+                        'Worker: ${bid.workerId.substring(0, 8)}...',
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      );
                     },
                   ),
                   if (bid.message != null && bid.message!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text('"${bid.message!}"', style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey, fontStyle: FontStyle.italic), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 8),
+                    Text(
+                      '"${bid.message!}"',
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                        color: CColors.darkGrey,
+                        fontStyle: FontStyle.italic,
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ],
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: _getBidStatusColor(bid.status).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-              child: Text(bid.status.toUpperCase(), style: Theme.of(context).textTheme.labelSmall!.copyWith(color: _getBidStatusColor(bid.status), fontWeight: FontWeight.w600)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: _getBidStatusColor(bid.status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _getBidStatusColor(bid.status).withOpacity(0.2)),
+              ),
+              child: Text(
+                bid.status.toUpperCase(),
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                  color: _getBidStatusColor(bid.status),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  letterSpacing: 0.5,
+                ),
+              ),
             ),
           ],
         ),

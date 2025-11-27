@@ -31,8 +31,27 @@ class _ClientDashboardHeaderState extends State<ClientDashboardHeader> {
     // Implementation for loading notification count
   }
 
+  String _getDisplayName(String fullName) {
+    if (fullName.isEmpty) return 'Client';
+
+    final nameParts = fullName.trim().split(' ');
+    if (nameParts.isEmpty) return 'Client';
+
+    final firstName = nameParts.first;
+
+    // If first name is "Muhammad" and there's a last name, show the last name
+    if (firstName.toLowerCase() == 'muhammad' && nameParts.length > 1) {
+      return nameParts.last;
+    }
+
+    // Otherwise show the first name
+    return firstName;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final displayName = _getDisplayName(widget.userName);
+
     return CustomShapeContainer(
       height: 200,
       color: CColors.primary,
@@ -78,7 +97,7 @@ class _ClientDashboardHeaderState extends State<ClientDashboardHeader> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        widget.userName,
+                        displayName,
                         style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
