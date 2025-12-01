@@ -606,7 +606,7 @@ class _WorkerDashboardState extends State<WorkerDashboard> {
                       style: Theme.of(context).textTheme.headlineMedium!.copyWith(
                         fontWeight: FontWeight.w600,
                         color: isDark ? CColors.textWhite : CColors.textPrimary,
-                        fontSize: 36, // Very big numbers
+                        fontSize: 28, // Very big numbers
                         letterSpacing: -1.0,
                       ),
                     ),

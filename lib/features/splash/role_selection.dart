@@ -30,8 +30,12 @@ class RoleSelection extends StatelessWidget {
       print('✅ [DEBUG] Role saved to temporary storage: $tempUserRole');
 
       // Navigate to login page after saving role
-      print('🚀 [DEBUG] Navigating to Login page');
-      Navigator.pushNamed(context, '/login');
+      print('🚀 [DEBUG] Navigating to Login page with role: $role');
+      Navigator.pushNamed(
+          context,
+          '/login',
+          arguments: role // Pass the role as argument
+      );
 
     } catch (e) {
       print('❌ [DEBUG] Error saving role: $e');

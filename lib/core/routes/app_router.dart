@@ -21,7 +21,12 @@ class AppRouter {
       case AppRoutes.role:
         return MaterialPageRoute(builder: (_) => const RoleSelection());
       case AppRoutes.login:
-        return MaterialPageRoute(builder: (_) => const Login());
+      // Pass the arguments to Login widget
+        return MaterialPageRoute(
+          builder: (_) => Login(
+            userRole: settings.arguments as String?,
+          ),
+        );
       case AppRoutes.workerLogin:
         return MaterialPageRoute(builder: (_) => const WorkerSignUpScreen());
       case AppRoutes.clientSignUp:

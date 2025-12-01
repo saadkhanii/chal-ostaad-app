@@ -31,7 +31,8 @@ class DashboardDrawer extends StatelessWidget {
       child: FutureBuilder<Map<String, String>>(
         future: _getUserInfo(),
         builder: (context, snapshot) {
-          final userInfo = snapshot.data ?? {'name': 'User', 'email': '', 'role': 'user'};
+          final userInfo =
+              snapshot.data ?? {'name': 'User', 'email': '', 'role': 'user'};
           final userName = userInfo['name']!;
           final userEmail = userInfo['email']!;
           final userRole = userInfo['role']!;
@@ -42,9 +43,7 @@ class DashboardDrawer extends StatelessWidget {
               _buildDrawerHeader(context, userName, userEmail, userRole),
 
               // Navigation Items
-              Expanded(
-                child: _buildDrawerItems(context, userRole),
-              ),
+              Expanded(child: _buildDrawerItems(context, userRole)),
 
               // Footer Section
               _buildDrawerFooter(context),
@@ -55,7 +54,12 @@ class DashboardDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerHeader(BuildContext context, String userName, String userEmail, String userRole) {
+  Widget _buildDrawerHeader(
+    BuildContext context,
+    String userName,
+    String userEmail,
+    String userRole,
+  ) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.defaultSpace),
@@ -73,11 +77,7 @@ class DashboardDrawer extends StatelessWidget {
             CircleAvatar(
               radius: 30,
               backgroundColor: CColors.white,
-              child: Icon(
-                Icons.person,
-                color: CColors.primary,
-                size: 32,
-              ),
+              child: Icon(Icons.person, color: CColors.primary, size: 32),
             ),
 
             const SizedBox(height: CSizes.md),
@@ -172,7 +172,10 @@ class DashboardDrawer extends StatelessWidget {
 
         // Divider
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
+          padding: EdgeInsets.symmetric(
+            horizontal: CSizes.defaultSpace,
+            vertical: CSizes.sm,
+          ),
           child: Divider(height: 1),
         ),
 
@@ -182,7 +185,10 @@ class DashboardDrawer extends StatelessWidget {
 
         // Common Support Items
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
+          padding: EdgeInsets.symmetric(
+            horizontal: CSizes.defaultSpace,
+            vertical: CSizes.sm,
+          ),
           child: Divider(height: 1),
         ),
 
@@ -298,12 +304,12 @@ class DashboardDrawer extends StatelessWidget {
   }
 
   Widget _buildDrawerItem(
-      BuildContext context, {
-        required IconData icon,
-        required String title,
-        required VoidCallback onTap,
-        bool isSelected = false,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    bool isSelected = false,
+  }) {
     return ListTile(
       leading: Icon(
         icon,
@@ -318,14 +324,12 @@ class DashboardDrawer extends StatelessWidget {
         ),
       ),
       trailing: isSelected
-          ? Icon(
-        Icons.circle,
-        color: CColors.primary,
-        size: 8,
-      )
+          ? Icon(Icons.circle, color: CColors.primary, size: 8)
           : null,
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: CSizes.defaultSpace,
+      ),
       visualDensity: const VisualDensity(vertical: -2),
     );
   }
@@ -334,9 +338,7 @@ class DashboardDrawer extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(CSizes.defaultSpace),
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: CColors.borderPrimary),
-        ),
+        border: Border(top: BorderSide(color: CColors.borderPrimary)),
       ),
       child: Column(
         children: [
@@ -352,14 +354,17 @@ class DashboardDrawer extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: CSizes.sm),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: CSizes.md,
+                  vertical: CSizes.sm,
+                ),
               ),
               icon: const Icon(Icons.logout, size: 20),
               label: Text(
                 'Logout',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -369,9 +374,9 @@ class DashboardDrawer extends StatelessWidget {
           // App Version
           Text(
             'Chal Ostaad v1.0.0',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: CColors.darkGrey,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: CColors.darkGrey),
           ),
         ],
       ),
@@ -383,7 +388,40 @@ class DashboardDrawer extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
+        content: FutureBuilder<SharedPreferences>(
+          future: SharedPreferences.getInstance(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Text('Are you sure you want to logout?');
+            }
+
+            final prefs = snapshot.data!;
+            final rememberMe = prefs.getBool('remember_me') ?? false;
+
+            if (rememberMe) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Are you sure you want to logout?'),
+                  SizedBox(height: 10),
+                  Text(
+                    '⚠️ Note: "Remember me" is enabled. Your login credentials will be preserved.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              );
+            } else {
+              return const Text(
+                'Are you sure you want to logout? All data will be cleared.',
+              );
+            }
+          },
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -408,28 +446,49 @@ class DashboardDrawer extends StatelessWidget {
 
   Future<void> _performLogout(BuildContext context) async {
     try {
-      // Clear SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
 
-      // Sign out from Firebase (if using multiple apps)
-      // await FirebaseAuth.instanceFor(app: Firebase.app('worker')).signOut();
-      // await FirebaseAuth.instanceFor(app: Firebase.app('client')).signOut();
+      // Get current user role
+      final currentRole = prefs.getString('user_role');
 
-      // Navigate to login screen
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/role', // Adjust this route to your role selection screen
-            (route) => false,
-      );
+      if (currentRole != null) {
+        print('🔐 Logging out from role: $currentRole');
+
+        // Clear only current role's session data
+        await prefs.remove('user_uid');
+        await prefs.remove('user_email');
+        await prefs.remove('user_name');
+
+        // Check if "Remember me" is enabled
+        final rememberMe = prefs.getBool('remember_me') ?? false;
+
+        if (!rememberMe) {
+          // Clear role-specific credentials if remember me is false
+          final emailKey = '${currentRole}_saved_email';
+          final passwordKey = '${currentRole}_saved_password';
+
+          await prefs.remove(emailKey);
+          await prefs.remove(passwordKey);
+          print(
+            '🧹 Credentials cleared for $currentRole (remember me is false)',
+          );
+        } else {
+          print(
+            '🔐 Keeping credentials for $currentRole (remember me is true)',
+          );
+        }
+      } else {
+        print('⚠️ No user role found for logout');
+        await prefs.clear(); // Fallback: clear everything
+      }
+
+      print('✅ Logout completed successfully');
+
+      // Navigate to role selection
+      Navigator.pushNamedAndRemoveUntil(context, '/role', (route) => false);
     } catch (e) {
-      debugPrint('Logout error: $e');
-      // Still navigate to login even if logout fails
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/role',
-            (route) => false,
-      );
+      print('❌ Logout error: $e');
+      Navigator.pushNamedAndRemoveUntil(context, '/role', (route) => false);
     }
   }
 
