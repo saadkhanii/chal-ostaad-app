@@ -1,83 +1,129 @@
 // lib/shared/widgets/dashboard_drawer.dart
 
+import 'package:chal_ostaad/core/providers/auth_provider.dart';
+import 'package:chal_ostaad/core/providers/theme_provider.dart';
+import 'package:chal_ostaad/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 
-class DashboardDrawer extends StatelessWidget {
+class DashboardDrawer extends ConsumerStatefulWidget {
   const DashboardDrawer({super.key});
 
-  Future<Map<String, String>> _getUserInfo() async {
-    final prefs = await SharedPreferences.getInstance();
-    return {
-      'name': prefs.getString('user_name') ?? 'User',
-      'email': prefs.getString('user_email') ?? '',
-      'role': prefs.getString('user_role') ?? 'user',
-    };
+  @override
+  ConsumerState<DashboardDrawer> createState() => _DashboardDrawerState();
+}
+
+class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
+  Map<String, String> _userInfo = {
+    'name': 'Loading...',
+    'email': '',
+    'role': 'user',
+  };
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserInfo();
+  }
+
+  Future<void> _loadUserInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _userInfo = {
+            'name': prefs.getString('user_name') ?? 'User',
+            'email': prefs.getString('user_email') ?? '',
+            'role': prefs.getString('user_role') ?? 'user',
+          };
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading user info: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
+    final isDark = themeState.isDark;
+    
+    final userName = _userInfo['name']!;
+    final userEmail = _userInfo['email']!;
+    final userRole = _userInfo['role']!;
+
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.8,
-      backgroundColor: CColors.white,
+      backgroundColor: isDark ? CColors.dark : CColors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.horizontal(
           left: Radius.circular(CSizes.cardRadiusLg),
         ),
       ),
-      child: FutureBuilder<Map<String, String>>(
-        future: _getUserInfo(),
-        builder: (context, snapshot) {
-          final userInfo =
-              snapshot.data ?? {'name': 'User', 'email': '', 'role': 'user'};
-          final userName = userInfo['name']!;
-          final userEmail = userInfo['email']!;
-          final userRole = userInfo['role']!;
+      child: Column(
+        children: [
+          // Header Section
+          _buildDrawerHeader(context, userName, userEmail, userRole),
 
-          return Column(
-            children: [
-              // Header Section
-              _buildDrawerHeader(context, userName, userEmail, userRole),
+          // Navigation Items
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildDrawerItems(context, userRole, isDark),
+          ),
 
-              // Navigation Items
-              Expanded(child: _buildDrawerItems(context, userRole)),
-
-              // Footer Section
-              _buildDrawerFooter(context),
-            ],
-          );
-        },
+          // Footer Section
+          _buildDrawerFooter(context, isDark),
+        ],
       ),
     );
   }
 
   Widget _buildDrawerHeader(
-    BuildContext context,
-    String userName,
-    String userEmail,
-    String userRole,
-  ) {
+      BuildContext context,
+      String userName,
+      String userEmail,
+      String userRole,
+      ) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.defaultSpace),
       decoration: BoxDecoration(
-        color: CColors.primary,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [CColors.primary, CColors.secondary],
+        ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(CSizes.cardRadiusLg),
         ),
       ),
       child: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Profile Circle
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: CColors.white,
-              child: Icon(Icons.person, color: CColors.primary, size: 32),
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: CColors.white, width: 2),
+              ),
+              child: CircleAvatar(
+                radius: 30,
+                backgroundColor: CColors.white,
+                child: Icon(Icons.person, color: CColors.primary, size: 32),
+              ),
             ),
 
             const SizedBox(height: CSizes.md),
@@ -87,7 +133,7 @@ class DashboardDrawer extends StatelessWidget {
               userName,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: CColors.white,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.bold,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -99,7 +145,7 @@ class DashboardDrawer extends StatelessWidget {
             Text(
               userEmail,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: CColors.white.withOpacity(0.8),
+                color: CColors.white.withOpacity(0.9),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -112,40 +158,41 @@ class DashboardDrawer extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
                 color: CColors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: CColors.white.withOpacity(0.3)),
               ),
               child: Text(
                 userRole.toUpperCase(),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: CColors.white,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0.5,
                 ),
               ),
             ),
+            const SizedBox(height: CSizes.sm),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDrawerItems(BuildContext context, String userRole) {
+  Widget _buildDrawerItems(BuildContext context, String userRole, bool isDark) {
     final bool isWorker = userRole == 'worker';
     final bool isClient = userRole == 'client';
 
     return ListView(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.symmetric(vertical: CSizes.sm),
       children: [
-        const SizedBox(height: CSizes.md),
-
         // Common Items for Both Roles
         _buildDrawerItem(
           context,
           icon: Icons.dashboard_outlined,
           title: 'Dashboard',
+          isDark: isDark,
           onTap: () {
             Navigator.pop(context);
-            // Already on dashboard, just close drawer
+            // Already on dashboard
           },
           isSelected: true,
         ),
@@ -154,6 +201,7 @@ class DashboardDrawer extends StatelessWidget {
           context,
           icon: Icons.person_outline,
           title: 'Profile',
+          isDark: isDark,
           onTap: () {
             Navigator.pop(context);
             _showComingSoon(context, 'Profile feature coming soon!');
@@ -164,38 +212,42 @@ class DashboardDrawer extends StatelessWidget {
           context,
           icon: Icons.settings_outlined,
           title: 'Settings',
+          isDark: isDark,
           onTap: () {
             Navigator.pop(context);
             _showComingSoon(context, 'Settings feature coming soon!');
           },
         ),
 
+        _buildThemeSwitchItem(context, isDark),
+
         // Divider
-        const Padding(
-          padding: EdgeInsets.symmetric(
+        Padding(
+          padding: const EdgeInsets.symmetric(
             horizontal: CSizes.defaultSpace,
             vertical: CSizes.sm,
           ),
-          child: Divider(height: 1),
+          child: Divider(height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
         ),
 
         // Role-Specific Items
-        if (isWorker) ..._buildWorkerSpecificItems(context),
-        if (isClient) ..._buildClientSpecificItems(context),
+        if (isWorker) ..._buildWorkerSpecificItems(context, isDark),
+        if (isClient) ..._buildClientSpecificItems(context, isDark),
 
         // Common Support Items
-        const Padding(
-          padding: EdgeInsets.symmetric(
+        Padding(
+          padding: const EdgeInsets.symmetric(
             horizontal: CSizes.defaultSpace,
             vertical: CSizes.sm,
           ),
-          child: Divider(height: 1),
+          child: Divider(height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
         ),
 
         _buildDrawerItem(
           context,
           icon: Icons.help_outline,
           title: 'Help & Support',
+          isDark: isDark,
           onTap: () {
             Navigator.pop(context);
             _showComingSoon(context, 'Help & Support coming soon!');
@@ -206,6 +258,7 @@ class DashboardDrawer extends StatelessWidget {
           context,
           icon: Icons.info_outline,
           title: 'About',
+          isDark: isDark,
           onTap: () {
             Navigator.pop(context);
             _showComingSoon(context, 'About section coming soon!');
@@ -215,42 +268,79 @@ class DashboardDrawer extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildWorkerSpecificItems(BuildContext context) {
+  Widget _buildThemeSwitchItem(BuildContext context, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: CSizes.sm),
+      child: ListTile(
+        leading: Icon(
+          isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+          color: isDark ? CColors.white : CColors.darkGrey,
+          size: 24,
+        ),
+        title: Text(
+          isDark ? 'Light Mode' : 'Dark Mode',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: isDark ? CColors.white : CColors.textPrimary,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        ),
+        onTap: () {
+          ref.read(themeProvider.notifier).toggleTheme();
+        },
+        contentPadding: const EdgeInsets.symmetric(horizontal: CSizes.md),
+        visualDensity: const VisualDensity(vertical: -1),
+        trailing: Switch(
+          value: isDark,
+          onChanged: (val) {
+             ref.read(themeProvider.notifier).toggleTheme();
+          },
+          activeColor: CColors.primary,
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildWorkerSpecificItems(BuildContext context, bool isDark) {
     return [
+      _buildSectionLabel(context, 'WORKER TOOLS', isDark),
       _buildDrawerItem(
         context,
         icon: Icons.work_outline,
         title: 'My Bids',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'My Bids feature coming soon!');
         },
       ),
-
       _buildDrawerItem(
         context,
         icon: Icons.assignment_turned_in_outlined,
         title: 'Active Projects',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'Active Projects feature coming soon!');
         },
       ),
-
       _buildDrawerItem(
         context,
         icon: Icons.history_outlined,
         title: 'Bid History',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'Bid History feature coming soon!');
         },
       ),
-
       _buildDrawerItem(
         context,
         icon: Icons.analytics_outlined,
         title: 'Performance',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'Performance analytics coming soon!');
@@ -259,42 +349,44 @@ class DashboardDrawer extends StatelessWidget {
     ];
   }
 
-  List<Widget> _buildClientSpecificItems(BuildContext context) {
+  List<Widget> _buildClientSpecificItems(BuildContext context, bool isDark) {
     return [
+      _buildSectionLabel(context, 'CLIENT TOOLS', isDark),
       _buildDrawerItem(
         context,
         icon: Icons.add_circle_outline,
         title: 'Post New Job',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'Post Job feature coming soon!');
         },
       ),
-
       _buildDrawerItem(
         context,
         icon: Icons.list_alt_outlined,
         title: 'My Jobs',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'My Jobs feature coming soon!');
         },
       ),
-
       _buildDrawerItem(
         context,
         icon: Icons.gavel_outlined,
         title: 'Received Bids',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'Received Bids feature coming soon!');
         },
       ),
-
       _buildDrawerItem(
         context,
         icon: Icons.assignment_outlined,
         title: 'Active Contracts',
+        isDark: isDark,
         onTap: () {
           Navigator.pop(context);
           _showComingSoon(context, 'Active Contracts feature coming soon!');
@@ -303,42 +395,68 @@ class DashboardDrawer extends StatelessWidget {
     ];
   }
 
-  Widget _buildDrawerItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-    bool isSelected = false,
-  }) {
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? CColors.primary : CColors.darkGrey,
-        size: 24,
-      ),
-      title: Text(
-        title,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: isSelected ? CColors.primary : CColors.textPrimary,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+  Widget _buildSectionLabel(BuildContext context, String label, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: isDark ? CColors.lightGrey : CColors.darkGrey,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
         ),
       ),
-      trailing: isSelected
-          ? Icon(Icons.circle, color: CColors.primary, size: 8)
-          : null,
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: CSizes.defaultSpace,
-      ),
-      visualDensity: const VisualDensity(vertical: -2),
     );
   }
 
-  Widget _buildDrawerFooter(BuildContext context) {
+  Widget _buildDrawerItem(
+      BuildContext context, {
+        required IconData icon,
+        required String title,
+        required VoidCallback onTap,
+        required bool isDark,
+        bool isSelected = false,
+      }) {
+    final Color itemColor = isSelected 
+        ? CColors.primary 
+        : (isDark ? CColors.white : CColors.textPrimary);
+        
+    final Color iconColor = isSelected 
+        ? CColors.primary 
+        : (isDark ? CColors.white : CColors.darkGrey);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: CSizes.sm),
+      child: ListTile(
+        leading: Icon(
+          icon,
+          color: iconColor,
+          size: 24,
+        ),
+        title: Text(
+          title,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: itemColor,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        ),
+        selected: isSelected,
+        selectedTileColor: CColors.primary.withOpacity(0.1),
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: CSizes.md),
+        visualDensity: const VisualDensity(vertical: -1),
+      ),
+    );
+  }
+
+  Widget _buildDrawerFooter(BuildContext context, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(CSizes.defaultSpace),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: CColors.borderPrimary)),
+        border: Border(top: BorderSide(color: isDark ? CColors.darkGrey : CColors.borderPrimary)),
       ),
       child: Column(
         children: [
@@ -346,7 +464,7 @@ class DashboardDrawer extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _showLogoutDialog(context),
+              onPressed: () => _showLogoutDialog(context, isDark),
               style: ElevatedButton.styleFrom(
                 backgroundColor: CColors.error.withOpacity(0.1),
                 foregroundColor: CColors.error,
@@ -362,9 +480,10 @@ class DashboardDrawer extends StatelessWidget {
               icon: const Icon(Icons.logout, size: 20),
               label: Text(
                 'Logout',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600, color: CColors.error),
               ),
             ),
           ),
@@ -374,69 +493,31 @@ class DashboardDrawer extends StatelessWidget {
           // App Version
           Text(
             'Chal Ostaad v1.0.0',
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: CColors.darkGrey),
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: isDark ? CColors.lightGrey : CColors.darkGrey),
           ),
         ],
       ),
     );
   }
 
-  void _showLogoutDialog(BuildContext context) {
+  void _showLogoutDialog(BuildContext context, bool isDark) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: FutureBuilder<SharedPreferences>(
-          future: SharedPreferences.getInstance(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Text('Are you sure you want to logout?');
-            }
-
-            final prefs = snapshot.data!;
-            final rememberMe = prefs.getBool('remember_me') ?? false;
-
-            if (rememberMe) {
-              return const Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Are you sure you want to logout?'),
-                  SizedBox(height: 10),
-                  Text(
-                    '⚠️ Note: "Remember me" is enabled. Your login credentials will be preserved.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              );
-            } else {
-              return const Text(
-                'Are you sure you want to logout? All data will be cleared.',
-              );
-            }
-          },
-        ),
+        backgroundColor: isDark ? CColors.dark : CColors.white,
+        title: Text('Logout', style: TextStyle(color: isDark ? CColors.white : CColors.textPrimary)),
+        content: Text('Are you sure you want to logout?', style: TextStyle(color: isDark ? CColors.lightGrey : CColors.textPrimary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: isDark ? CColors.white : CColors.primary)),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Close drawer
-              await _performLogout(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.error,
-              foregroundColor: CColors.white,
-            ),
+          TextButton(
+            onPressed: () => _performLogout(context),
+            style: TextButton.styleFrom(foregroundColor: CColors.error),
             child: const Text('Logout'),
           ),
         ],
@@ -445,50 +526,40 @@ class DashboardDrawer extends StatelessWidget {
   }
 
   Future<void> _performLogout(BuildContext context) async {
+    Navigator.pop(context); // Close dialog
+
     try {
+      // 1. Clear SharedPreferences
       final prefs = await SharedPreferences.getInstance();
+      final rememberMe = prefs.getBool('remember_me') ?? false;
 
-      // Get current user role
-      final currentRole = prefs.getString('user_role');
-
-      if (currentRole != null) {
-        print('🔐 Logging out from role: $currentRole');
-
-        // Clear only current role's session data
-        await prefs.remove('user_uid');
-        await prefs.remove('user_email');
-        await prefs.remove('user_name');
-
-        // Check if "Remember me" is enabled
-        final rememberMe = prefs.getBool('remember_me') ?? false;
-
-        if (!rememberMe) {
-          // Clear role-specific credentials if remember me is false
-          final emailKey = '${currentRole}_saved_email';
-          final passwordKey = '${currentRole}_saved_password';
-
-          await prefs.remove(emailKey);
-          await prefs.remove(passwordKey);
-          print(
-            '🧹 Credentials cleared for $currentRole (remember me is false)',
-          );
-        } else {
-          print(
-            '🔐 Keeping credentials for $currentRole (remember me is true)',
-          );
-        }
+      if (!rememberMe) {
+        await prefs.clear();
       } else {
-        print('⚠️ No user role found for logout');
-        await prefs.clear(); // Fallback: clear everything
+        await prefs.remove('user_uid');
+        await prefs.remove('user_role');
       }
+      
+      await prefs.clear();
 
-      print('✅ Logout completed successfully');
+      // 3. Update Riverpod state
+      ref.read(authProvider.notifier).logout();
 
-      // Navigate to role selection
-      Navigator.pushNamedAndRemoveUntil(context, '/role', (route) => false);
+      // 4. Navigate to Role Selection (CHANGED from Login)
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRoutes.role, // Changed to role selection
+          (route) => false,
+        );
+      }
     } catch (e) {
-      print('❌ Logout error: $e');
-      Navigator.pushNamedAndRemoveUntil(context, '/role', (route) => false);
+      debugPrint('Error during logout: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Logout failed: $e')),
+        );
+      }
     }
   }
 
@@ -496,11 +567,8 @@ class DashboardDrawer extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: CColors.primary,
+        duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        ),
       ),
     );
   }

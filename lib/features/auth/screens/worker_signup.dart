@@ -1,20 +1,20 @@
+// lib/features/auth/screens/worker_signup.dart
+
 import 'dart:convert';
 import 'dart:math';
 import 'package:chal_ostaad/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:logger/logger.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
+import '../../../core/providers/auth_provider.dart';
 import '../../../shared/widgets/Cbutton.dart';
 import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
-
-// firebase_auth is no longer needed
-// import 'package:firebase_auth/firebase_auth.dart';
 
 class WorkerSignUpScreen extends StatefulWidget {
   const WorkerSignUpScreen({super.key});
@@ -25,16 +25,11 @@ class WorkerSignUpScreen extends StatefulWidget {
 
 class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
   final TextEditingController _cnicController = TextEditingController();
-  // Changed from _phoneController to _emailController
   final TextEditingController _emailController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
-
-  final Logger _logger = Logger();
 
   static final RegExp _cnicRegex = RegExp(r'^\d{5}-\d{7}-\d{1}$');
 
-  // --- NEW: EmailJS Logic ---
   String _generateOtp() {
     final random = Random();
     return (100000 + random.nextInt(900000)).toString();
@@ -68,219 +63,21 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       }),
     );
 
-    if (response.statusCode == 200) {
-      _logger.i('Worker verification OTP sent successfully to $userEmail.');
-    } else {
-      _logger.e('Failed to send email. Status: ${response.statusCode}, Body: ${response.body}');
+    if (response.statusCode != 200) {
       throw Exception('Failed to send verification email.');
     }
   }
 
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Scaffold(
-      backgroundColor: isDark ? CColors.darkGrey : CColors.white,
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: size.height - MediaQuery.of(context).padding.top,
-          ),
-          child: Column(
-            children: [
-              CommonHeader(title: 'SignUp'),
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: isDark ? CColors.darkContainer : CColors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(CSizes.cardRadiusLg),
-                    topRight: Radius.circular(CSizes.cardRadiusLg),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(CSizes.lg),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: CSizes.lg),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Verify Worker Account',
-                              style: textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: isDark
-                                    ? CColors.white
-                                    : CColors.textPrimary,
-                                fontSize: 22,
-                              ),
-                            ),
-                            const SizedBox(height: CSizes.xs),
-                            Text(
-                              'Enter your registered details to proceed',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: isDark
-                                    ? CColors.lightGrey
-                                    : CColors.darkGrey,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: CSizes.xl),
-                        CTextField(
-                          label: 'CNIC Number',
-                          hintText: 'XXXXX-XXXXXXX-X',
-                          controller: _cnicController,
-                          keyboardType: TextInputType.text,
-                          prefixIcon: Icon(
-                            Icons.badge_outlined,
-                            color: isDark
-                                ? CColors.lightGrey
-                                : CColors.darkGrey,
-                            size: 20,
-                          ),
-                          isRequired: true,
-                          validator: _validateCnic,
-                          onChanged: _formatCnicInput,
-                          inputFormatters: [
-                            LengthLimitingTextInputFormatter(15),
-                            FilteringTextInputFormatter.allow(RegExp(r'[\d-]')),
-                          ],
-                        ),
-                        const SizedBox(height: CSizes.lg),
-                        CTextField(
-                          label: 'Email Address', // Updated label
-                          hintText: 'your.email@example.com', // Updated hint
-                          controller: _emailController, // Updated controller
-                          keyboardType: TextInputType.emailAddress, // Updated type
-                          prefixIcon: Icon(
-                            Icons.email_outlined, // Updated icon
-                            color: isDark
-                                ? CColors.lightGrey
-                                : CColors.darkGrey,
-                            size: 20,
-                          ),
-                          isRequired: true,
-                          validator: _validateEmail, // Updated validator
-                        ),
-                        const SizedBox(height: CSizes.xl),
-                        _buildSignUpButton(isDark),
-                        const SizedBox(height: CSizes.lg),
-                        _buildHelpText(context, textTheme),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSignUpButton(bool isDark) {
-    return _isLoading
-        ? SizedBox(
-      width: double.infinity,
-      height: CSizes.buttonHeight,
-      child: ElevatedButton(
-        onPressed: null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: CColors.primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-          ),
-        ),
-        child: const CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          strokeWidth: 2,
-        ),
-      ),
-    )
-        : CButton(
-      text: 'VERIFY & PROCEED',
-      onPressed: _handleWorkerSignUp,
-      width: double.infinity,
-      backgroundColor: CColors.primary,
-      foregroundColor: CColors.white,
-    );
-  }
-
-  Widget _buildHelpText(BuildContext context, TextTheme textTheme) {
-    return Center(
-      child: TextButton(
-        onPressed: _handleBackToLogin,
-        child: Text(
-          'Want to sign in instead?',
-          style: textTheme.bodyMedium?.copyWith(
-            color: CColors.primary,
-            decoration: TextDecoration.underline,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String? _validateCnic(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your CNIC number';
-    }
-    if (!_cnicRegex.hasMatch(value)) {
-      return 'Please enter valid CNIC format (XXXXX-XXXXXXX-X)';
-    }
-    return null;
-  }
-
-  // New validator for email
-  String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your email address';
-    }
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-      return 'Please enter a valid email address';
-    }
-    return null;
-  }
-
-
-  void _formatCnicInput(String value) {
-    final cleanValue = value.replaceAll(RegExp(r'[^\d]'), '');
-    if (cleanValue.length <= 5) {
-      _cnicController.text = cleanValue;
-    } else if (cleanValue.length <= 12) {
-      _cnicController.text =
-      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
-    } else {
-      _cnicController.text =
-      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
-    }
-    _cnicController.selection = TextSelection.collapsed(
-      offset: _cnicController.text.length,
-    );
-  }
-
-  // --- UPDATED: Main handler logic ---
-  Future<void> _handleWorkerSignUp() async {
+  Future<void> _handleWorkerSignUp(WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
+    
+    // Update loading state using Riverpod
+    ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
     final cnic = _cnicController.text.trim();
     final email = _emailController.text.trim().toLowerCase();
 
     try {
-      _logger.i('Worker verification attempt: CNIC=$cnic, Email=$email');
-
-      // 1. Find the worker by CNIC
       final querySnapshot = await FirebaseFirestore.instance
           .collection('workers')
           .where('personalInfo.cnic', isEqualTo: cnic)
@@ -295,15 +92,11 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       final workerData = workerDoc.data();
       final String existingEmail = workerData['personalInfo']['email'];
 
-      // 2. Check if the provided email matches the one in the record
       if (email != existingEmail) {
         throw Exception('The email address does not match the registered CNIC.');
       }
 
-      _logger.i('Worker found. Sending OTP to $email');
       final userName = workerData['personalInfo']['fullName'] ?? 'Worker';
-
-      // 3. Generate and save OTP
       final otp = _generateOtp();
       final otpExpiry = DateTime.now().add(const Duration(minutes: 10));
 
@@ -314,10 +107,8 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
         }
       });
 
-      // 4. Send email
       await _sendEmailOtp(otp: otp, userName: userName, userEmail: email);
 
-      // 5. Navigate to OTP screen
       if (mounted) {
         _showSuccessMessage('Welcome back! Please verify with the code sent to your email.');
         Navigator.pushNamed(
@@ -327,29 +118,204 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
         );
       }
     } on Exception catch (e) {
-      _logger.e('Worker verification error: $e');
       final errorMessage = e.toString().startsWith('Exception: ') ? e.toString().substring(11) : e.toString();
       _showErrorMessage(errorMessage);
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+         // Reset loading state
+         ref.read(authProvider.notifier).state = const AuthState(isLoading: false);
+      }
     }
   }
 
-  void _handleBackToLogin() {
-    Navigator.pop(context);
+  @override
+  Widget build(BuildContext context) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final authState = ref.watch(authProvider);
+        final size = MediaQuery.of(context).size;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final textTheme = Theme.of(context).textTheme;
+
+        return Scaffold(
+          backgroundColor: isDark ? CColors.dark : CColors.white,
+          body: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: size.height - MediaQuery.of(context).padding.top,
+              ),
+              child: Column(
+                children: [
+                  CommonHeader(title: 'SignUp'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, CSizes.xl),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: CSizes.lg),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Create Worker Account',
+                                style: textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? CColors.white : CColors.textPrimary,
+                                  fontSize: 20,
+                                ),
+                              ),
+                              const SizedBox(height: CSizes.xs),
+                              Text(
+                                'Enter your registered details to proceed',
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: CSizes.xl),
+                          CTextField(
+                            label: 'CNIC Number',
+                            hintText: 'XXXXX-XXXXXXX-X',
+                            controller: _cnicController,
+                            keyboardType: TextInputType.number,
+                            prefixIcon: Icon(
+                              Icons.badge_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                              size: 20,
+                            ),
+                            isRequired: true,
+                            validator: _validateCnic,
+                            onChanged: _formatCnicInput,
+                            inputFormatters: [
+                              LengthLimitingTextInputFormatter(15),
+                              FilteringTextInputFormatter.allow(RegExp(r'[\d-]')),
+                            ],
+                          ),
+                          const SizedBox(height: CSizes.sm),
+                          CTextField(
+                            label: 'Email Address',
+                            hintText: 'your.email@example.com',
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            prefixIcon: Icon(
+                              Icons.email_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                              size: 20,
+                            ),
+                            isRequired: true,
+                            validator: _validateEmail,
+                          ),
+                          const SizedBox(height: CSizes.xl),
+                          _buildSignUpButton(authState, ref),
+                          const SizedBox(height: CSizes.lg),
+                          _buildHelpText(context, textTheme, isDark),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
-  void _showSuccessMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
+  Widget _buildSignUpButton(AuthState authState, WidgetRef ref) {
+    return CButton(
+      text: 'Verify & Proceed',
+      onPressed: () => _handleWorkerSignUp(ref),
+      width: double.infinity,
+      isLoading: authState.isLoading,
+    );
+  }
+
+  Widget _buildHelpText(BuildContext context, TextTheme textTheme, bool isDark) {
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            "Already have an account? ",
+            style: textTheme.bodyMedium?.copyWith(
+              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+              fontSize: 12,
+            ),
+          ),
+          TextButton(
+            onPressed: _handleBackToLogin,
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(50, 30),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Login!',
+              style: textTheme.bodyMedium?.copyWith(
+                color: CColors.primary,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.underline,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  void _handleBackToLogin() {
+    // Assuming login is the previous route.
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      // Fallback if it's the first screen
+      Navigator.pushReplacementNamed(context, AppRoutes.login);
+    }
+  }
+
+  String? _validateCnic(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your CNIC number';
+    }
+    if (!_cnicRegex.hasMatch(value)) {
+      return 'Please enter valid CNIC format (XXXXX-XXXXXXX-X)';
+    }
+    return null;
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your email address';
+    }
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+      return 'Please enter a valid email address';
+    }
+    return null;
+  }
+
+  void _formatCnicInput(String value) {
+    final cleanValue = value.replaceAll(RegExp(r'[^\d]'), '');
+    if (cleanValue.length <= 5) {
+      _cnicController.text = cleanValue;
+    } else if (cleanValue.length <= 12) {
+      _cnicController.text =
+          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
+    } else {
+      _cnicController.text =
+          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
+    }
+    _cnicController.selection = TextSelection.collapsed(
+      offset: _cnicController.text.length,
+    );
+  }
+  
   void _showErrorMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -357,14 +323,20 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
         content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: CColors.error,
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _cnicController.dispose();
-    _emailController.dispose();
-    super.dispose();
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: CColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+      ),
+    );
   }
 }

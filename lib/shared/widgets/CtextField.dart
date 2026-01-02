@@ -99,6 +99,7 @@ class CTextField extends StatelessWidget {
                 label,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
+                  fontSize: 12, // Reduced label size
                   color: isDark ? CColors.white : CColors.textPrimary,
                 ),
               ),
@@ -107,6 +108,7 @@ class CTextField extends StatelessWidget {
                   ' *',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: CColors.error,
+                    fontSize: 12, // Reduced size for asterisk too
                   ),
                 ),
             ],
@@ -147,11 +149,13 @@ class CTextField extends StatelessWidget {
           showCursor: showCursor,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: isDark ? CColors.white : CColors.textPrimary,
+            fontSize: 12, // Reduced input text size
           ),
           decoration: InputDecoration(
             hintText: hintText,
             hintStyle: theme.textTheme.bodyMedium?.copyWith(
               color: CColors.darkGrey,
+              fontSize: 12, // Reduced hint text size
             ),
             prefixIcon: prefixIcon != null
                 ? Padding(
@@ -193,7 +197,7 @@ class CTextField extends StatelessWidget {
             fillColor: isDark ? CColors.darkContainer : CColors.lightContainer,
             contentPadding: contentPadding ?? const EdgeInsets.symmetric(
               horizontal: CSizes.md,
-              vertical: CSizes.sm,
+              vertical: CSizes.xs, // Reduced vertical padding
             ),
             errorText: errorText,
             counterText: counterText,

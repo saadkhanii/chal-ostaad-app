@@ -9,6 +9,7 @@ class CButton extends StatelessWidget {
   final double? height;
   final Color? backgroundColor;
   final Color? foregroundColor;
+  final bool isLoading;
 
   const CButton({
     super.key,
@@ -18,6 +19,7 @@ class CButton extends StatelessWidget {
     this.height,
     this.backgroundColor,
     this.foregroundColor,
+    this.isLoading = false,
   });
 
   @override
@@ -25,27 +27,41 @@ class CButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SizedBox(
-      width: width ?? CSizes.buttonWidth,
-      height: height ?? CSizes.buttonHeight,
+      width: width, // Let it be null to use intrinsic width
+      height: height ?? 48, // Default height, but text will determine width
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
-          elevation: CSizes.buttonElevation,
-          backgroundColor:
-          backgroundColor ?? (isDark ? CColors.buttonDark : CColors.buttonLight),
-          foregroundColor:
-          foregroundColor ?? (isDark ? CColors.buttonLight : CColors.buttonDark),
+          elevation: 2,
+          backgroundColor: backgroundColor ??
+              (isDark ? CColors.primary : CColors.secondary),
+          foregroundColor: foregroundColor ?? CColors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 0, // Reduced vertical padding to prevent clipping
           ),
         ),
-        child: Text(
+        child: isLoading
+            ? SizedBox(
+          height: 20,
+          width: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: foregroundColor ?? CColors.white,
+          ),
+        )
+            : Text(
           text,
+          textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
-            color: Theme.of(context).brightness == Brightness.light
-                ? CColors.white        // dark mode text color
-                : CColors.textPrimary, // light mode text color
+            fontSize: 16,
+            height: 1.0, // Adjust line height to prevent cutting
+            color: foregroundColor ?? CColors.white,
           ),
         ),
       ),

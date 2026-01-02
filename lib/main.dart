@@ -1,151 +1,76 @@
-// lib/main.dart
-
 import 'package:chal_ostaad/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chal_ostaad/firebase/firebase_options.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:chal_ostaad/core/providers/theme_provider.dart';
+
+// Import providers
+import 'core/providers/shared_prefs_provider.dart';
 import 'core/routes/app_router.dart';
 import 'core/routes/app_routes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  print('🚀 ===== APP STARTING =====');
-  print('🕐 Time: ${DateTime.now()}');
+  // Initialize SharedPreferences early
+  final sharedPreferences = await SharedPreferences.getInstance();
 
-  // ===== PHASE 1: SHARED PREFERENCES DEBUG =====
+  // Firebase initialization
   try {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().toList()..sort();
-
-    print('📊 === SHARED PREFS AT STARTUP ===');
-    print('📦 Total keys: ${keys.length}');
-    print('🔑 Keys list: $keys');
-
-    // Log all values for debugging
-    for (var key in keys) {
-      final value = prefs.get(key);
-      print('   $key: $value');
-    }
-
-    // Track if we're losing data
-    final email = prefs.getString('saved_email');
-    final passwordExists = prefs.getString('saved_password') != null;
-    final rememberMe = prefs.getBool('remember_me');
-
-    print('📊 === CRITICAL VALUES ===');
-    print('📧 saved_email: $email');
-    print('🔐 saved_password exists: $passwordExists');
-    print('💾 remember_me: $rememberMe');
-    print('👤 user_role: ${prefs.getString('user_role')}');
-    print('🆔 user_uid: ${prefs.getString('user_uid')}');
-
-    // Save startup timestamp
-    await prefs.setString('app_start_time', DateTime.now().toIso8601String());
-
-  } catch (e) {
-    print('❌ SharedPreferences error: $e');
-  }
-
-  // ===== PHASE 2: FIREBASE INITIALIZATION =====
-  try {
-    print('🔥 === FIREBASE INITIALIZATION ===');
-
-    // 1. Initialize default Firebase app
-    print('🔄 Initializing default Firebase app...');
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('✅ Default Firebase app initialized');
 
-    // 2. Initialize 'client' Firebase app (if not already exists)
-    print('🔄 Checking/initializing "client" Firebase app...');
+    // Initialize client app if needed
     try {
-      // Try to get the existing app
-      final clientApp = Firebase.app('client');
-      print('✅ "client" Firebase app already exists');
-      print('   App name: ${clientApp.name}');
-    } catch (e) {
-      // App doesn't exist, create it
-      if (e.toString().contains('no-app')) {
-        print('🆕 Creating "client" Firebase app...');
-        await Firebase.initializeApp(
-          name: 'client',
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-        print('✅ "client" Firebase app created successfully');
-      } else {
-        print('⚠️ Unexpected error with "client" app: $e');
-      }
+      Firebase.app('client');
+    } catch (_) {
+      await Firebase.initializeApp(
+        name: 'client',
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     }
 
-    // 3. Initialize 'worker' Firebase app (if not already exists)
-    print('🔄 Checking/initializing "worker" Firebase app...');
+    // Initialize worker app if needed
     try {
-      // Try to get the existing app
-      final workerApp = Firebase.app('worker');
-      print('✅ "worker" Firebase app already exists');
-      print('   App name: ${workerApp.name}');
-    } catch (e) {
-      // App doesn't exist, create it
-      if (e.toString().contains('no-app')) {
-        print('🆕 Creating "worker" Firebase app...');
-        await Firebase.initializeApp(
-          name: 'worker',
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-        print('✅ "worker" Firebase app created successfully');
-      } else {
-        print('⚠️ Unexpected error with "worker" app: $e');
-      }
+      Firebase.app('worker');
+    } catch (_) {
+      await Firebase.initializeApp(
+        name: 'worker',
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     }
-
-    print('✅ All Firebase apps initialized successfully');
-
   } catch (e) {
-    print('❌ CRITICAL: Firebase initialization failed: $e');
-    print('💡 Check your firebase_options.dart file and Google Services configuration');
+    print('Firebase initialization error: $e');
   }
 
-  // ===== PHASE 3: VERIFY ALL APPS =====
-  try {
-    print('🔍 === VERIFYING ALL FIREBASE APPS ===');
-    final allApps = Firebase.apps;
-    print('📱 Total Firebase apps: ${allApps.length}');
-
-    for (var app in allApps) {
-      print('   • App: ${app.name}');
-    }
-
-    if (allApps.length < 3) {
-      print('⚠️ Warning: Expected 3 apps (default, client, worker) but found ${allApps.length}');
-    }
-
-  } catch (e) {
-    print('❌ Error verifying Firebase apps: $e');
-  }
-
-  // ===== PHASE 4: FINAL CHECK =====
-  print('🎯 === APP STARTUP COMPLETE ===');
-  print('✅ Flutter binding initialized');
-  print('✅ SharedPreferences checked');
-  print('✅ Firebase initialized');
-  print('🚀 Launching ChalOstaad app...');
-
-  runApp(const ChalOstaadApp());
+  runApp(
+    ProviderScope(
+      overrides: [
+        // Override the sharedPreferencesProvider with actual instance
+        sharedPreferencesProvider.overrideWithValue(sharedPreferences),
+      ],
+      child: const ChalOstaadApp(),
+    ),
+  );
 }
 
-class ChalOstaadApp extends StatelessWidget {
+class ChalOstaadApp extends ConsumerWidget {
   const ChalOstaadApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: CAppTheme.lightTheme,
       darkTheme: CAppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: themeState.themeMode == ThemeModeType.system
+          ? ThemeMode.system
+          : (themeState.themeMode == ThemeModeType.dark ? ThemeMode.dark : ThemeMode.light),
       initialRoute: AppRoutes.splash,
       onGenerateRoute: AppRouter.generateRoute,
     );

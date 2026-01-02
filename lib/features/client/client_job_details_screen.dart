@@ -1,5 +1,6 @@
 // lib/features/client/client_job_details_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -9,19 +10,33 @@ import '../../core/models/bid_model.dart';
 import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/job_service.dart';
+import '../../shared/widgets/common_header.dart';
 
-class ClientJobDetailsScreen extends StatefulWidget {
+// Provider to fetch worker details efficiently and cache them
+final workerDetailsProvider = FutureProvider.family<Map<String, dynamic>?, String>((ref, workerId) async {
+  try {
+    final doc = await FirebaseFirestore.instance.collection('workers').doc(workerId).get();
+    return doc.data();
+  } catch (e) {
+    debugPrint('Error fetching worker details: $e');
+    return null;
+  }
+});
+
+class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
 
   const ClientJobDetailsScreen({super.key, required this.job});
 
   @override
-  State<ClientJobDetailsScreen> createState() => _ClientJobDetailsScreenState();
+  ConsumerState<ClientJobDetailsScreen> createState() => _ClientJobDetailsScreenState();
 }
 
-class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
+class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen> {
   List<BidModel> _bids = [];
   final BidService _bidService = BidService();
+  final JobService _jobService = JobService();
+  bool _isLoadingBids = true;
 
   @override
   void initState() {
@@ -30,21 +45,28 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
   }
 
   Future<void> _loadBids() async {
+    if (!mounted) return;
+    setState(() => _isLoadingBids = true);
     try {
       final bids = await _bidService.getBidsByJob(widget.job.id!);
-      setState(() {
-        _bids = bids;
-      });
+      if (mounted) {
+        setState(() {
+          _bids = bids;
+          _isLoadingBids = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error loading bids: $e');
+      if (mounted) {
+        setState(() => _isLoadingBids = false);
+      }
     }
   }
 
   Future<void> _acceptBid(BidModel bid) async {
     try {
       await _bidService.updateBidStatus(bid.id!, 'accepted');
-      final jobService = JobService();
-      await jobService.updateJobStatus(widget.job.id!, 'in-progress');
+      await _jobService.updateJobStatus(widget.job.id!, 'in-progress');
       await _loadBids();
 
       if (mounted) {
@@ -116,19 +138,27 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Job Details'),
-        backgroundColor: CColors.primary,
-        foregroundColor: CColors.white,
-      ),
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(CSizes.defaultSpace),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildJobDetailsCard(context, isDark),
-            const SizedBox(height: CSizes.spaceBtwSections),
-            _buildBidsSection(context, isDark),
+            CommonHeader(
+              title: 'Job Details',
+              showBackButton: true,
+              onBackPressed: () => Navigator.pop(context),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(CSizes.defaultSpace),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildJobDetailsCard(context, isDark),
+                  const SizedBox(height: CSizes.spaceBtwSections),
+                  _buildBidsSection(context, isDark),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -226,7 +256,11 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
           ),
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
-        _bids.isEmpty ? _buildEmptyBidsState(context) : Column(children: _bids.map((bid) => _buildBidItem(bid, context)).toList()),
+        _isLoadingBids
+            ? const Center(child: CircularProgressIndicator())
+            : _bids.isEmpty
+                ? _buildEmptyBidsState(context)
+                : Column(children: _bids.map((bid) => _buildBidItem(bid, context, isDark)).toList()),
       ],
     );
   }
@@ -265,9 +299,7 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
     );
   }
 
-  Widget _buildBidItem(BidModel bid, BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
+  Widget _buildBidItem(BidModel bid, BuildContext context, bool isDark) {
     return Container(
       margin: const EdgeInsets.only(bottom: CSizes.spaceBtwItems),
       padding: const EdgeInsets.all(CSizes.md),
@@ -277,6 +309,7 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
         border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
@@ -298,27 +331,34 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
                     color: isDark ? CColors.textWhite : CColors.textPrimary,
                   ),
                 ),
-                FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance.collection('workers').doc(bid.workerId).get(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData && snapshot.data!.exists) {
-                      final workerData = snapshot.data!.data() as Map<String, dynamic>;
-                      final workerName = workerData['name'] ?? 'Unknown Worker';
-                      return Text(
-                        'Worker: $workerName',
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                          color: CColors.darkGrey,
-                        ),
-                      );
-                    }
-                    return Text(
-                      'Worker: ${bid.workerId.substring(0, 8)}...',
-                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                        color: CColors.darkGrey,
+                
+                // Use Riverpod to watch worker details
+                Consumer(
+                  builder: (context, ref, _) {
+                    final workerAsync = ref.watch(workerDetailsProvider(bid.workerId));
+                    
+                    return workerAsync.when(
+                      data: (data) {
+                         final workerName = data?['name'] ?? 'Unknown Worker';
+                         return Text(
+                            'Worker: $workerName',
+                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                              color: CColors.darkGrey,
+                            ),
+                          );
+                      },
+                      loading: () => Text(
+                        'Loading worker...',
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey),
+                      ),
+                      error: (_, __) => Text(
+                        'Worker: ${bid.workerId.substring(0, 8)}...',
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey),
                       ),
                     );
                   },
                 ),
+                
                 if (bid.message != null && bid.message!.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -336,25 +376,32 @@ class _ClientJobDetailsScreenState extends State<ClientJobDetailsScreen> {
           ),
           if (bid.status == 'pending') ...[
             const SizedBox(width: CSizes.sm),
-            ElevatedButton(
-              onPressed: () => _acceptBid(bid),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.success,
-                foregroundColor: CColors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              ),
-              child: const Text('Accept'),
-            ),
-            const SizedBox(width: CSizes.xs),
-            OutlinedButton(
-              onPressed: () => _rejectBid(bid),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: CColors.error,
-                side: BorderSide(color: CColors.error),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              ),
-              child: const Text('Reject'),
-            ),
+            Column(
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                ElevatedButton(
+                  onPressed: () => _acceptBid(bid),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.success,
+                    foregroundColor: CColors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: const Size(60, 30),
+                  ),
+                  child: const Text('Accept', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(height: 4),
+                OutlinedButton(
+                  onPressed: () => _rejectBid(bid),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: CColors.error,
+                    side: BorderSide(color: CColors.error),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: const Size(60, 30),
+                  ),
+                  child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                ),
+               ],
+            )
           ] else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

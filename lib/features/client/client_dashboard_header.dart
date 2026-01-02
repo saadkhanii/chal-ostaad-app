@@ -1,10 +1,11 @@
 // lib/features/client/client_dashboard_header.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../shared/widgets/Ccontainer.dart';
 
-class ClientDashboardHeader extends StatefulWidget {
+class ClientDashboardHeader extends ConsumerStatefulWidget {
   final String userName;
   final VoidCallback? onNotificationTap;
 
@@ -15,10 +16,10 @@ class ClientDashboardHeader extends StatefulWidget {
   });
 
   @override
-  State<ClientDashboardHeader> createState() => _ClientDashboardHeaderState();
+  ConsumerState<ClientDashboardHeader> createState() => _ClientDashboardHeaderState();
 }
 
-class _ClientDashboardHeaderState extends State<ClientDashboardHeader> {
+class _ClientDashboardHeaderState extends ConsumerState<ClientDashboardHeader> {
   int _notificationCount = 0;
 
   @override
@@ -29,6 +30,7 @@ class _ClientDashboardHeaderState extends State<ClientDashboardHeader> {
 
   void _loadNotificationCount() {
     // Implementation for loading notification count
+    // This could be updated to use ref.read/ref.watch from a provider if available
   }
 
   String _getDisplayName(String fullName) {

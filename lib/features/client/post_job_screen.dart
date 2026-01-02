@@ -1,17 +1,19 @@
-// lib/features/client/screens/post_job_screen.dart
+// lib/features/client/post_job_screen.dart
 
 import 'package:chal_ostaad/core/models/job_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:logger/Logger.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/constants/colors.dart';
-import '../../../core/constants/sizes.dart';
-import '../../../shared/widgets/Cbutton.dart';
-import '../../../shared/widgets/CtextField.dart';
+import '../../core/constants/colors.dart';
+import '../../core/constants/sizes.dart';
+import '../../shared/widgets/Cbutton.dart';
+import '../../shared/widgets/CtextField.dart';
+import '../../shared/widgets/common_header.dart';
 
 class Category {
   final String id;
@@ -20,14 +22,14 @@ class Category {
   Category({required this.id, required this.name});
 }
 
-class PostJobScreen extends StatefulWidget {
+class PostJobScreen extends ConsumerStatefulWidget {
   const PostJobScreen({super.key});
 
   @override
-  State<PostJobScreen> createState() => _PostJobScreenState();
+  ConsumerState<PostJobScreen> createState() => _PostJobScreenState();
 }
 
-class _PostJobScreenState extends State<PostJobScreen> {
+class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -46,7 +48,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     _fetchCategories();
   }
 
-  // FIXED: Load client ID from SharedPreferences to ensure consistency
+  // Load client ID from SharedPreferences to ensure consistency
   Future<void> _loadClientId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -97,7 +99,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
   }
 
-  // FIXED: Updated job posting with better error handling and client ID consistency
+  // Updated job posting with better error handling and client ID consistency
   Future<void> _handlePostJob() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -110,7 +112,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // FIXED: Use client ID from SharedPreferences OR try to get from auth as fallback
+      // Use client ID from SharedPreferences OR try to get from auth as fallback
       String? clientIdToUse = _clientId;
 
       if (clientIdToUse == null) {
@@ -146,14 +148,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       _logger.i('Posting job with data: ${newJob.toJson()}');
 
-      // FIXED: Add to Firestore and wait for completion
+      // Add to Firestore and wait for completion
       final docRef = await FirebaseFirestore.instance
           .collection('jobs')
           .add(newJob.toJson());
 
       _logger.i('Successfully posted job with ID: ${docRef.id} for client: $clientIdToUse');
 
-      // FIXED: Verify the job was actually saved
+      // Verify the job was actually saved
       final savedJob = await docRef.get();
       if (savedJob.exists) {
         _logger.i('Job verified in Firestore: ${savedJob.id}');
@@ -190,73 +192,79 @@ class _PostJobScreenState extends State<PostJobScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Post a New Job'),
-        centerTitle: true,
-        backgroundColor: CColors.primary,
-        foregroundColor: CColors.white,
-      ),
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(CSizes.defaultSpace),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  'Fill in the details below',
-                  style: Theme.of(context).textTheme.titleLarge
-              ),
-              const SizedBox(height: CSizes.spaceBtwSections),
-
-              // Job Title
-              CTextField(
-                label: 'Job Title',
-                hintText: 'e.g., Fix leaky kitchen sink',
-                controller: _titleController,
-                validator: (value) => value == null || value.isEmpty ? 'Title is required' : null,
-              ),
-              const SizedBox(height: CSizes.spaceBtwItems),
-
-              // Job Description
-              CTextField(
-                label: 'Job Description',
-                hintText: 'Describe the task in detail...',
-                controller: _descriptionController,
-                maxLines: 5,
-                validator: (value) => value == null || value.isEmpty ? 'Description is required' : null,
-              ),
-              const SizedBox(height: CSizes.spaceBtwItems),
-
-              // Category Dropdown
-              _buildCategoryDropdown(isDark),
-
-              // FIXED: Added debug info for client ID
-              if (_clientId != null) ...[
-                const SizedBox(height: CSizes.spaceBtwItems),
-                Text(
-                  'Client ID: ${_clientId!.substring(0, 8)}...',
-                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                    color: CColors.darkGrey,
-                    fontStyle: FontStyle.italic,
-                  ),
+        child: Column(
+          children: [
+            CommonHeader(
+              title: 'Job',
+              showBackButton: true,
+              onBackPressed: () => Navigator.pop(context),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(CSizes.defaultSpace),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        'Fill in the details below',
+                        style: Theme.of(context).textTheme.titleLarge
+                    ),
+                    const SizedBox(height: CSizes.spaceBtwSections),
+            
+                    // Job Title
+                    CTextField(
+                      label: 'Job Title',
+                      hintText: 'e.g., Fix leaky kitchen sink',
+                      controller: _titleController,
+                      validator: (value) => value == null || value.isEmpty ? 'Title is required' : null,
+                    ),
+                    const SizedBox(height: CSizes.spaceBtwItems),
+            
+                    // Job Description
+                    CTextField(
+                      label: 'Job Description',
+                      hintText: 'Describe the task in detail...',
+                      controller: _descriptionController,
+                      maxLines: 5,
+                      validator: (value) => value == null || value.isEmpty ? 'Description is required' : null,
+                    ),
+                    const SizedBox(height: CSizes.spaceBtwItems),
+            
+                    // Category Dropdown
+                    _buildCategoryDropdown(isDark),
+            
+                    // Debug info for client ID
+                    if (_clientId != null) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      Text(
+                        'Client ID: ${_clientId!.substring(0, 8)}...',
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+            
+                    const SizedBox(height: CSizes.spaceBtwSections),
+            
+                    // Post Job Button
+                    _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : CButton(
+                      text: 'Post Job',
+                      onPressed: _handlePostJob,
+                      width: double.infinity,
+                      backgroundColor: CColors.primary,
+                      foregroundColor: CColors.white,
+                    ),
+                  ],
                 ),
-              ],
-
-              const SizedBox(height: CSizes.spaceBtwSections),
-
-              // Post Job Button
-              _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : CButton(
-                text: 'Post Job',
-                onPressed: _handlePostJob,
-                width: double.infinity,
-                backgroundColor: CColors.primary,
-                foregroundColor: CColors.white,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,8 +1,10 @@
 // lib/features/auth/screens/forgot_password.dart
 
+import 'package:chal_ostaad/core/providers/auth_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,7 +24,6 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
   String? _userRole;
   final Logger _logger = Logger();
 
@@ -41,14 +42,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   // --- SIMPLIFIED, STANDARD FIREBASE PASSWORD RESET ---
-  Future<void> _handleSendResetLink() async {
+  Future<void> _handleSendResetLink(WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
     if (_userRole == null) {
       _showErrorMessage('User role not identified. Please restart the app.');
       return;
     }
 
-    setState(() => _isLoading = true);
+    // Update loading state using Riverpod
+    ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
     final email = _emailController.text.trim();
 
@@ -82,90 +84,89 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
     finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        // Reset loading state
+        ref.read(authProvider.notifier).state = const AuthState(isLoading: false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textTheme = Theme.of(context).textTheme;
+    return Consumer(
+      builder: (context, ref, child) {
+        final authState = ref.watch(authProvider);
+        final size = MediaQuery.of(context).size;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final textTheme = Theme.of(context).textTheme;
 
-    return Scaffold(
-      backgroundColor: isDark ? CColors.dark : CColors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            CommonHeader(title: 'Forgot'),
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: isDark ? CColors.darkContainer : CColors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(CSizes.cardRadiusLg),
-                  topRight: Radius.circular(CSizes.cardRadiusLg),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(CSizes.xl),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Forgot Password?',
-                        style: textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? CColors.white : CColors.textPrimary,
-                          fontSize: 24,
-                        ),
+        return Scaffold(
+          backgroundColor: isDark ? CColors.dark : CColors.white,
+          body: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: size.height),
+              child: Column(
+                children: [
+                  CommonHeader(title: 'Reset'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, CSizes.xl),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Forgot Password?',
+                            style: textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? CColors.white : CColors.textPrimary,
+                              fontSize: 20,
+                            ),
+                          ),
+                          const SizedBox(height: CSizes.xs),
+                          Text(
+                            "Don't worry, it happens! Enter your registered email to receive a password reset link.",
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: CSizes.md),
+                          CTextField(
+                            label: 'Email Address',
+                            hintText: 'your.email@example.com',
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            prefixIcon: Icon(
+                              Icons.email_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                              size: 20,
+                            ),
+                            isRequired: true,
+                            validator: (value) {
+                              if (value == null || value.isEmpty || !value.contains('@')) {
+                                return 'Please enter a valid email';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: CSizes.lg),
+                          CButton(
+                            text: 'Send Reset Link',
+                            onPressed: () => _handleSendResetLink(ref),
+                            width: double.infinity,
+                            isLoading: authState.isLoading,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: CSizes.sm),
-                      Text(
-                        "Don't worry, it happens! Enter your registered email to receive a password reset link.",
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                        ),
-                      ),
-                      const SizedBox(height: CSizes.xl),
-                      CTextField(
-                        label: 'Email Address',
-                        hintText: 'your.email@example.com',
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        prefixIcon: Icon(
-                          Icons.email_outlined,
-                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                          size: 20,
-                        ),
-                        isRequired: true,
-                        validator: (value) {
-                          if (value == null || value.isEmpty || !value.contains('@')) {
-                            return 'Please enter a valid email';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: CSizes.xl),
-                      _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : CButton(
-                        text: 'Send Reset Link',
-                        onPressed: _handleSendResetLink,
-                        width: double.infinity,
-                        backgroundColor: CColors.secondary,
-                        foregroundColor: CColors.white,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

@@ -1,10 +1,11 @@
 // lib/features/worker/widgets/worker_dashboard_header.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../shared/widgets/Ccontainer.dart';
 
-class WorkerDashboardHeader extends StatelessWidget {
+class WorkerDashboardHeader extends ConsumerWidget {
   final String userName;
 
   const WorkerDashboardHeader({super.key, required this.userName});
@@ -27,7 +28,7 @@ class WorkerDashboardHeader extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final displayName = _getDisplayName(userName);
 
     return CustomShapeContainer(

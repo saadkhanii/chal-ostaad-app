@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,7 +15,7 @@ import '../../../shared/widgets/Cbutton.dart';
 import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
 
-class SetPasswordScreen extends StatefulWidget {
+class SetPasswordScreen extends ConsumerStatefulWidget {
   final String email;
 
   const SetPasswordScreen({
@@ -23,10 +24,10 @@ class SetPasswordScreen extends StatefulWidget {
   });
 
   @override
-  State<SetPasswordScreen> createState() => _SetPasswordScreenState();
+  ConsumerState<SetPasswordScreen> createState() => _SetPasswordScreenState();
 }
 
-class _SetPasswordScreenState extends State<SetPasswordScreen> {
+class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -113,8 +114,6 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // This build method is also correct and does not need to change.
-    // ... all your existing UI code ...
     final size = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textTheme = Theme.of(context).textTheme;
@@ -129,7 +128,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           ),
           child: Column(
             children: [
-              CommonHeader(title: 'Pass..'),
+              const CommonHeader(title: 'Set Password'),
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(

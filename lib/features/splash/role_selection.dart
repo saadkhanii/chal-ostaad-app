@@ -1,49 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/colors.dart';
 import '../../shared/widgets/Cbutton.dart';
+import '../../core/providers/role_provider.dart';
 
-class RoleSelection extends StatelessWidget {
+class RoleSelection extends ConsumerWidget {
   const RoleSelection({super.key});
 
-  // Temporary static variable to store role
-  static String? tempUserRole;
-
-  // Method to save user role and navigate to login
-  Future<void> _saveUserRoleAndNavigate(String role, BuildContext context) async {
+  Future<void> _saveUserRoleAndNavigate(String role, BuildContext context, WidgetRef ref) async {
     try {
-      print('💾 [DEBUG] Saving user role: $role');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_role', role);
 
-      // Method 1: Try SharedPreferences first
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user_role', role);
-        final savedRole = prefs.getString('user_role');
-        print('✅ [DEBUG] Role saved to SharedPreferences: $savedRole');
-      } catch (e) {
-        print('⚠️ [DEBUG] SharedPreferences failed, using temporary storage: $e');
-      }
+      ref.read(selectedRoleProvider.notifier).state = role;
 
-      // Method 2: Always use temporary storage as backup
-      tempUserRole = role;
-      print('✅ [DEBUG] Role saved to temporary storage: $tempUserRole');
-
-      // Navigate to login page after saving role
-      print('🚀 [DEBUG] Navigating to Login page with role: $role');
       Navigator.pushNamed(
-          context,
-          '/login',
-          arguments: role // Pass the role as argument
+        context,
+        '/login',
+        arguments: role,
       );
-
     } catch (e) {
-      print('❌ [DEBUG] Error saving role: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to save role. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: CColors.primary,
       body: SafeArea(
@@ -52,7 +41,7 @@ class RoleSelection extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Illustration
+              // Illustration - Keep your original size
               SizedBox(
                 height: 300,
                 child: Image.asset(
@@ -62,25 +51,25 @@ class RoleSelection extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Tagline
+              // Tagline - Only made text smaller as requested
               Text(
-                "Your trusted partner for\nfinding work and workers",
+                "Your trusted partner for finding work and workers",
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: CColors.black,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 40),
 
-              // Client Role
+              // Client Role - Original layout
               _roleSection(
                 context,
                 label: "Need help with work?",
                 button: CButton(
                   text: "Find Worker",
                   onPressed: () {
-                    _saveUserRoleAndNavigate('client', context);
+                    _saveUserRoleAndNavigate('client', context, ref);
                   },
                   backgroundColor: CColors.secondary,
                   foregroundColor: CColors.white,
@@ -88,14 +77,14 @@ class RoleSelection extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Worker Role
+              // Worker Role - Original layout
               _roleSection(
                 context,
                 label: "Looking for work?",
                 button: CButton(
                   text: "Find Work",
                   onPressed: () {
-                    _saveUserRoleAndNavigate('worker', context);
+                    _saveUserRoleAndNavigate('worker', context, ref);
                   },
                   backgroundColor: CColors.secondary,
                   foregroundColor: CColors.white,
@@ -117,11 +106,11 @@ class RoleSelection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-            label,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: CColors.black,
-              fontWeight: FontWeight.w500,
-            )
+          label,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: CColors.black,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, child: button),

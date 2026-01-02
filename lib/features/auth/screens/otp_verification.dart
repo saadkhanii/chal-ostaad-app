@@ -1,14 +1,17 @@
 // lib/features/auth/screens/otp_verification.dart
 
+import 'package:chal_ostaad/core/providers/auth_provider.dart';
 import 'package:chal_ostaad/features/auth/screens/set_password.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../shared/widgets/common_header.dart';
+import '../../../shared/widgets/Cbutton.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String email;
@@ -25,7 +28,6 @@ class OTPVerificationScreen extends StatefulWidget {
 class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   final List<TextEditingController> _otpControllers = List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
-  bool _isLoading = false;
   final Logger _logger = Logger();
 
   @override
@@ -41,9 +43,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     }
   }
 
-  Future<void> _handleVerify() async {
+  Future<void> _handleVerify(WidgetRef ref) async {
     if (!_isOTPComplete()) return;
-    setState(() => _isLoading = true);
+    
+    // Update loading state using Riverpod
+    ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
     final otp = _getOTP();
     _logger.i('Verifying email OTP: $otp for email: ${widget.email}');
@@ -93,152 +97,130 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       _showErrorMessage(errorMessage);
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        // Reset loading state
+        ref.read(authProvider.notifier).state = const AuthState(isLoading: false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This build method is correct and does not need to change.
-    // ... all your existing UI code ...
-    final size = MediaQuery.of(context).size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textTheme = Theme.of(context).textTheme;
+    return Consumer(
+      builder: (context, ref, child) {
+        final authState = ref.watch(authProvider);
+        final size = MediaQuery.of(context).size;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final textTheme = Theme.of(context).textTheme;
 
-    return Scaffold(
-      backgroundColor: isDark ? CColors.dark : CColors.white,
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: size.height,
-          ),
-          child: Column(
-            children: [
-              CommonHeader(title: 'OTP'),
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: isDark ? CColors.darkContainer : CColors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(CSizes.cardRadiusLg),
-                    topRight: Radius.circular(CSizes.cardRadiusLg),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(CSizes.xl),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Email Verification',
-                        style: textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? CColors.white : CColors.textPrimary,
-                          fontSize: 24,
-                        ),
-                      ),
-                      const SizedBox(height: CSizes.sm),
-                      Text(
-                        'Enter the 6-digit code sent to your email at ${widget.email}',
-                        textAlign: TextAlign.center,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                        ),
-                      ),
-                      const SizedBox(height: CSizes.xl),
-                      _buildOTPInputFields(isDark, textTheme),
-                      const SizedBox(height: CSizes.xl),
-                      _buildVerifyButton(isDark),
-                      const SizedBox(height: CSizes.md),
-                      _buildResendRow(textTheme, isDark),
-                    ],
-                  ),
-                ),
+        return Scaffold(
+          backgroundColor: isDark ? CColors.dark : CColors.white,
+          body: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: size.height,
               ),
-            ],
+              child: Column(
+                children: [
+                  CommonHeader(title: 'OTP'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, CSizes.xl),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start, // Aligned to start (left)
+                      children: [
+                        Text(
+                          'Email Verification',
+                          style: textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? CColors.white : CColors.textPrimary,
+                            fontSize: 20,
+                          ),
+                        ),
+                        const SizedBox(height: CSizes.xs),
+                        Text(
+                          'Enter the 6-digit code sent to your email at ${widget.email}',
+                          textAlign: TextAlign.left, // Aligned to left
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: CSizes.xl),
+                        Center(child: _buildOTPInputFields(isDark, textTheme)),
+                        const SizedBox(height: CSizes.xl),
+                        _buildVerifyButton(authState, ref),
+                        const SizedBox(height: CSizes.md),
+                        _buildResendRow(textTheme, isDark),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildOTPInputFields(bool isDark, TextTheme textTheme) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(6, (index) {
-        return SizedBox(
-          width: 50,
-          height: 50,
-          child: TextFormField(
-            controller: _otpControllers[index],
-            focusNode: _focusNodes[index],
-            textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            maxLength: 1,
-            style: textTheme.headlineSmall?.copyWith(
-              color: isDark ? CColors.white : CColors.textPrimary,
-              fontWeight: FontWeight.bold,
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(6, (index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: SizedBox(
+              width: 50,
+              height: 50,
+              child: TextFormField(
+                controller: _otpControllers[index],
+                focusNode: _focusNodes[index],
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                maxLength: 1,
+                style: textTheme.headlineSmall?.copyWith(
+                  color: isDark ? CColors.white : CColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+                decoration: InputDecoration(
+                  counterText: '',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(color: CColors.borderPrimary),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(color: CColors.borderPrimary),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(color: CColors.primary, width: 2.0),
+                  ),
+                ),
+                onChanged: (value) {
+                  if (value.length == 1 && index < 5) {
+                    _focusNodes[index + 1].requestFocus();
+                  } else if (value.isEmpty && index > 0) {
+                    _focusNodes[index - 1].requestFocus();
+                  }
+                  setState(() {});
+                },
+              ),
             ),
-            decoration: InputDecoration(
-              counterText: '',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                borderSide: BorderSide(color: CColors.borderPrimary),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                borderSide: BorderSide(color: CColors.borderPrimary),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                borderSide: BorderSide(color: CColors.primary, width: 2.0),
-              ),
-            ),
-            onChanged: (value) {
-              if (value.length == 1 && index < 5) {
-                _focusNodes[index + 1].requestFocus();
-              } else if (value.isEmpty && index > 0) {
-                _focusNodes[index - 1].requestFocus();
-              }
-              if (_isOTPComplete() && index == 5) {
-                _handleVerify();
-              }
-              setState(() {});
-            },
-          ),
-        );
-      }),
+          );
+        }),
+      ),
     );
   }
 
-  Widget _buildVerifyButton(bool isDark) {
-    final isEnabled = _isOTPComplete() && !_isLoading;
-    return SizedBox(
+  Widget _buildVerifyButton(AuthState authState, WidgetRef ref) {
+    return CButton(
+      text: 'Verify & Proceed',
+      onPressed: () => _handleVerify(ref),
       width: double.infinity,
-      height: CSizes.buttonHeight,
-      child: ElevatedButton(
-        onPressed: isEnabled ? _handleVerify : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isEnabled ? CColors.primary : CColors.buttonDisabled,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.buttonRadius),
-          ),
-        ),
-        child: _isLoading
-            ? const CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          strokeWidth: 2,
-        )
-            : Text(
-          'Verify & Proceed',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: isEnabled ? Colors.white : CColors.darkGrey,
-          ),
-        ),
-      ),
+      isLoading: authState.isLoading,
     );
   }
 
@@ -250,15 +232,23 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           "Didn't receive code? ",
           style: textTheme.bodyMedium?.copyWith(
             color: isDark ? CColors.lightGrey : CColors.darkGrey,
+            fontSize: 12,
           ),
         ),
         TextButton(
           onPressed: () { /* TODO: Resend logic */},
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(50, 30),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           child: Text(
             'Resend',
             style: textTheme.bodyMedium?.copyWith(
               color: CColors.primary,
               fontWeight: FontWeight.w600,
+              fontSize: 12,
+              decoration: TextDecoration.underline,
             ),
           ),
         ),

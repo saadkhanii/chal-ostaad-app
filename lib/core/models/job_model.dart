@@ -33,6 +33,18 @@ class JobModel {
     );
   }
 
+  factory JobModel.fromMap(Map<String, dynamic> data, String id) {
+    return JobModel(
+      id: id,
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      category: data['category'] ?? '',
+      clientId: data['clientId'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      status: data['status'] ?? 'open',
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'title': title,
