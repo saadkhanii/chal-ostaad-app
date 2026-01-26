@@ -560,6 +560,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   Widget _buildJobFilterChips() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -571,11 +573,27 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
               label: Text(filter),
               selected: isSelected,
               onSelected: (selected) {
-                setState(() {
-                  _jobFilter = filter.toLowerCase().replaceAll(' ', '-');
-                  if (_jobFilter == 'all') _jobFilter = 'all'; 
-                });
+                if (selected) {
+                  setState(() {
+                    _jobFilter = filter.toLowerCase().replaceAll(' ', '-');
+                    if (_jobFilter == 'all') _jobFilter = 'all'; 
+                  });
+                }
               },
+              // FIXED: Active and Inactive styling for light and dark themes
+              selectedColor: CColors.primary,
+              labelStyle: TextStyle(
+                color: isSelected 
+                    ? CColors.white 
+                    : (isDark ? CColors.white : CColors.textPrimary),
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+              backgroundColor: isDark ? CColors.darkContainer : CColors.softGrey,
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: isSelected ? CColors.primary : (isDark ? CColors.darkGrey : CColors.grey),
+                ),
+              ),
             ),
           );
         }).toList(),

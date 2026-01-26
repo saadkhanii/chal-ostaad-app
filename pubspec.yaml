@@ -27,15 +27,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_native_splash: ^2.3.7
   flutter_launcher_icons: ^0.14.4
   build_runner: ^2.4.7
-
-
-flutter_native_splash:
-  color: "#FB9824"
-  android: true
-  ios: true
 
 flutter_launcher_icons:
   android: "ic_launcher"

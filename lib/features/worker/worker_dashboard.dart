@@ -301,6 +301,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildFilterChips() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -320,6 +322,20 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                   });
                 }
               },
+              // FIXED: Active and Inactive styling for light and dark themes
+              selectedColor: CColors.primary,
+              labelStyle: TextStyle(
+                color: isSelected 
+                    ? CColors.white 
+                    : (isDark ? CColors.white : CColors.textPrimary),
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+              backgroundColor: isDark ? CColors.darkContainer : CColors.softGrey,
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: isSelected ? CColors.primary : (isDark ? CColors.darkGrey : CColors.grey),
+                ),
+              ),
             ),
           );
         }).toList(),
