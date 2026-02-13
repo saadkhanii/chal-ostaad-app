@@ -66,11 +66,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
             // Check multiple possible fields for the name
             final fetchedName = data['fullName'] ?? data['name'] ?? data['userName'] ?? userName ?? 'Client';
             final fetchedEmail = data['email'] ?? userEmail ?? '';
-            
+
             // Update variables
             userName = fetchedName;
             userEmail = fetchedEmail;
-            
+
             // Update SharedPreferences
             await prefs.setString('user_name', fetchedName);
             await prefs.setString('user_email', fetchedEmail);
@@ -125,7 +125,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     }
   }
 
-  // ... (keep helper methods like _getBidCountForJob, _navigateToPostJob, etc.)
   Future<int> _getBidCountForJob(String jobId) async {
     try {
       final bids = await _bidService.getBidsByJob(jobId);
@@ -157,7 +156,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
-  // ... (keep color logic and update status logic)
   Color _getStatusColor(String status) {
     switch (status) {
       case 'open':
@@ -213,7 +211,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     }
   }
 
-  // ... (keep showJobActions and action tile builders)
   void _showJobActions(JobModel job) {
     showModalBottomSheet(
       context: context,
@@ -447,14 +444,12 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
-  // Helper method stubs for the UI components that were not provided in the snippet
-  // I will assume they exist or add basic implementations if needed
   Widget _buildLoadingScreen() {
     return const Center(child: CircularProgressIndicator());
   }
 
   Widget _buildOpportunityCard(BuildContext context) {
-    
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -536,14 +531,109 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
+  // ========== UPDATED: Dynamic Stats Row with Rupees ==========
   Widget _buildStatsRow(BuildContext context) {
-    // Placeholder stats
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _fetchClientStats(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingStats(context);
+        }
+
+        if (snapshot.hasError) {
+          return _buildStatItem(context, 'Error', '!', Icons.error);
+        }
+
+        final stats = snapshot.data ?? {
+          'postedJobs': 0,
+          'activeJobs': 0,
+          'completedJobs': 0,
+          'totalSpent': 0.0,
+        };
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildStatItem(context, 'Posted Jobs', '${stats['postedJobs']}', Icons.work_outline),
+            _buildStatItem(context, 'Active Jobs', '${stats['activeJobs']}', Icons.work),
+            _buildStatItem(context, 'Completed', '${stats['completedJobs']}', Icons.check_circle),
+            _buildStatItem(context, 'Total Spent', _formatCurrency(stats['totalSpent']), Icons.attach_money),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _fetchClientStats() async {
+    if (_clientId.isEmpty) {
+      return {
+        'postedJobs': 0,
+        'activeJobs': 0,
+        'completedJobs': 0,
+        'totalSpent': 0.0,
+      };
+    }
+
+    try {
+      // Fetch all jobs for this client
+      final jobsSnapshot = await _firestore
+          .collection('jobs')
+          .where('clientId', isEqualTo: _clientId)
+          .get();
+
+      final jobs = jobsSnapshot.docs;
+
+      // Calculate basic stats
+      final postedJobs = jobs.length;
+      final activeJobs = jobs.where((doc) => doc['status'] == 'in-progress').length;
+      final completedJobs = jobs.where((doc) => doc['status'] == 'completed').length;
+
+      // Get completed job IDs
+      final completedJobIds = jobs
+          .where((doc) => doc['status'] == 'completed')
+          .map((doc) => doc.id)
+          .toList();
+
+      // Calculate total spent from accepted bids
+      double totalSpent = 0.0;
+      if (completedJobIds.isNotEmpty) {
+        final bidsSnapshot = await _firestore
+            .collection('bids')
+            .where('jobId', whereIn: completedJobIds)
+            .where('status', isEqualTo: 'accepted')
+            .get();
+
+        totalSpent = bidsSnapshot.docs.fold(0.0, (sum, doc) {
+          final amount = doc['amount'] as num? ?? 0;
+          return sum + amount.toDouble();
+        });
+      }
+
+      return {
+        'postedJobs': postedJobs,
+        'activeJobs': activeJobs,
+        'completedJobs': completedJobs,
+        'totalSpent': totalSpent,
+      };
+    } catch (e) {
+      debugPrint('Error fetching client stats: $e');
+      return {
+        'postedJobs': 0,
+        'activeJobs': 0,
+        'completedJobs': 0,
+        'totalSpent': 0.0,
+      };
+    }
+  }
+
+  Widget _buildLoadingStats(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStatItem(context, 'Active Jobs', '3', Icons.work),
-        _buildStatItem(context, 'Total Spent', '\$5k', Icons.attach_money),
-        _buildStatItem(context, 'Rating', '4.8', Icons.star),
+        _buildStatItem(context, 'Posted Jobs', '...', Icons.work_outline),
+        _buildStatItem(context, 'Active Jobs', '...', Icons.work),
+        _buildStatItem(context, 'Completed', '...', Icons.check_circle),
+        _buildStatItem(context, 'Total Spent', '...', Icons.attach_money),
       ],
     );
   }
@@ -557,6 +647,21 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
+  }
+
+  // Format currency in Pakistani Rupees
+  String _formatCurrency(double amount) {
+    if (amount == 0) return 'Rs 0';
+
+    if (amount >= 10000000) { // 1 Crore
+      return 'Rs ${(amount / 10000000).toStringAsFixed(1)}Cr';
+    } else if (amount >= 100000) { // 1 Lakh
+      return 'Rs ${(amount / 100000).toStringAsFixed(1)}L';
+    } else if (amount >= 1000) { // 1 Thousand
+      return 'Rs ${(amount / 1000).toStringAsFixed(1)}k';
+    }
+
+    return 'Rs ${amount.toStringAsFixed(0)}';
   }
 
   Widget _buildJobFilterChips() {
@@ -576,15 +681,15 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 if (selected) {
                   setState(() {
                     _jobFilter = filter.toLowerCase().replaceAll(' ', '-');
-                    if (_jobFilter == 'all') _jobFilter = 'all'; 
+                    if (_jobFilter == 'all') _jobFilter = 'all';
                   });
                 }
               },
               // FIXED: Active and Inactive styling for light and dark themes
               selectedColor: CColors.primary,
               labelStyle: TextStyle(
-                color: isSelected 
-                    ? CColors.white 
+                color: isSelected
+                    ? CColors.white
                     : (isDark ? CColors.white : CColors.textPrimary),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),

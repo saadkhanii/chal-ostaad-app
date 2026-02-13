@@ -1,5 +1,6 @@
 // lib/features/worker/screens/worker_job_details_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -8,8 +9,9 @@ import '../../../core/constants/sizes.dart';
 import '../../../core/models/job_model.dart';
 import '../../../core/models/bid_model.dart';
 import '../../../core/services/bid_service.dart';
+import '../../../shared/widgets/common_header.dart';
 
-class WorkerJobDetailsScreen extends StatefulWidget {
+class WorkerJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
   final String workerId;
   final String workerCategory;
@@ -24,10 +26,10 @@ class WorkerJobDetailsScreen extends StatefulWidget {
   });
 
   @override
-  State<WorkerJobDetailsScreen> createState() => _WorkerJobDetailsScreenState();
+  ConsumerState<WorkerJobDetailsScreen> createState() => _WorkerJobDetailsScreenState();
 }
 
-class _WorkerJobDetailsScreenState extends State<WorkerJobDetailsScreen> {
+class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
   final BidService _bidService = BidService();
@@ -45,15 +47,15 @@ class _WorkerJobDetailsScreenState extends State<WorkerJobDetailsScreen> {
   Future<void> _checkExistingBid() async {
     try {
       final hasBid = await _bidService.hasWorkerBidOnJob(widget.workerId, widget.job.id!);
-      setState(() {
-        _hasExistingBid = hasBid;
-      });
+      if (mounted) {
+        setState(() {
+          _hasExistingBid = hasBid;
+        });
+      }
     } catch (e) {
       debugPrint('Error checking existing bid: $e');
     }
   }
-
-  // In worker_job_details_screen.dart, update the client name loading:
 
   Future<void> _loadClientName() async {
     try {
@@ -65,22 +67,28 @@ class _WorkerJobDetailsScreenState extends State<WorkerJobDetailsScreen> {
         if (personalInfo is Map<String, dynamic>) {
           final fullName = personalInfo['fullName'];
           if (fullName is String && fullName.isNotEmpty) {
-            setState(() {
-              _clientName = fullName;
-            });
+            if (mounted) {
+              setState(() {
+                _clientName = fullName;
+              });
+            }
             return;
           }
         }
       }
 
-      setState(() {
-        _clientName = 'Client';
-      });
+      if (mounted) {
+        setState(() {
+          _clientName = 'Client';
+        });
+      }
     } catch (e) {
       debugPrint('Error loading client name: $e');
-      setState(() {
-        _clientName = 'Client';
-      });
+      if (mounted) {
+        setState(() {
+          _clientName = 'Client';
+        });
+      }
     }
   }
 
@@ -163,345 +171,258 @@ class _WorkerJobDetailsScreenState extends State<WorkerJobDetailsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Job Details'),
-        backgroundColor: CColors.primary,
-        foregroundColor: CColors.white,
-        elevation: 0,
-      ),
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(CSizes.defaultSpace),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Job Details Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(CSizes.lg),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-                color: isDark ? CColors.darkContainer : CColors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-                border: Border.all(color: isDark ? CColors.darkerGrey : Colors.transparent),
-              ),
+            CommonHeader(
+              title: 'Job Details',
+              showBackButton: true,
+              onBackPressed: () => Navigator.pop(context),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(CSizes.defaultSpace),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Status and Category Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _getStatusColor(widget.job.status).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              size: 8,
-                              color: _getStatusColor(widget.job.status),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.job.status.toUpperCase(),
-                              style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                                color: _getStatusColor(widget.job.status),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: CColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.category_rounded, size: 14, color: CColors.primary),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.job.category,
-                              style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                                color: CColors.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // Job Title
-                  Text(
-                    widget.job.title,
-                    style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: isDark ? CColors.textWhite : CColors.textPrimary,
-                      fontSize: 22,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Job Description
-                  Text(
-                    widget.job.description,
-                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                      color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
-                      height: 1.6,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Job Meta Information
-                  Container(
-                    padding: const EdgeInsets.all(CSizes.md),
-                    decoration: BoxDecoration(
-                      color: isDark ? CColors.darkerGrey.withOpacity(0.3) : CColors.lightContainer,
-                      borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-                    ),
-                    child: Column(
-                      children: [
-                        // Posted Time
-                        Row(
-                          children: [
-                            Icon(Icons.access_time_rounded, size: 18, color: CColors.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Posted ${timeago.format(widget.job.createdAt.toDate())}',
-                              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                                color: CColors.darkGrey,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Client Name
-                        Row(
-                          children: [
-                            Icon(Icons.person_rounded, size: 18, color: CColors.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Posted by: $_clientName',
-                              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                                color: CColors.darkGrey,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildJobDetailsCard(context, isDark),
+                  const SizedBox(height: CSizes.spaceBtwSections),
+                  _buildBidForm(context, isDark),
                 ],
               ),
             ),
-
-            const SizedBox(height: CSizes.spaceBtwSections),
-
-            // Bid Form Section
-            if (!_hasExistingBid && widget.job.status == 'open') ...[
-              Text(
-                'Place Your Bid',
-                style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? CColors.textWhite : CColors.textPrimary,
-                  fontSize: 20,
-                ),
-              ),
-              const SizedBox(height: CSizes.spaceBtwItems),
-
-              Container(
-                padding: const EdgeInsets.all(CSizes.lg),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-                  color: isDark ? CColors.darkContainer : CColors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                  border: Border.all(color: isDark ? CColors.darkerGrey : Colors.transparent),
-                ),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _amountController,
-                      decoration: InputDecoration(
-                        labelText: 'Bid Amount (PKR)',
-                        prefixText: 'Rs. ',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                          borderSide: BorderSide(color: CColors.borderPrimary),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                          borderSide: BorderSide(color: CColors.primary),
-                        ),
-                        labelStyle: TextStyle(color: CColors.darkGrey),
-                      ),
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: CSizes.lg),
-                    TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        labelText: 'Message to Client (Optional)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                          borderSide: BorderSide(color: CColors.borderPrimary),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                          borderSide: BorderSide(color: CColors.primary),
-                        ),
-                        alignLabelWithHint: true,
-                        labelStyle: TextStyle(color: CColors.darkGrey),
-                      ),
-                      maxLines: 3,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: CSizes.lg),
-                    SizedBox(
-                      width: double.infinity,
-                      child: _isLoading
-                          ? const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(CColors.primary),
-                        ),
-                      )
-                          : Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [CColors.primary, CColors.secondary],
-                          ),
-                          borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-                          boxShadow: [
-                            BoxShadow(
-                              color: CColors.primary.withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton(
-                          onPressed: _placeBid,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            foregroundColor: CColors.white,
-                            shadowColor: Colors.transparent,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-                            ),
-                          ),
-                          child: const Text(
-                            'Submit Bid',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ] else if (_hasExistingBid) ...[
-              Container(
-                padding: const EdgeInsets.all(CSizes.lg),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-                  color: CColors.info.withOpacity(0.1),
-                  border: Border.all(color: CColors.info),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: CColors.info),
-                    const SizedBox(width: CSizes.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Bid Already Placed',
-                            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                              color: CColors.info,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'You have already submitted a bid for this job.',
-                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                              color: CColors.info.withOpacity(0.8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ] else if (widget.job.status != 'open') ...[
-              Container(
-                padding: const EdgeInsets.all(CSizes.lg),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-                  color: CColors.warning.withOpacity(0.1),
-                  border: Border.all(color: CColors.warning),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.lock_clock_rounded, color: CColors.warning),
-                    const SizedBox(width: CSizes.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Job Not Accepting Bids',
-                            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                              color: CColors.warning,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'This job is no longer accepting new bids.',
-                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                              color: CColors.warning.withOpacity(0.8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildJobDetailsCard(BuildContext context, bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(CSizes.lg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        color: isDark ? CColors.darkContainer : CColors.white,
+        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(widget.job.status).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  widget.job.status.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                    color: _getStatusColor(widget.job.status),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: CColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  widget.job.category,
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                    color: CColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            widget.job.title,
+            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+              fontWeight: FontWeight.w700,
+              color: isDark ? CColors.textWhite : CColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.job.description,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+              color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
+              const SizedBox(width: 6),
+              Text(
+                'Posted by: $_clientName',
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                  color: CColors.darkGrey,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Icon(Icons.access_time_outlined, size: 16, color: CColors.darkGrey),
+              const SizedBox(width: 6),
+              Text(
+                timeago.format(widget.job.createdAt.toDate()),
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                  color: CColors.darkGrey,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBidForm(BuildContext context, bool isDark) {
+    if (_hasExistingBid) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(CSizes.lg),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          color: CColors.success.withOpacity(0.1),
+          border: Border.all(color: CColors.success.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.check_circle_outline, size: 40, color: CColors.success),
+            const SizedBox(height: 12),
+            Text(
+              'Bid Already Placed',
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: CColors.success,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'You have already submitted a bid for this job. Check your dashboard for updates.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (widget.job.status != 'open') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(CSizes.lg),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          color: CColors.warning.withOpacity(0.1),
+          border: Border.all(color: CColors.warning.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.lock_outline, size: 40, color: CColors.warning),
+            const SizedBox(height: 12),
+            Text(
+              'Job Closed',
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: CColors.warning,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This job is no longer accepting new bids.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Place Your Bid',
+          style: Theme.of(context).textTheme.titleLarge!.copyWith(
+            fontWeight: FontWeight.w700,
+            color: isDark ? CColors.textWhite : CColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: CSizes.spaceBtwItems),
+        Container(
+          padding: const EdgeInsets.all(CSizes.lg),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+            color: isDark ? CColors.darkContainer : CColors.white,
+            border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+          ),
+          child: Column(
+            children: [
+              TextField(
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Bid Amount (PKR)',
+                  prefixText: 'Rs. ',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: CSizes.spaceBtwInputFields),
+              TextField(
+                controller: _messageController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Message (Optional)',
+                  hintText: 'Tell the client why you\'re the best fit...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: CSizes.spaceBtwSections),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _placeBid,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: CSizes.md),
+                    backgroundColor: CColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text('Submit Bid'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

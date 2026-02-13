@@ -18,25 +18,32 @@ class AppRouter {
     switch (settings.name) {
       case AppRoutes.splash:
         return MaterialPageRoute(builder: (_) => const SplashScreen());
+
       case AppRoutes.role:
         return MaterialPageRoute(builder: (_) => const RoleSelection());
+
       case AppRoutes.login:
-      // Pass the arguments to Login widget
+      // Just pass the route, Login will read arguments from ModalRoute
         return MaterialPageRoute(
-          builder: (_) => Login(
-            userRole: settings.arguments as String?,
-          ),
+          builder: (_) => const Login(),  // ← No parameters needed
+          settings: settings,  // ← Pass settings so arguments are available
         );
+
       case AppRoutes.workerLogin:
         return MaterialPageRoute(builder: (_) => const WorkerSignUpScreen());
+
       case AppRoutes.clientSignUp:
         return MaterialPageRoute(builder: (_) => const ClientSignUpScreen());
+
       case AppRoutes.clientDashboard:
         return MaterialPageRoute(builder: (_) => const ClientDashboard());
+
       case AppRoutes.workerDashboard:
         return MaterialPageRoute(builder: (_) => const WorkerDashboard());
+
       case AppRoutes.postJob:
         return MaterialPageRoute(builder: (_) => const PostJobScreen());
+
       case AppRoutes.forgotPassword:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());
 
@@ -62,8 +69,6 @@ class AppRouter {
             ),
           ),
         );
-
-    // --- THE SET_PASSWORD ROUTE CASE HAS BEEN REMOVED ---
 
       default:
         return MaterialPageRoute(

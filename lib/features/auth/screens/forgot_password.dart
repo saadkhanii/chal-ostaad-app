@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
+import '../../../core/services/localization_service.dart';
 import '../../../shared/widgets/Cbutton.dart';
 import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
@@ -45,7 +47,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _handleSendResetLink(WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
     if (_userRole == null) {
-      _showErrorMessage('User role not identified. Please restart the app.');
+      _showErrorMessage('errors.role_not_identified'.tr());
       return;
     }
 
@@ -67,20 +69,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _logger.i('Password reset email sent successfully.');
 
       if (mounted) {
-        _showSuccessMessage('A password reset link has been sent to your email. Please check your inbox.');
+        _showSuccessMessage('auth.reset_link_sent'.tr());
         // Navigate back to the login screen after sending the link
         Navigator.pop(context);
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
-        _showErrorMessage('This email is not registered as a $_userRole.');
+        _showErrorMessage('errors.email_not_registered'.tr(args: [_userRole ?? 'user']));
       } else {
-        _showErrorMessage('An error occurred. Please try again.');
+        _showErrorMessage('errors.try_again'.tr());
       }
       _logger.e('Forgot Password error: ${e.code}');
     } on Exception catch(e) {
       _logger.e("Forgot Password generic error: $e");
-      _showErrorMessage('An unexpected error occurred. Please check your connection.');
+      _showErrorMessage('errors.unexpected_error'.tr());
     }
     finally {
       if (mounted) {
@@ -98,6 +100,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         final size = MediaQuery.of(context).size;
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final textTheme = Theme.of(context).textTheme;
+        final isUrdu = LocalizationService.isUrdu(context);
 
         return Scaffold(
           backgroundColor: isDark ? CColors.dark : CColors.white,
@@ -107,34 +110,38 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               constraints: BoxConstraints(minHeight: size.height),
               child: Column(
                 children: [
-                  CommonHeader(title: 'Reset'),
+                  CommonHeader(
+                    title: 'auth.reset_password'.tr(),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, CSizes.xl),
                     child: Form(
                       key: _formKey,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: isUrdu ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Forgot Password?',
+                            'auth.forgot_password'.tr(),
                             style: textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: isDark ? CColors.white : CColors.textPrimary,
                               fontSize: 20,
                             ),
+                            textAlign: isUrdu ? TextAlign.right : TextAlign.left,
                           ),
                           const SizedBox(height: CSizes.xs),
                           Text(
-                            "Don't worry, it happens! Enter your registered email to receive a password reset link.",
+                            'auth.reset_instruction'.tr(),
                             style: textTheme.bodyMedium?.copyWith(
                               color: isDark ? CColors.lightGrey : CColors.darkGrey,
                               fontSize: 12,
                             ),
+                            textAlign: isUrdu ? TextAlign.right : TextAlign.left,
                           ),
                           const SizedBox(height: CSizes.md),
                           CTextField(
-                            label: 'Email Address',
-                            hintText: 'your.email@example.com',
+                            label: 'auth.email'.tr(),
+                            hintText: 'auth.email_hint_reset'.tr(),
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             prefixIcon: Icon(
@@ -144,15 +151,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             ),
                             isRequired: true,
                             validator: (value) {
-                              if (value == null || value.isEmpty || !value.contains('@')) {
-                                return 'Please enter a valid email';
+                              if (value == null || value.isEmpty) {
+                                return 'auth.email_required'.tr();
+                              }
+                              if (!value.contains('@') || !value.contains('.')) {
+                                return 'auth.email_invalid'.tr();
                               }
                               return null;
                             },
                           ),
                           const SizedBox(height: CSizes.lg),
                           CButton(
-                            text: 'Send Reset Link',
+                            text: 'auth.send_reset_link'.tr(),
                             onPressed: () => _handleSendResetLink(ref),
                             width: double.infinity,
                             isLoading: authState.isLoading,

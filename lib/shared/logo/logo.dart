@@ -27,41 +27,45 @@ class AppLogo extends StatelessWidget {
           constraints: BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: CColors.secondary,
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                  ),
-                  child: Text(
-                    "CHAL",
-                    style: GoogleFonts.archivoBlack(
-                      fontSize: responsiveFontSize,
-                      color: CColors.primary,
-                      height: 1.2,
+            // Force LTR for the entire logo
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: CColors.secondary,
+                      borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    ),
+                    child: Text(
+                      "CHAL",
+                      style: GoogleFonts.archivoBlack(
+                        fontSize: responsiveFontSize,
+                        color: CColors.primary,
+                        height: 1.2,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: CSizes.sm),
-                Text(
-                  "OSTAAD",
-                  style: GoogleFonts.archivoBlack(
-                    fontSize: responsiveFontSize,
-                    color: CColors.white,
-                    height: 1.2,
-                    shadows: [
-                      Shadow(
-                        offset: const Offset(3, 3),
-                        blurRadius: 4,
-                        color: Colors.black.withOpacity(0.5),
-                      ),
-                    ],
+                  const SizedBox(width: CSizes.sm),
+                  Text(
+                    "OSTAAD",
+                    style: GoogleFonts.archivoBlack(
+                      fontSize: responsiveFontSize,
+                      color: CColors.white,
+                      height: 1.2,
+                      shadows: [
+                        Shadow(
+                          offset: const Offset(3, 3),
+                          blurRadius: 4,
+                          color: Colors.black.withOpacity(0.5),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../shared/widgets/Cbutton.dart';
 import '../../core/providers/role_provider.dart';
+import '../../core/providers/locale_provider.dart';
+import '../../core/services/localization_service.dart';
+import '../../shared/widgets/language_switch.dart';
 
 class RoleSelection extends ConsumerWidget {
   const RoleSelection({super.key});
@@ -23,8 +27,8 @@ class RoleSelection extends ConsumerWidget {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to save role. Please try again.'),
+        SnackBar(
+          content: Text('errors.save_role_failed'.tr()),
           backgroundColor: Colors.red,
         ),
       );
@@ -33,65 +37,89 @@ class RoleSelection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isUrdu = LocalizationService.isUrdu(context);
+
     return Scaffold(
       backgroundColor: CColors.primary,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Illustration - Keep your original size
-              SizedBox(
-                height: 300,
-                child: Image.asset(
-                  "assets/images/welcome_image.png",
-                  fit: BoxFit.contain,
+        child: Stack(
+          children: [
+            // Language Toggle Button - Positioned at top right
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
                 ),
+                child: const LanguageSwitch(),
               ),
-              const SizedBox(height: 20),
+            ),
 
-              // Tagline - Only made text smaller as requested
-              Text(
-                "Your trusted partner for finding work and workers",
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: CColors.black,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 40),
+            // Main Content
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Illustration
+                  SizedBox(
+                    height: 300,
+                    child: Image.asset(
+                      "assets/images/welcome_image.png",
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
-              // Client Role - Original layout
-              _roleSection(
-                context,
-                label: "Need help with work?",
-                button: CButton(
-                  text: "Find Worker",
-                  onPressed: () {
-                    _saveUserRoleAndNavigate('client', context, ref);
-                  },
-                  backgroundColor: CColors.secondary,
-                  foregroundColor: CColors.white,
-                ),
-              ),
-              const SizedBox(height: 20),
+                  // Tagline
+                  Text(
+                    'role.tagline'.tr(),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: CColors.black,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
 
-              // Worker Role - Original layout
-              _roleSection(
-                context,
-                label: "Looking for work?",
-                button: CButton(
-                  text: "Find Work",
-                  onPressed: () {
-                    _saveUserRoleAndNavigate('worker', context, ref);
-                  },
-                  backgroundColor: CColors.secondary,
-                  foregroundColor: CColors.white,
-                ),
+                  // Client Role
+                  _roleSection(
+                    context,
+                    label: 'role.need_help'.tr(),
+                    button: CButton(
+                      text: 'role.find_worker'.tr(),
+                      onPressed: () {
+                        _saveUserRoleAndNavigate('client', context, ref);
+                      },
+                      backgroundColor: CColors.secondary,
+                      foregroundColor: CColors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Worker Role
+                  _roleSection(
+                    context,
+                    label: 'role.looking_for_work'.tr(),
+                    button: CButton(
+                      text: 'role.find_work'.tr(),
+                      onPressed: () {
+                        _saveUserRoleAndNavigate('worker', context, ref);
+                      },
+                      backgroundColor: CColors.secondary,
+                      foregroundColor: CColors.white,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

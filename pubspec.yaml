@@ -9,20 +9,32 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # Localization - FIXED VERSION
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+  easy_localization: ^3.0.8
+
   # Firebase
   firebase_core: ^4.2.1
   cloud_firestore: ^6.1.0
   firebase_auth: ^6.1.2
+
   # Utilities
   http: ^1.6.0
   dart_random_choice: ^0.2.0
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.5.0
   logger: ^2.6.2
   google_fonts: ^6.3.2
+
   # Riverpod - Use stable version
   flutter_riverpod: ^2.4.9
   cupertino_icons: ^1.0.8
   timeago: ^3.7.1
+
+  # UI/UX
+  flutter_native_splash: ^2.3.10
 
 dev_dependencies:
   flutter_test:
@@ -36,9 +48,43 @@ flutter_launcher_icons:
   image_path: "assets/icons/logowb.png"
   min_sdk_android: 21
 
+flutter_native_splash:
+  color: "#ffffff"
+  image: assets/logos/logo.png
+  android: true
+  ios: true
+
 flutter:
   uses-material-design: true
+
+  # Enable localization code generation
+  generate: true
+
   assets:
+    # Icons and Images
     - assets/icons/
     - assets/images/
     - assets/logos/
+
+    # Translation files
+    - assets/translations/
+    - assets/translations/en.json
+    - assets/translations/ur.json
+
+  # Comment out fonts until you add them
+  # fonts:
+  #   - family: NotoSans
+  #     fonts:
+  #       - asset: assets/fonts/NotoSans-Regular.ttf
+  #       - asset: assets/fonts/NotoSans-Bold.ttf
+  #         weight: 700
+  #       - asset: assets/fonts/NotoSans-Italic.ttf
+  #         style: italic
+  #
+  #   - family: NotoNaskhArabic
+  #     fonts:
+  #       - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
+  #       - asset: assets/fonts/NotoNaskhArabic-Bold.ttf
+  #         weight: 700
+  #       - asset: assets/fonts/NotoNaskhArabic-Medium.ttf
+  #         weight: 500

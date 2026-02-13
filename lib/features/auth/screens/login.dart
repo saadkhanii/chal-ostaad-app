@@ -7,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/providers/auth_provider.dart';
@@ -16,9 +17,7 @@ import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
 
 class Login extends StatefulWidget {
-  final String? userRole;
-
-  const Login({super.key, this.userRole});
+  const Login({super.key});
 
   @override
   State<Login> createState() => _LoginState();
@@ -30,8 +29,13 @@ class _LoginState extends State<Login> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
   bool _rememberMe = true;
+  bool _credentialsLoaded = false;
 
-  // Helper method to get role-specific key names
+  String? get _userRole {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    return args as String?;
+  }
+
   String _getRoleSpecificKey(String baseKey, String userRole) {
     return '${userRole}_$baseKey';
   }
@@ -39,8 +43,7 @@ class _LoginState extends State<Login> {
   Future<void> _saveCredentials(String userRole) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // Explicitly set the bool and sync to ensure it's written
+
       await prefs.setBool('remember_me', _rememberMe);
       await prefs.setString('user_role', userRole);
 
@@ -58,7 +61,6 @@ class _LoginState extends State<Login> {
           await prefs.setString(passwordKey, password);
         }
       } else {
-        // Clear role-specific credentials
         final emailKey = _getRoleSpecificKey('saved_email', userRole);
         final passwordKey = _getRoleSpecificKey('saved_password', userRole);
         await prefs.remove(emailKey);
@@ -88,14 +90,14 @@ class _LoginState extends State<Login> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Saved credentials cleared'),
+          SnackBar(
+            content: Text('auth.credentials_cleared'.tr()),
             backgroundColor: CColors.success,
           ),
         );
       }
     } catch (e) {
-      _showErrorMessage('Failed to clear credentials');
+      _showErrorMessage('errors.try_again'.tr());
     }
   }
 
@@ -136,23 +138,45 @@ class _LoginState extends State<Login> {
     return userName;
   }
 
+  // Fixed translation method for login message
+  String _getLoginMessage(String role) {
+    final isUrdu = context.locale.languageCode == 'ur';
+    final template = 'auth.login_as'.tr();
+
+    if (isUrdu) {
+      // For Urdu: replace {0} with role
+      return template.replaceAll('{0}', role);
+    } else {
+      // For English: simple concatenation without parentheses
+      return '$template $role.';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, child) {
-        // Use addPostFrameCallback to handle initial load safely
+        final selectedRole = ref.watch(selectedRoleProvider);
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
-            // Only try to load if controllers are empty to avoid overwriting user input
-            if (_emailController.text.isEmpty && _passwordController.text.isEmpty) {
-               final userRole = widget.userRole ?? ref.read(selectedRoleProvider);
-               if (userRole != null) {
-                 _loadCredentialsForRole(userRole);
-               }
+          if (!_credentialsLoaded) {
+            final userRole = _userRole ?? selectedRole;
+            if (userRole != null && userRole.isNotEmpty) {
+              _loadCredentialsForRole(userRole).then((_) {
+                if (mounted) {
+                  setState(() {
+                    _credentialsLoaded = true;
+                  });
+                }
+              });
             }
+          }
         });
 
         final authState = ref.watch(authProvider);
-        final userRole = widget.userRole ?? ref.read(selectedRoleProvider) ?? 'user';
+        final rawRole = _userRole ?? selectedRole;
+        final displayRole = rawRole == 'client' ? 'Client' : (rawRole == 'worker' ? 'Worker' : 'User');
+        final userRole = rawRole ?? 'user';
         final size = MediaQuery.of(context).size;
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final textTheme = Theme.of(context).textTheme;
@@ -166,8 +190,8 @@ class _LoginState extends State<Login> {
               child: Column(
                 children: [
                   CommonHeader(
-                    title: 'Login',
-                    backgroundColor: CColors.primary, 
+                    title: 'auth.login'.tr(),
+                    backgroundColor: CColors.primary,
                     textColor: CColors.secondary,
                     heightFactor: 0.25,
                   ),
@@ -179,7 +203,7 @@ class _LoginState extends State<Login> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Hello Again!',
+                            'auth.welcome_back'.tr(),
                             style: textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: isDark ? CColors.white : CColors.textPrimary,
@@ -187,17 +211,20 @@ class _LoginState extends State<Login> {
                             ),
                           ),
                           const SizedBox(height: CSizes.xs),
+
+                          // Login message with role - FIXED
                           Text(
-                            'We\'re happy to see you. Log in as a $userRole.',
+                            _getLoginMessage(displayRole),
                             style: textTheme.bodyMedium?.copyWith(
                               color: isDark ? CColors.lightGrey : CColors.darkGrey,
                               fontSize: 12,
                             ),
                           ),
                           const SizedBox(height: CSizes.md),
+
                           CTextField(
-                            label: 'Email',
-                            hintText: 'Enter your email address',
+                            label: 'auth.email'.tr(),
+                            hintText: 'auth.email_hint'.tr(),
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             prefixIcon: Icon(
@@ -209,9 +236,10 @@ class _LoginState extends State<Login> {
                             validator: _validateEmail,
                           ),
                           const SizedBox(height: CSizes.md),
+
                           CTextField(
-                            label: 'Password',
-                            hintText: 'Enter your password',
+                            label: 'auth.password'.tr(),
+                            hintText: 'auth.password_hint'.tr(),
                             controller: _passwordController,
                             keyboardType: TextInputType.visiblePassword,
                             obscureText: _obscurePassword,
@@ -234,69 +262,67 @@ class _LoginState extends State<Login> {
                           const SizedBox(height: CSizes.md),
 
                           // Remember me toggle
-                          Transform.translate(
-                            offset: const Offset(-10, 0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Checkbox(
-                                      value: _rememberMe,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _rememberMe = value ?? true;
-                                        });
-                                      },
-                                      activeColor: CColors.primary,
-                                      checkColor: CColors.white,
-                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _rememberMe = !_rememberMe;
-                                        });
-                                      },
-                                      child: Text(
-                                        'Remember me',
-                                        style: textTheme.bodyMedium?.copyWith(
-                                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (_emailController.text.isNotEmpty)
-                                  TextButton(
-                                    onPressed: () => _clearSavedCredentials(userRole),
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: const Size(50, 30),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: _rememberMe,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _rememberMe = value ?? true;
+                                      });
+                                    },
+                                    activeColor: CColors.primary,
+                                    checkColor: CColors.white,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _rememberMe = !_rememberMe;
+                                      });
+                                    },
                                     child: Text(
-                                      'Clear saved',
-                                      style: textTheme.bodySmall?.copyWith(
-                                        color: CColors.error,
-                                        decoration: TextDecoration.underline,
+                                      'auth.remember_me'.tr(),
+                                      style: textTheme.bodyMedium?.copyWith(
+                                        color: isDark ? CColors.lightGrey : CColors.darkGrey,
                                         fontSize: 12,
                                       ),
                                     ),
                                   ),
-                              ],
-                            ),
+                                ],
+                              ),
+                              if (_emailController.text.isNotEmpty)
+                                TextButton(
+                                  onPressed: () => _clearSavedCredentials(userRole),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: const Size(50, 30),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: Text(
+                                    'auth.clear_saved'.tr(),
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: CColors.error,
+                                      decoration: TextDecoration.underline,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
 
                           const SizedBox(height: CSizes.sm),
+
                           Align(
                             alignment: Alignment.centerRight,
                             child: TextButton(
                               onPressed: _handleForgotPassword,
                               child: Text(
-                                'Forgot Password?',
+                                'auth.forgot_password'.tr(),
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: CColors.primary,
                                   fontWeight: FontWeight.w600,
@@ -305,6 +331,7 @@ class _LoginState extends State<Login> {
                               ),
                             ),
                           ),
+
                           const SizedBox(height: CSizes.sm),
                           _buildLoginButton(authState, userRole, ref),
                           const SizedBox(height: CSizes.lg),
@@ -325,28 +352,27 @@ class _LoginState extends State<Login> {
   Future<void> _loadCredentialsForRole(String userRole) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // Load remember_me first
+
       if (mounted) {
-         setState(() {
-            _rememberMe = prefs.getBool('remember_me') ?? true;
-         });
+        setState(() {
+          _rememberMe = prefs.getBool('remember_me') ?? true;
+        });
       }
 
       if (_rememberMe) {
-          final emailKey = _getRoleSpecificKey('saved_email', userRole);
-          final passwordKey = _getRoleSpecificKey('saved_password', userRole);
+        final emailKey = _getRoleSpecificKey('saved_email', userRole);
+        final passwordKey = _getRoleSpecificKey('saved_password', userRole);
 
-          final savedEmail = prefs.getString(emailKey);
-          final savedPassword = prefs.getString(passwordKey);
+        final savedEmail = prefs.getString(emailKey);
+        final savedPassword = prefs.getString(passwordKey);
 
-          if (savedEmail != null && savedEmail.isNotEmpty && _emailController.text.isEmpty) {
-            _emailController.text = savedEmail;
-          }
+        if (savedEmail != null && savedEmail.isNotEmpty) {
+          _emailController.text = savedEmail;
+        }
 
-          if (savedPassword != null && savedPassword.isNotEmpty && _passwordController.text.isEmpty) {
-            _passwordController.text = savedPassword;
-          }
+        if (savedPassword != null && savedPassword.isNotEmpty) {
+          _passwordController.text = savedPassword;
+        }
       }
     } catch (e) {
       debugPrint('Error loading credentials: $e');
@@ -356,14 +382,12 @@ class _LoginState extends State<Login> {
   Future<void> _handleLogin(String userRole, WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (userRole == null) {
-      _showErrorMessage('Please select a role first.');
+    if (userRole.isEmpty || userRole == 'user') {
+      _showErrorMessage('errors.role_required'.tr());
       return;
     }
 
     final authNotifier = ref.read(authProvider.notifier);
-
-    // Update loading state
     ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
     final email = _emailController.text.trim();
@@ -371,7 +395,6 @@ class _LoginState extends State<Login> {
     final collectionName = userRole == 'client' ? 'clients' : 'workers';
 
     try {
-      // Verify user exists in Firestore
       final querySnapshot = await FirebaseFirestore.instance
           .collection(collectionName)
           .where('personalInfo.email', isEqualTo: email)
@@ -379,10 +402,9 @@ class _LoginState extends State<Login> {
           .get();
 
       if (querySnapshot.docs.isEmpty) {
-        throw Exception('This email is not registered as a $userRole.');
+        throw Exception('errors.email_not_registered'.tr(args: [userRole]));
       }
 
-      // Get the correct Firebase app for this user role
       final firebaseApp = Firebase.app(userRole);
       final auth = FirebaseAuth.instanceFor(app: firebaseApp);
 
@@ -391,29 +413,24 @@ class _LoginState extends State<Login> {
         password: password,
       );
 
-      // Verify account status
       final docData = querySnapshot.docs.first.data();
       if (docData['account']?['accountStatus'] != 'active') {
         await auth.signOut();
         throw FirebaseAuthException(
           code: 'user-disabled',
-          message: 'This account has been disabled or is not yet active.',
+          message: 'errors.account_disabled'.tr(),
         );
       }
 
-      // Extract user name
       final userName = _extractUserName(docData, email, userRole);
 
-      // Save credentials if remember me is checked
       await _saveCredentials(userRole);
-      
-      // Also save user name to SharedPreferences for other parts of the app
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_name', userName);
       await prefs.setString('user_email', email);
       await prefs.setString('user_uid', userCredential.user!.uid);
 
-      // Update auth state through provider
       authNotifier.state = AuthState(
         isLoading: false,
         isAuthenticated: true,
@@ -422,7 +439,6 @@ class _LoginState extends State<Login> {
         email: email,
       );
 
-      // Navigate to dashboard
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
@@ -432,11 +448,11 @@ class _LoginState extends State<Login> {
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        _showErrorMessage('Invalid email or password. Please try again.');
+        _showErrorMessage('errors.invalid_credentials'.tr());
       } else if (e.code == 'user-disabled') {
-        _showErrorMessage('Your account is not active or has been disabled by an admin.');
+        _showErrorMessage('errors.account_disabled'.tr());
       } else {
-        _showErrorMessage('An error occurred during login. Please try again.');
+        _showErrorMessage('errors.login_failed'.tr());
       }
       authNotifier.state = const AuthState(isLoading: false);
     } on Exception catch (e) {
@@ -449,7 +465,7 @@ class _LoginState extends State<Login> {
     return authState.isLoading
         ? const Center(child: CircularProgressIndicator(color: CColors.primary))
         : CButton(
-      text: 'Login',
+      text: 'auth.login'.tr(),
       onPressed: () => _handleLogin(userRole, ref),
       width: double.infinity,
     );
@@ -461,7 +477,7 @@ class _LoginState extends State<Login> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            "Don't have an account? ",
+            'auth.no_account'.tr(),
             style: textTheme.bodyMedium?.copyWith(
               color: isDark ? CColors.lightGrey : CColors.darkGrey,
               fontSize: 12,
@@ -475,7 +491,7 @@ class _LoginState extends State<Login> {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
-              'Sign Up!',
+              'auth.sign_up_exclamation'.tr(),
               style: textTheme.bodyMedium?.copyWith(
                 color: CColors.primary,
                 fontWeight: FontWeight.w600,
@@ -495,7 +511,7 @@ class _LoginState extends State<Login> {
     } else if (userRole == 'worker') {
       Navigator.pushNamed(context, AppRoutes.workerLogin);
     } else {
-      _showErrorMessage('Please select a role first.');
+      _showErrorMessage('errors.select_role_first'.tr());
       Navigator.pushNamedAndRemoveUntil(
         context,
         AppRoutes.role,
@@ -509,13 +525,13 @@ class _LoginState extends State<Login> {
   }
 
   String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) return 'Please enter your email address';
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'Please enter a valid email address';
+    if (value == null || value.isEmpty) return 'auth.email_required'.tr();
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'auth.email_invalid'.tr();
     return null;
   }
 
   String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Please enter your password';
+    if (value == null || value.isEmpty) return 'auth.password_required'.tr();
     return null;
   }
 

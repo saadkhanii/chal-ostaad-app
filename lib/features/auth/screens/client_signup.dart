@@ -7,11 +7,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/routes/app_routes.dart';
+import '../../../core/services/localization_service.dart';
 import '../../../shared/widgets/Cbutton.dart';
 import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
@@ -72,7 +74,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   Future<void> _handleClientSignUp(WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     // Update loading state using Riverpod
     ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
@@ -85,17 +87,17 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
       // 1. Check for email duplication across all roles (emails must be unique)
       final emailExistsInClients = await _checkIfValueExists('personalInfo.email', email, 'clients');
       if (emailExistsInClients) {
-        throw Exception('This email is already registered as a client.');
+        throw Exception('auth.email_already_registered_client'.tr());
       }
       final emailExistsInWorkers = await _checkIfValueExists('personalInfo.email', email, 'workers');
       if (emailExistsInWorkers) {
-        throw Exception('This email is already in use by a worker account.');
+        throw Exception('auth.email_already_registered_worker'.tr());
       }
 
       // 2. Check for CNIC duplication only within the 'clients' collection
       final cnicExists = await _checkIfValueExists('personalInfo.cnic', cnic, 'clients');
       if (cnicExists) {
-        throw Exception('This CNIC is already registered as a client.');
+        throw Exception('auth.cnic_already_registered'.tr());
       }
 
       // 3. Generate OTP and create a temporary document in Firestore
@@ -125,7 +127,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
       // 5. Navigate to OTP screen on success
       if (mounted) {
-        _showSuccessMessage('Verification code sent to your email.');
+        _showSuccessMessage('auth.verification_code_sent'.tr());
         Navigator.pushNamed(
           context,
           AppRoutes.otpVerification,
@@ -160,6 +162,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
         final size = MediaQuery.of(context).size;
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final textTheme = Theme.of(context).textTheme;
+        final isUrdu = LocalizationService.isUrdu(context);
 
         return Scaffold(
           backgroundColor: isDark ? CColors.dark : CColors.white,
@@ -171,39 +174,43 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
               ),
               child: Column(
                 children: [
-                  CommonHeader(title: 'SignUp'),
+                  CommonHeader(
+                    title: 'auth.sign_up'.tr(),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, CSizes.xl),
                     child: Form(
                       key: _formKey,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: isUrdu ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
                           Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: isUrdu ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Create Client Account!',
+                                'auth.create_client_account'.tr(),
                                 style: textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: isDark ? CColors.white : CColors.textPrimary,
                                   fontSize: 20,
                                 ),
+                                textAlign: isUrdu ? TextAlign.right : TextAlign.left,
                               ),
                               const SizedBox(height: CSizes.xs),
                               Text(
-                                'Register to post jobs and hire workers',
+                                'auth.register_to_post_jobs'.tr(),
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: isDark ? CColors.lightGrey : CColors.darkGrey,
                                   fontSize: 12,
                                 ),
+                                textAlign: isUrdu ? TextAlign.right : TextAlign.left,
                               ),
                             ],
                           ),
                           const SizedBox(height: CSizes.md),
                           CTextField(
-                            label: 'Full Name',
-                            hintText: 'Enter your full name',
+                            label: 'auth.full_name'.tr(),
+                            hintText: 'auth.full_name_hint'.tr(),
                             controller: _fullNameController,
                             keyboardType: TextInputType.name,
                             prefixIcon: Icon(
@@ -217,8 +224,8 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           ),
                           const SizedBox(height: CSizes.sm),
                           CTextField(
-                            label: 'CNIC Number',
-                            hintText: 'XXXXX-XXXXXXX-X',
+                            label: 'auth.cnic'.tr(),
+                            hintText: 'auth.cnic_hint'.tr(),
                             controller: _cnicController,
                             keyboardType: TextInputType.number,
                             prefixIcon: Icon(
@@ -236,8 +243,8 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           ),
                           const SizedBox(height: CSizes.sm),
                           CTextField(
-                            label: 'Phone Number',
-                            hintText: '03XX-XXXXXXX',
+                            label: 'auth.phone'.tr(),
+                            hintText: 'auth.phone_hint'.tr(),
                             controller: _phoneController,
                             keyboardType: TextInputType.number,
                             prefixIcon: Icon(
@@ -255,8 +262,8 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           ),
                           const SizedBox(height: CSizes.sm),
                           CTextField(
-                            label: 'Email Address',
-                            hintText: 'your.email@example.com',
+                            label: 'auth.email'.tr(),
+                            hintText: 'auth.email_hint_signup'.tr(),
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             prefixIcon: Icon(
@@ -270,7 +277,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           const SizedBox(height: CSizes.lg),
                           _buildSignUpButton(authState, ref),
                           const SizedBox(height: CSizes.lg),
-                          _buildHelpText(context, textTheme, isDark),
+                          _buildHelpText(context, textTheme, isDark, isUrdu),
                         ],
                       ),
                     ),
@@ -286,20 +293,20 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   Widget _buildSignUpButton(AuthState authState, WidgetRef ref) {
     return CButton(
-      text: 'Sign Up',
+      text: 'auth.sign_up'.tr(),
       onPressed: () => _handleClientSignUp(ref),
       width: double.infinity,
       isLoading: authState.isLoading,
     );
   }
 
-  Widget _buildHelpText(BuildContext context, TextTheme textTheme, bool isDark) {
+  Widget _buildHelpText(BuildContext context, TextTheme textTheme, bool isDark, bool isUrdu) {
     return Center(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            "Already have an account? ",
+            'auth.already_have_account'.tr(),
             style: textTheme.bodyMedium?.copyWith(
               color: isDark ? CColors.lightGrey : CColors.darkGrey,
               fontSize: 12,
@@ -313,7 +320,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
-              'Login!',
+              'auth.login_exclamation'.tr(),
               style: textTheme.bodyMedium?.copyWith(
                 color: CColors.primary,
                 fontWeight: FontWeight.w600,
@@ -333,40 +340,40 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
 
   String? _validateFullName(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your full name';
+      return 'auth.full_name_required'.tr();
     }
     if (value.length < 3) {
-      return 'Name must be at least 3 characters';
+      return 'auth.full_name_min_length'.tr();
     }
     return null;
   }
 
   String? _validateCnic(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your CNIC number';
+      return 'auth.cnic_required'.tr();
     }
     if (!_cnicRegex.hasMatch(value)) {
-      return 'Please enter valid CNIC format (XXXXX-XXXXXXX-X)';
+      return 'auth.cnic_invalid'.tr();
     }
     return null;
   }
 
   String? _validatePhone(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your phone number';
+      return 'auth.phone_required'.tr();
     }
     if (value.length != 12) {
-      return 'Please enter valid phone format (03XX-XXXXXXX)';
+      return 'auth.phone_invalid'.tr();
     }
     return null;
   }
 
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your email address';
+      return 'auth.email_required'.tr();
     }
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-      return 'Please enter a valid email address';
+      return 'auth.email_invalid'.tr();
     }
     return null;
   }

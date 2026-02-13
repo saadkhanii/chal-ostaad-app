@@ -5,6 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chal_ostaad/firebase/firebase_options.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chal_ostaad/core/providers/theme_provider.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:chal_ostaad/core/services/localization_service.dart';
+import 'dart:ui' as ui;
 
 // Import providers
 import 'core/providers/shared_prefs_provider.dart';
@@ -16,6 +19,9 @@ void main() async {
 
   // Initialize SharedPreferences early
   final sharedPreferences = await SharedPreferences.getInstance();
+
+  // Initialize EasyLocalization
+  await EasyLocalization.ensureInitialized();
 
   // Firebase initialization
   try {
@@ -52,7 +58,12 @@ void main() async {
         // Override the sharedPreferencesProvider with actual instance
         sharedPreferencesProvider.overrideWithValue(sharedPreferences),
       ],
-      child: const ChalOstaadApp(),
+      child: EasyLocalization(
+        supportedLocales: LocalizationService.supportedLocales,
+        path: LocalizationService.path, // Path to your translations
+        fallbackLocale: LocalizationService.defaultLocale,
+        child: const ChalOstaadApp(),
+      ),
     ),
   );
 }
@@ -66,13 +77,32 @@ class ChalOstaadApp extends ConsumerWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+
       theme: CAppTheme.lightTheme,
       darkTheme: CAppTheme.darkTheme,
       themeMode: themeState.themeMode == ThemeModeType.system
           ? ThemeMode.system
-          : (themeState.themeMode == ThemeModeType.dark ? ThemeMode.dark : ThemeMode.light),
+          : (themeState.themeMode == ThemeModeType.dark
+          ? ThemeMode.dark
+          : ThemeMode.light),
+
+      locale: context.locale,
+      supportedLocales: context.supportedLocales,
+      localizationsDelegates: context.localizationDelegates,
+
+
+      builder: (context, child) {
+        return Directionality(
+          textDirection: context.locale.languageCode == 'ur'
+              ? ui.TextDirection.rtl
+              : ui.TextDirection.ltr,
+          child: child!,
+        );
+      },
+
       initialRoute: AppRoutes.splash,
       onGenerateRoute: AppRouter.generateRoute,
     );
+
   }
 }

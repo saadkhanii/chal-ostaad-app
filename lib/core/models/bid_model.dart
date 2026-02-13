@@ -1,4 +1,4 @@
-// lib/core/models/bid_model.dart
+// lib/core/models/bid_model.dart - UPDATED
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BidModel {
@@ -26,12 +26,68 @@ class BidModel {
 
   factory BidModel.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     final data = document.data()!;
+
+    // SAFE amount parsing
+    double parsedAmount = 0.0;
+    final amountValue = data['amount'];
+
+    if (amountValue is int) {
+      parsedAmount = amountValue.toDouble();
+    } else if (amountValue is double) {
+      parsedAmount = amountValue;
+    } else if (amountValue is String) {
+      // Handle string amounts (remove Rs symbol, commas, etc.)
+      try {
+        final cleaned = amountValue.replaceAll(RegExp(r'[^0-9\.]'), '');
+        parsedAmount = double.parse(cleaned);
+      } catch (e) {
+        print('Error parsing amount string: $amountValue, error: $e');
+        parsedAmount = 0.0;
+      }
+    } else if (amountValue is num) {
+      parsedAmount = amountValue.toDouble();
+    } else {
+      print('Warning: Unknown amount type: ${amountValue.runtimeType}');
+    }
+
     return BidModel(
       id: document.id,
       jobId: data['jobId'] ?? '',
       workerId: data['workerId'] ?? '',
       clientId: data['clientId'] ?? '',
-      amount: (data['amount'] as num).toDouble(),
+      amount: parsedAmount,
+      message: data['message'],
+      status: data['status'] ?? 'pending',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      updatedAt: data['updatedAt'],
+    );
+  }
+
+  factory BidModel.fromMap(Map<String, dynamic> data, String id) {
+    double parsedAmount = 0.0;
+    final amountValue = data['amount'];
+
+    if (amountValue is int) {
+      parsedAmount = amountValue.toDouble();
+    } else if (amountValue is double) {
+      parsedAmount = amountValue;
+    } else if (amountValue is String) {
+      try {
+        final cleaned = amountValue.replaceAll(RegExp(r'[^0-9\.]'), '');
+        parsedAmount = double.parse(cleaned);
+      } catch (e) {
+        parsedAmount = 0.0;
+      }
+    } else if (amountValue is num) {
+      parsedAmount = amountValue.toDouble();
+    }
+
+    return BidModel(
+      id: id,
+      jobId: data['jobId'] ?? '',
+      workerId: data['workerId'] ?? '',
+      clientId: data['clientId'] ?? '',
+      amount: parsedAmount,
       message: data['message'],
       status: data['status'] ?? 'pending',
       createdAt: data['createdAt'] ?? Timestamp.now(),

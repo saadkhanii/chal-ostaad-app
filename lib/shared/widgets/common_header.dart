@@ -39,13 +39,21 @@ class CommonHeader extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: CSizes.sm),
             child: Row(
+              // Force LTR layout to keep positions fixed
+              textDirection: TextDirection.ltr,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Back Button
+                // Back Button - Always on left, always pointing left
                 if (showBackButton)
                   IconButton(
-                    icon: Icon(Icons.arrow_back_ios, color: textColor, size: 24),
+                    icon: Transform(
+
+                      transform: Matrix4.identity(),
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.arrow_back_ios, size: 24, textDirection: TextDirection.ltr,),
+                    ),
+                    color: textColor,
                     onPressed: onBackPressed ?? () {
                       if (Navigator.canPop(context)) {
                         Navigator.pop(context);
@@ -55,20 +63,23 @@ class CommonHeader extends ConsumerWidget {
                 else
                   const SizedBox(width: 48),
 
-                // Logo
+                // Logo - Force LTR for the text
                 const Expanded(
                   child: Center(
-                    child: AppLogo(fontSize: 28, minWidth: 140, maxWidth: 240),
+                    child: Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: AppLogo(fontSize: 28, minWidth: 140, maxWidth: 240),
+                    ),
                   ),
                 ),
 
-                // Theme Switcher
+                // Theme Switcher - Always on right
                 IconButton(
                   icon: Icon(
                     themeState.isDark ? Icons.light_mode : Icons.dark_mode,
-                    color: textColor,
                     size: 24,
                   ),
+                  color: textColor,
                   onPressed: () => ref.read(themeProvider.notifier).toggleTheme(),
                 ),
               ],
