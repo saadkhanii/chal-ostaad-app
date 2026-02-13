@@ -6,8 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
@@ -34,7 +34,6 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  final Logger _logger = Logger();
 
   Future<void> _handleSetPassword() async {
     if (!_formKey.currentState!.validate()) return;
@@ -45,7 +44,6 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       userRole = prefs.getString('user_role') ?? 'client';
-      _logger.i('Attempting to create user for role: $userRole');
 
       final secondaryApp = Firebase.app(userRole);
       final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
@@ -56,8 +54,6 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
         password: password,
       );
 
-      _logger.i('Successfully created user in Firebase Auth. UID: ${userCredential.user?.uid}');
-
       final collectionName = userRole == 'client' ? 'clients' : 'workers';
       final querySnapshot = await FirebaseFirestore.instance
           .collection(collectionName)
@@ -67,7 +63,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
 
       if (querySnapshot.docs.isEmpty) {
         await userCredential.user?.delete();
-        throw Exception('Could not find your registration data. Please sign up again.');
+        throw Exception('errors.registration_data_not_found'.tr());
       }
 
       final oldDoc = querySnapshot.docs.first;
@@ -86,24 +82,20 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       await newDocRef.update({'verification': FieldValue.delete()});
       await oldDoc.reference.delete();
 
-      _logger.i('Firestore document migrated to UID and activated for ${widget.email}.');
-
       if (mounted) {
-        _showSuccessMessage('Account created successfully!');
+        _showSuccessMessage('auth.account_created'.tr());
         Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (route) => false);
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
-        _showErrorMessage('This email is already registered for a ${userRole ?? 'user'} account.');
+        _showErrorMessage('errors.email_already_registered'.tr(args: [userRole ?? 'user']));
       } else if (e.code == 'weak-password') {
-        _showErrorMessage('The password is too weak (must be at least 6 characters).');
+        _showErrorMessage('errors.weak_password'.tr());
       } else {
-        _showErrorMessage('An authentication error occurred: ${e.message}');
+        _showErrorMessage('errors.auth_error'.tr(args: [e.message ?? '']));
       }
-      _logger.e('FirebaseAuthException in Set Password: ${e.code}');
     } on Exception catch (e) {
       final errorMessage = e.toString().startsWith('Exception: ') ? e.toString().substring(11) : e.toString();
-      _logger.e('Set Password Failed: $errorMessage');
       _showErrorMessage(errorMessage);
     } finally {
       if (mounted) {
@@ -117,6 +109,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
     final size = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textTheme = Theme.of(context).textTheme;
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.white,
@@ -128,98 +121,93 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
           ),
           child: Column(
             children: [
-              const CommonHeader(title: 'Set Password'),
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: isDark ? CColors.darkContainer : CColors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(CSizes.cardRadiusLg),
-                    topRight: Radius.circular(CSizes.cardRadiusLg),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(CSizes.xl),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Set a new password',
-                          style: textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? CColors.white : CColors.textPrimary,
-                            fontSize: 24,
-                          ),
+              // Changed title to just 'Password'
+              CommonHeader(
+                title: 'auth.password'.tr()
+              ),
+              Padding(
+                padding: const EdgeInsets.all(CSizes.xl),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'auth.set_new_password'.tr(),
+                        style: textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? CColors.white : CColors.textPrimary,
+                          fontSize: isUrdu ? 24 : 20,
                         ),
-                        const SizedBox(height: CSizes.sm),
-                        Text(
-                          'Create a new, strong password to complete your account.',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                          ),
+                      ),
+                      const SizedBox(height: CSizes.sm),
+                      Text(
+                        'auth.password_instruction'.tr(),
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                          fontSize: isUrdu ? 16 : 14,
+                          height: isUrdu ? 1.5 : 1.2,
                         ),
-                        const SizedBox(height: CSizes.xl),
-                        CTextField(
-                          label: 'Password',
-                          hintText: 'Enter your new password',
-                          controller: _passwordController,
-                          keyboardType: TextInputType.visiblePassword,
-                          obscureText: _obscurePassword,
-                          prefixIcon: Icon(
-                            Icons.lock_outline,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                            size: 20,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                                size: 20),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                          isRequired: true,
-                          validator: _validatePassword,
+                      ),
+                      const SizedBox(height: CSizes.xl),
+                      CTextField(
+                        label: 'auth.password'.tr(),
+                        hintText: 'auth.new_password_hint'.tr(),
+                        controller: _passwordController,
+                        keyboardType: TextInputType.visiblePassword,
+                        obscureText: _obscurePassword,
+                        prefixIcon: Icon(
+                          Icons.lock_outline,
+                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                          size: 20,
                         ),
-                        const SizedBox(height: CSizes.lg),
-                        CTextField(
-                          label: 'Confirm Password',
-                          hintText: 'Re-enter your password',
-                          controller: _confirmPasswordController,
-                          keyboardType: TextInputType.visiblePassword,
-                          obscureText: _obscureConfirmPassword,
-                          prefixIcon: Icon(
-                            Icons.lock_outlined,
-                            color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                            size: 20,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                                _obscureConfirmPassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                                size: 20),
-                            onPressed: () {
-                              setState(() {
-                                _obscureConfirmPassword = !_obscureConfirmPassword;
-                              });
-                            },
-                          ),
-                          isRequired: true,
-                          validator: _validateConfirmPassword,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                              size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
                         ),
-                        const SizedBox(height: CSizes.xl),
-                        _buildSetPasswordButton(),
-                      ],
-                    ),
+                        isRequired: true,
+                        validator: _validatePassword,
+                      ),
+                      const SizedBox(height: CSizes.lg),
+                      CTextField(
+                        label: 'auth.confirm_password'.tr(),
+                        hintText: 'auth.confirm_password_hint'.tr(),
+                        controller: _confirmPasswordController,
+                        keyboardType: TextInputType.visiblePassword,
+                        obscureText: _obscureConfirmPassword,
+                        prefixIcon: Icon(
+                          Icons.lock_outlined,
+                          color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                          size: 20,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              _obscureConfirmPassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                              size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _obscureConfirmPassword = !_obscureConfirmPassword;
+                            });
+                          },
+                        ),
+                        isRequired: true,
+                        validator: _validateConfirmPassword,
+                      ),
+                      const SizedBox(height: CSizes.xl),
+                      _buildSetPasswordButton(),
+                    ],
                   ),
                 ),
               ),
@@ -250,30 +238,28 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       ),
     )
         : CButton(
-      text: 'Create Account & Login',
+      text: 'auth.create_account_and_login'.tr(),
       onPressed: _handleSetPassword,
       width: double.infinity,
-      backgroundColor: CColors.primary,
-      foregroundColor: CColors.white,
     );
   }
 
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your password';
+      return 'auth.password_required'.tr();
     }
     if (value.length < 6) {
-      return 'Password must be at least 6 characters long';
+      return 'auth.password_min_length'.tr();
     }
     return null;
   }
 
   String? _validateConfirmPassword(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please confirm your password';
+      return 'auth.confirm_password_required'.tr();
     }
     if (value != _passwordController.text) {
-      return 'Passwords do not match';
+      return 'auth.passwords_do_not_match'.tr();
     }
     return null;
   }

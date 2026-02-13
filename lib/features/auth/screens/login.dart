@@ -202,6 +202,7 @@ class _LoginState extends State<Login> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          const SizedBox(height: CSizes.md),
                           Text(
                             'auth.welcome_back'.tr(),
                             style: textTheme.headlineSmall?.copyWith(

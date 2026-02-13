@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
@@ -70,8 +71,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
 
   Future<void> _handleWorkerSignUp(WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
-    
-    // Update loading state using Riverpod
+
     ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
     final cnic = _cnicController.text.trim();
@@ -85,7 +85,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
           .get(const GetOptions(source: Source.server));
 
       if (querySnapshot.docs.isEmpty) {
-        throw Exception('No worker found with this CNIC. Please contact support to register.');
+        throw Exception('errors.worker_not_found'.tr());
       }
 
       final workerDoc = querySnapshot.docs.first;
@@ -93,7 +93,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       final String existingEmail = workerData['personalInfo']['email'];
 
       if (email != existingEmail) {
-        throw Exception('The email address does not match the registered CNIC.');
+        throw Exception('errors.email_mismatch'.tr());
       }
 
       final userName = workerData['personalInfo']['fullName'] ?? 'Worker';
@@ -110,7 +110,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       await _sendEmailOtp(otp: otp, userName: userName, userEmail: email);
 
       if (mounted) {
-        _showSuccessMessage('Welcome back! Please verify with the code sent to your email.');
+        _showSuccessMessage('auth.welcome_back_verify'.tr());
         Navigator.pushNamed(
           context,
           AppRoutes.otpVerification,
@@ -122,8 +122,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       _showErrorMessage(errorMessage);
     } finally {
       if (mounted) {
-         // Reset loading state
-         ref.read(authProvider.notifier).state = const AuthState(isLoading: false);
+        ref.read(authProvider.notifier).state = const AuthState(isLoading: false);
       }
     }
   }
@@ -136,6 +135,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
         final size = MediaQuery.of(context).size;
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final textTheme = Theme.of(context).textTheme;
+        final isUrdu = context.locale.languageCode == 'ur';
 
         return Scaffold(
           backgroundColor: isDark ? CColors.dark : CColors.white,
@@ -147,7 +147,9 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
               ),
               child: Column(
                 children: [
-                  CommonHeader(title: 'SignUp'),
+                  CommonHeader(
+                    title: 'auth.sign_up'.tr(),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, CSizes.xl),
                     child: Form(
@@ -160,27 +162,28 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Create Worker Account',
+                                'auth.create_worker_account'.tr(),
                                 style: textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: isDark ? CColors.white : CColors.textPrimary,
-                                  fontSize: 20,
+                                  fontSize: isUrdu ? 24 : 20,
                                 ),
                               ),
                               const SizedBox(height: CSizes.xs),
                               Text(
-                                'Enter your registered details to proceed',
+                                'auth.enter_registered_details'.tr(),
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                                  fontSize: 12,
+                                  fontSize: isUrdu ? 16 : 12,
+                                  height: isUrdu ? 1.5 : 1.2,
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: CSizes.xl),
                           CTextField(
-                            label: 'CNIC Number',
-                            hintText: 'XXXXX-XXXXXXX-X',
+                            label: 'auth.cnic'.tr(),
+                            hintText: 'auth.cnic_hint'.tr(),
                             controller: _cnicController,
                             keyboardType: TextInputType.number,
                             prefixIcon: Icon(
@@ -198,8 +201,8 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
                           ),
                           const SizedBox(height: CSizes.sm),
                           CTextField(
-                            label: 'Email Address',
-                            hintText: 'your.email@example.com',
+                            label: 'auth.email'.tr(),
+                            hintText: 'auth.email_hint_signup'.tr(),
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             prefixIcon: Icon(
@@ -229,7 +232,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
 
   Widget _buildSignUpButton(AuthState authState, WidgetRef ref) {
     return CButton(
-      text: 'Verify & Proceed',
+      text: 'auth.verify_and_proceed'.tr(),
       onPressed: () => _handleWorkerSignUp(ref),
       width: double.infinity,
       isLoading: authState.isLoading,
@@ -242,7 +245,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            "Already have an account? ",
+            'auth.already_have_account'.tr(),
             style: textTheme.bodyMedium?.copyWith(
               color: isDark ? CColors.lightGrey : CColors.darkGrey,
               fontSize: 12,
@@ -256,7 +259,7 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
-              'Login!',
+              'auth.login_exclamation'.tr(),
               style: textTheme.bodyMedium?.copyWith(
                 color: CColors.primary,
                 fontWeight: FontWeight.w600,
@@ -271,31 +274,29 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
   }
 
   void _handleBackToLogin() {
-    // Assuming login is the previous route.
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
     } else {
-      // Fallback if it's the first screen
       Navigator.pushReplacementNamed(context, AppRoutes.login);
     }
   }
 
   String? _validateCnic(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your CNIC number';
+      return 'auth.cnic_required'.tr();
     }
     if (!_cnicRegex.hasMatch(value)) {
-      return 'Please enter valid CNIC format (XXXXX-XXXXXXX-X)';
+      return 'auth.cnic_invalid'.tr();
     }
     return null;
   }
 
   String? _validateEmail(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter your email address';
+      return 'auth.email_required'.tr();
     }
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-      return 'Please enter a valid email address';
+      return 'auth.email_invalid'.tr();
     }
     return null;
   }
@@ -306,16 +307,16 @@ class _WorkerSignUpScreenState extends State<WorkerSignUpScreen> {
       _cnicController.text = cleanValue;
     } else if (cleanValue.length <= 12) {
       _cnicController.text =
-          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
+      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5)}';
     } else {
       _cnicController.text =
-          '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
+      '${cleanValue.substring(0, 5)}-${cleanValue.substring(5, 12)}-${cleanValue.substring(12, 13)}';
     }
     _cnicController.selection = TextSelection.collapsed(
       offset: _cnicController.text.length,
     );
   }
-  
+
   void _showErrorMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

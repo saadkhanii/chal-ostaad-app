@@ -42,7 +42,7 @@
     "remember_me": "Remember me",
     "clear_saved": "Clear saved",
     "credentials_cleared": "Saved credentials cleared",
-    "login_as": "We're happy to see you. Log in as a {0}.",
+    "login_as": "We're happy to see you. Log in as a",
     "sign_up_exclamation": "Sign Up!",
     "email_required": "Please enter your email address",
     "email_invalid": "Please enter a valid email address",
@@ -77,7 +77,21 @@
     "verify_and_proceed": "Verify & Proceed",
     "no_code_received": "Didn't receive code? ",
     "resend": "Resend",
-    "verification_successful": "Verification Successful!"
+    "create_worker_account": "Create Worker Account",
+    "enter_registered_details": "Enter your registered details to proceed",
+    "welcome_back_verify": "Welcome back! Please verify with the code sent to your email.",
+    "verification_successful": "Verification Successful!",
+    "set_password": "Set Password",
+    "set_new_password": "Set a new password",
+    "password_instruction": "Create a new, strong password to complete your account.",
+    "new_password_hint": "Enter your new password",
+    "confirm_password_hint": "Re-enter your password",
+    "create_account_and_login": "Create Account & Login",
+    "account_created": "Account created successfully!",
+    "password_min_length": "Password must be at least 6 characters long",
+    "confirm_password_required": "Please confirm your password",
+    "passwords_do_not_match": "Passwords do not match",
+    "otp": "OTP"
   },
   "role": {
     "tagline": "Your trusted partner for finding work and workers",
@@ -205,6 +219,12 @@
     "user_not_found": "No user found with this email. Please sign up again.",
     "otp_expired": "The verification code has expired. Please request a new one.",
     "otp_invalid": "Invalid OTP. Please check the code and try again.",
-    "save_role_failed": "Failed to save role. Please try again."
+    "worker_not_found": "No worker found with this CNIC. Please contact support to register.",
+    "email_mismatch": "The email address does not match the registered CNIC.",
+    "save_role_failed": "Failed to save role. Please try again.",
+    "registration_data_not_found": "Could not find your registration data. Please sign up again.",
+    "email_already_registered": "This email is already registered for a {0} account.",
+    "weak_password": "The password is too weak (must be at least 6 characters).",
+    "auth_error": "An authentication error occurred: {0}"
   }
 }

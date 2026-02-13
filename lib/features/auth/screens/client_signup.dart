@@ -13,7 +13,6 @@ import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/routes/app_routes.dart';
-import '../../../core/services/localization_service.dart';
 import '../../../shared/widgets/Cbutton.dart';
 import '../../../shared/widgets/CtextField.dart';
 import '../../../shared/widgets/common_header.dart';
@@ -75,7 +74,6 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
   Future<void> _handleClientSignUp(WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Update loading state using Riverpod
     ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
 
     final email = _emailController.text.trim().toLowerCase();
@@ -84,7 +82,6 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
     final fullName = _fullNameController.text.trim();
 
     try {
-      // 1. Check for email duplication across all roles (emails must be unique)
       final emailExistsInClients = await _checkIfValueExists('personalInfo.email', email, 'clients');
       if (emailExistsInClients) {
         throw Exception('auth.email_already_registered_client'.tr());
@@ -94,13 +91,11 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
         throw Exception('auth.email_already_registered_worker'.tr());
       }
 
-      // 2. Check for CNIC duplication only within the 'clients' collection
       final cnicExists = await _checkIfValueExists('personalInfo.cnic', cnic, 'clients');
       if (cnicExists) {
         throw Exception('auth.cnic_already_registered'.tr());
       }
 
-      // 3. Generate OTP and create a temporary document in Firestore
       final otp = _generateOtp();
       final otpExpiry = DateTime.now().add(const Duration(minutes: 10));
       final tempDocRef = FirebaseFirestore.instance.collection('clients').doc();
@@ -122,10 +117,8 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
         }
       });
 
-      // 4. Send OTP via EmailJS
       await _sendEmailOtp(otp: otp, userName: fullName, userEmail: email);
 
-      // 5. Navigate to OTP screen on success
       if (mounted) {
         _showSuccessMessage('auth.verification_code_sent'.tr());
         Navigator.pushNamed(
@@ -139,7 +132,6 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
       _showErrorMessage(errorMessage);
     } finally {
       if (mounted) {
-        // Reset loading state
         ref.read(authProvider.notifier).state = const AuthState(isLoading: false);
       }
     }
@@ -162,7 +154,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
         final size = MediaQuery.of(context).size;
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final textTheme = Theme.of(context).textTheme;
-        final isUrdu = LocalizationService.isUrdu(context);
+        final isUrdu = context.locale.languageCode == 'ur';
 
         return Scaffold(
           backgroundColor: isDark ? CColors.dark : CColors.white,
@@ -182,28 +174,27 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                     child: Form(
                       key: _formKey,
                       child: Column(
-                        crossAxisAlignment: isUrdu ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start, // REMOVED isUrdu condition
                         children: [
                           Column(
-                            crossAxisAlignment: isUrdu ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start, // REMOVED isUrdu condition
                             children: [
                               Text(
                                 'auth.create_client_account'.tr(),
                                 style: textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: isDark ? CColors.white : CColors.textPrimary,
-                                  fontSize: 20,
+                                  fontSize: isUrdu ? 24 : 20, // Larger for Urdu
                                 ),
-                                textAlign: isUrdu ? TextAlign.right : TextAlign.left,
                               ),
                               const SizedBox(height: CSizes.xs),
                               Text(
                                 'auth.register_to_post_jobs'.tr(),
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: isDark ? CColors.lightGrey : CColors.darkGrey,
-                                  fontSize: 12,
+                                  fontSize: isUrdu ? 16 : 12, // Larger for Urdu
+                                  height: isUrdu ? 1.5 : 1.2, // Better line spacing for Urdu
                                 ),
-                                textAlign: isUrdu ? TextAlign.right : TextAlign.left,
                               ),
                             ],
                           ),
@@ -277,7 +268,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
                           const SizedBox(height: CSizes.lg),
                           _buildSignUpButton(authState, ref),
                           const SizedBox(height: CSizes.lg),
-                          _buildHelpText(context, textTheme, isDark, isUrdu),
+                          _buildHelpText(context, textTheme, isDark),
                         ],
                       ),
                     ),
@@ -300,7 +291,7 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
     );
   }
 
-  Widget _buildHelpText(BuildContext context, TextTheme textTheme, bool isDark, bool isUrdu) {
+  Widget _buildHelpText(BuildContext context, TextTheme textTheme, bool isDark) {
     return Center(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -426,7 +417,9 @@ class _ClientSignUpScreenState extends State<ClientSignUpScreen> {
         content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: CColors.success,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd), // Fixed: borderRadius not border-radius
+        ),
       ),
     );
   }

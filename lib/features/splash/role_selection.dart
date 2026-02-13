@@ -6,9 +6,10 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../core/constants/colors.dart';
 import '../../shared/widgets/Cbutton.dart';
 import '../../core/providers/role_provider.dart';
-import '../../core/providers/locale_provider.dart';
 import '../../core/services/localization_service.dart';
 import '../../shared/widgets/language_switch.dart';
+import '../auth/screens/otp_verification.dart';
+import '../auth/screens/set_password.dart'; // Add this import
 
 class RoleSelection extends ConsumerWidget {
   const RoleSelection({super.key});
@@ -33,6 +34,18 @@ class RoleSelection extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  // Temporary method to navigate directly to OTP
+  void _goToOTP(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const OTPVerificationScreen(
+          email: 'test@example.com',
+        ),
+      ),
+    );
   }
 
   @override
@@ -115,6 +128,17 @@ class RoleSelection extends ConsumerWidget {
                       backgroundColor: CColors.secondary,
                       foregroundColor: CColors.white,
                     ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // TEMPORARY BUTTON - Remove after testing
+                  CButton(
+                    text: '🔧 TEST BUTTON 🔧',
+                    onPressed: () => _goToOTP(context),
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    width: double.infinity,
                   ),
                 ],
               ),
