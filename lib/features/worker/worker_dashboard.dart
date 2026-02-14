@@ -1,11 +1,13 @@
 // lib/features/worker/worker_dashboard.dart
+
 import 'package:chal_ostaad/features/worker/worker_dashboard_header.dart';
-import 'package:chal_ostaad/features/worker/worker_job_details_screen.dart';
+import 'package:chal_ostaad/features/worker/worker_job_details_screen.dart' as job_details; // Added alias
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -27,14 +29,14 @@ class WorkerDashboard extends ConsumerStatefulWidget {
 }
 
 class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
-  String _userName = 'Worker';
+  String _userName = 'dashboard.worker'.tr();
   String _workerId = '';
   String _workerCategory = '';
   int _selectedFilter = 0; // 0: All, 1: My Category
 
   final WorkerService _workerService = WorkerService();
   final BidService _bidService = BidService();
-  final List<String> _filterOptions = ['All Jobs', 'My Category'];
+  final List<String> _filterOptions = ['dashboard.all_jobs'.tr(), 'dashboard.my_category'.tr()];
   final CategoryService _categoryService = CategoryService();
   String _workerCategoryName = '';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -83,7 +85,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     try {
       final worker = await _workerService.getCurrentWorker();
       if (worker != null && worker.categoryId != null && worker.categoryId!.isNotEmpty) {
-        // Convert category ID to category name for filtering
         final categoryName = await _categoryService.getCategoryName(worker.categoryId!);
         if (mounted) {
           setState(() {
@@ -91,17 +92,12 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
             _workerCategoryName = categoryName;
           });
         }
-        debugPrint('WORKER: Category ID: ${worker.categoryId}, Category Name: $categoryName');
-      } else {
-        debugPrint('WORKER: No category assigned or category ID is empty');
       }
     } catch (e) {
       debugPrint('Error loading worker profile: $e');
     }
   }
 
-  // ========== UPDATED: Fetch Worker Statistics ==========
-  // In worker_dashboard.dart - REPLACE the _fetchWorkerStats method
   Future<Map<String, dynamic>> _fetchWorkerStats() async {
     if (_workerId.isEmpty) {
       return {
@@ -117,7 +113,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     }
 
     try {
-      // Fetch all bids for this worker
       final bidsSnapshot = await _firestore
           .collection('bids')
           .where('workerId', isEqualTo: _workerId)
@@ -126,67 +121,34 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
       final bids = bidsSnapshot.docs;
       final totalBids = bids.length;
 
-      debugPrint('=== DEBUG: Fetching worker stats for workerId: $_workerId ===');
-      debugPrint('Total bids found: $totalBids');
-
-      // Count bids by status
       final pendingBids = bids.where((doc) => doc['status'] == 'pending').length;
       final acceptedBids = bids.where((doc) => doc['status'] == 'accepted').length;
       final rejectedBids = bids.where((doc) => doc['status'] == 'rejected').length;
 
-      debugPrint('Status counts - Pending: $pendingBids, Accepted: $acceptedBids, Rejected: $rejectedBids');
-
-      // Calculate earnings from accepted bids - FIXED VERSION
       double earnings = 0.0;
       final acceptedBidDocs = bids.where((doc) => doc['status'] == 'accepted');
 
-      debugPrint('=== ACCEPTED BIDS DETAILS ===');
       for (final doc in acceptedBidDocs) {
         final amount = doc['amount'];
-        final docId = doc.id;
-
-        debugPrint('Bid $docId:');
-        debugPrint('  - Raw amount: $amount (Type: ${amount.runtimeType})');
-
         double bidAmount = 0.0;
 
         if (amount is int) {
           bidAmount = amount.toDouble();
-          debugPrint('  - Parsed as int: $bidAmount');
         } else if (amount is double) {
           bidAmount = amount;
-          debugPrint('  - Parsed as double: $bidAmount');
         } else if (amount is String) {
-          // Try to parse string to double
           try {
-            // Remove any commas, Rs symbol, etc.
             final cleanedAmount = amount.replaceAll(RegExp(r'[^0-9\.]'), '');
             bidAmount = double.parse(cleanedAmount);
-            debugPrint('  - Parsed from string "$amount" to: $bidAmount');
           } catch (e) {
-            debugPrint('  - Error parsing string "$amount": $e');
             bidAmount = 0.0;
           }
         } else if (amount is num) {
           bidAmount = amount.toDouble();
-          debugPrint('  - Parsed as num: $bidAmount');
-        } else {
-          debugPrint('  - Unknown amount type: ${amount.runtimeType}');
         }
-
-        // Check if amount seems wrong (e.g., 1000 more than expected)
-        if (bidAmount > 1000 && bidAmount % 1000 == 0) {
-          debugPrint('  - WARNING: Amount $bidAmount might be inflated!');
-        }
-
         earnings += bidAmount;
-        debugPrint('  - Running total: $earnings');
       }
 
-      debugPrint('=== END BIDS DETAILS ===');
-      debugPrint('Total earnings calculated: $earnings');
-
-      // Get worker rating from worker document
       double rating = 0.0;
       String ratingText = 'N/A';
       try {
@@ -235,7 +197,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => WorkerJobDetailsScreen(
+        builder: (context) => job_details.WorkerJobDetailsScreen( // ← Using the alias
           job: job,
           workerId: _workerId,
           workerCategory: _workerCategory,
@@ -246,13 +208,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   void _showAllJobs() {
-    // Placeholder logic
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Show all jobs - Coming Soon!')),
+      SnackBar(content: Text('common.coming_soon'.tr())),
     );
   }
 
-  // ========== UPDATED: Stats Row with Real Data ==========
   Widget _buildStatsRow(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _fetchWorkerStats(),
@@ -262,7 +222,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         }
 
         if (snapshot.hasError) {
-          return _buildStatItem(context, 'Error', '!', Icons.error);
+          return _buildStatItem(context, 'common.error'.tr(), '!', Icons.error);
         }
 
         final stats = snapshot.data ?? {
@@ -275,10 +235,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildStatItem(context, 'Bids Placed', '${stats['bidsPlaced']}', Icons.gavel),
-            _buildStatItem(context, 'Jobs Won', '${stats['jobsWon']}', Icons.emoji_events),
-            _buildStatItem(context, 'Earnings', _formatCurrency(stats['earnings']), Icons.attach_money),
-            _buildStatItem(context, 'Rating', '${stats['rating']}', Icons.star),
+            _buildStatItem(context, 'dashboard.bids_placed'.tr(), '${stats['bidsPlaced']}', Icons.gavel),
+            _buildStatItem(context, 'dashboard.jobs_won'.tr(), '${stats['jobsWon']}', Icons.emoji_events),
+            _buildStatItem(context, 'dashboard.earnings'.tr(), _formatCurrency(stats['earnings']), Icons.attach_money),
+            _buildStatItem(context, 'dashboard.rating'.tr(), '${stats['rating']}', Icons.star),
           ],
         );
       },
@@ -289,23 +249,22 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStatItem(context, 'Bids Placed', '...', Icons.gavel),
-        _buildStatItem(context, 'Jobs Won', '...', Icons.emoji_events),
-        _buildStatItem(context, 'Earnings', '...', Icons.attach_money),
-        _buildStatItem(context, 'Rating', '...', Icons.star),
+        _buildStatItem(context, 'dashboard.bids_placed'.tr(), '...', Icons.gavel),
+        _buildStatItem(context, 'dashboard.jobs_won'.tr(), '...', Icons.emoji_events),
+        _buildStatItem(context, 'dashboard.earnings'.tr(), '...', Icons.attach_money),
+        _buildStatItem(context, 'dashboard.rating'.tr(), '...', Icons.star),
       ],
     );
   }
 
-  // Format currency in Pakistani Rupees
   String _formatCurrency(double amount) {
     if (amount == 0) return 'Rs 0';
 
-    if (amount >= 10000000) { // 1 Crore
+    if (amount >= 10000000) {
       return 'Rs ${(amount / 10000000).toStringAsFixed(1)}Cr';
-    } else if (amount >= 100000) { // 1 Lakh
+    } else if (amount >= 100000) {
       return 'Rs ${(amount / 100000).toStringAsFixed(1)}L';
-    } else if (amount >= 1000) { // 1 Thousand
+    } else if (amount >= 1000) {
       return 'Rs ${(amount / 1000).toStringAsFixed(1)}k';
     }
 
@@ -313,17 +272,28 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildStatItem(BuildContext context, String label, String value, IconData icon) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Column(
       children: [
         Icon(icon, color: CColors.primary, size: 28),
         const SizedBox(height: 8),
-        Text(value, style: Theme.of(context).textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge!.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: isUrdu ? 20 : 18,
+          ),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+            fontSize: isUrdu ? 14 : 12,
+          ),
+        ),
       ],
     );
   }
-
-  // --- WIDGET BUILDERS ---
 
   Widget _buildLoadingScreen() {
     return Column(
@@ -349,7 +319,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 CircularProgressIndicator(color: CColors.primary),
                 const SizedBox(height: CSizes.md),
                 Text(
-                  'Loading your dashboard...',
+                  'common.loading_dashboard'.tr(),
                   style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                     color: CColors.textSecondary,
                   ),
@@ -363,6 +333,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildOpportunityCard(BuildContext context) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.xl),
@@ -405,11 +377,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 const Icon(Icons.rocket_launch_rounded, size: 16, color: CColors.white),
                 const SizedBox(width: 8),
                 Text(
-                  'BIDDING PLATFORM',
+                  'dashboard.bidding_platform'.tr(),
                   style: Theme.of(context).textTheme.labelSmall!.copyWith(
                     color: CColors.white,
                     fontWeight: FontWeight.w800,
-                    fontSize: 11,
+                    fontSize: isUrdu ? 12 : 11,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -418,21 +390,21 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Find Your Next Project',
+            'dashboard.find_next_project'.tr(),
             style: Theme.of(context).textTheme.headlineSmall!.copyWith(
               color: CColors.white,
               fontWeight: FontWeight.w900,
-              fontSize: 24,
+              fontSize: isUrdu ? 26 : 24,
               height: 1.2,
             ),
           ),
           const SizedBox(height: 12),
           Text(
-            'Place competitive bids and win projects in your category. Start earning today!',
+            'dashboard.bidding_description'.tr(),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: CColors.white.withOpacity(0.95),
               height: 1.6,
-              fontSize: 15,
+              fontSize: isUrdu ? 16 : 15,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -448,6 +420,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     bool showAction = true,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -457,7 +430,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           style: Theme.of(context).textTheme.headlineSmall!.copyWith(
             fontWeight: FontWeight.w900,
             color: isDark ? CColors.textWhite : CColors.textPrimary,
-            fontSize: 22,
+            fontSize: isUrdu ? 24 : 22,
             letterSpacing: -0.5,
           ),
         ),
@@ -472,6 +445,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                   color: CColors.primary,
                   fontWeight: FontWeight.w700,
+                  fontSize: isUrdu ? 16 : 14,
                 ),
               ),
             ),
@@ -482,6 +456,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
 
   Widget _buildFilterChips() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -493,7 +468,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           return Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: ChoiceChip(
-              label: Text(label),
+              label: Text(
+                label,
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
               selected: isSelected,
               onSelected: (selected) {
                 if (selected) {
@@ -522,10 +500,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     );
   }
 
-  // ========== UPDATED: Job Feed with Real Data ==========
   Widget _buildJobFeed() {
     if (_workerId.isEmpty) {
-      return _buildEmptyState('Please log in to view jobs');
+      return _buildEmptyState('errors.login_to_view_jobs'.tr());
     }
 
     Query query = _firestore
@@ -533,7 +510,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         .where('status', isEqualTo: 'open')
         .orderBy('createdAt', descending: true);
 
-    // Filter by category if selected
     if (_selectedFilter == 1 && _workerCategoryName.isNotEmpty) {
       query = query.where('category', isEqualTo: _workerCategoryName);
     }
@@ -546,11 +522,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         }
 
         if (snapshot.hasError) {
-          return _buildEmptyState('Error loading jobs: ${snapshot.error}');
+          return _buildEmptyState('${'errors.load_jobs_failed'.tr()}: ${snapshot.error}');
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildEmptyState('No jobs available. Check back later!');
+          return _buildEmptyState('job.no_jobs_available'.tr());
         }
 
         return ListView.builder(
@@ -568,6 +544,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildJobCard(JobModel job) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Card(
       margin: const EdgeInsets.only(bottom: CSizes.md),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
@@ -588,6 +566,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                       job.title,
                       style: Theme.of(context).textTheme.titleMedium!.copyWith(
                         fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 18 : 16,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -605,6 +584,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                       style: Theme.of(context).textTheme.labelSmall!.copyWith(
                         color: CColors.info,
                         fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 12 : 10,
                       ),
                     ),
                   ),
@@ -613,7 +593,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
               const SizedBox(height: CSizes.sm),
               Text(
                 job.description,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  fontSize: isUrdu ? 16 : 14,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -624,7 +606,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                   const SizedBox(width: 4),
                   Text(
                     timeago.format(job.createdAt.toDate()),
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                      fontSize: isUrdu ? 14 : 12,
+                    ),
                   ),
                   const Spacer(),
                   StreamBuilder<QuerySnapshot>(
@@ -639,10 +623,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                           Icon(Icons.gavel, size: 16, color: CColors.primary),
                           const SizedBox(width: 4),
                           Text(
-                            '$bidCount Bids',
+                            '${'bid.total_bids'.tr()}: $bidCount',
                             style: Theme.of(context).textTheme.labelMedium!.copyWith(
                               color: CColors.primary,
                               fontWeight: FontWeight.bold,
+                              fontSize: isUrdu ? 14 : 12,
                             ),
                           ),
                         ],
@@ -659,6 +644,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildLoadingJobs() {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return SizedBox(
       height: 150,
       child: Center(
@@ -668,8 +655,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
             CircularProgressIndicator(color: CColors.primary),
             const SizedBox(height: CSizes.md),
             Text(
-              'Loading available jobs...',
-              style: Theme.of(context).textTheme.bodyMedium,
+              'common.loading_jobs'.tr(),
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                fontSize: isUrdu ? 16 : 14,
+              ),
             ),
           ],
         ),
@@ -678,6 +667,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildEmptyState(String message) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Container(
       height: 150,
       decoration: BoxDecoration(
@@ -696,6 +687,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
               message,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color: CColors.textSecondary,
+                fontSize: isUrdu ? 16 : 14,
               ),
               textAlign: TextAlign.center,
             ),
@@ -705,10 +697,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     );
   }
 
-  // ========== UPDATED: My Bids List with Real Data ==========
   Widget _buildMyBidsList() {
     if (_workerId.isEmpty) {
-      return _buildEmptyState('Please log in to view your bids');
+      return _buildEmptyState('errors.login_to_view_bids'.tr());
     }
 
     return StreamBuilder<QuerySnapshot>(
@@ -724,11 +715,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         }
 
         if (snapshot.hasError) {
-          return _buildEmptyState('Error loading bids: ${snapshot.error}');
+          return _buildEmptyState('${'errors.load_bids_failed'.tr()}: ${snapshot.error}');
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildEmptyState('You haven\'t placed any bids yet');
+          return _buildEmptyState('bid.no_bids_placed'.tr());
         }
 
         return ListView.builder(
@@ -747,6 +738,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   Widget _buildBidItem(BidModel bid, Map<String, dynamic> data) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return FutureBuilder<DocumentSnapshot>(
       future: _firestore.collection('jobs').doc(bid.jobId).get(),
       builder: (context, jobSnapshot) {
@@ -760,8 +753,17 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 color: Colors.white,
               ),
             ),
-            title: Text('Loading job details...', style: TextStyle(color: CColors.grey)),
-            subtitle: Text('Amount: ${_formatCurrency(bid.amount)}'),
+            title: Text(
+              'common.loading'.tr(),
+              style: TextStyle(
+                color: CColors.grey,
+                fontSize: isUrdu ? 16 : 14,
+              ),
+            ),
+            subtitle: Text(
+              '${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}',
+              style: TextStyle(fontSize: isUrdu ? 14 : 12),
+            ),
           );
         }
 
@@ -771,13 +773,22 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
               backgroundColor: CColors.error,
               child: Icon(Icons.error, size: 20, color: Colors.white),
             ),
-            title: Text('Job not found', style: TextStyle(color: CColors.error)),
-            subtitle: Text('Amount: ${_formatCurrency(bid.amount)}'),
+            title: Text(
+              'job.job_not_found'.tr(),
+              style: TextStyle(
+                color: CColors.error,
+                fontSize: isUrdu ? 16 : 14,
+              ),
+            ),
+            subtitle: Text(
+              '${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}',
+              style: TextStyle(fontSize: isUrdu ? 14 : 12),
+            ),
           );
         }
 
         final jobData = jobSnapshot.data!.data() as Map<String, dynamic>;
-        final jobTitle = jobData['title'] ?? 'Unknown Job';
+        final jobTitle = jobData['title'] ?? 'job.unknown'.tr();
 
         return ListTile(
           leading: CircleAvatar(
@@ -788,30 +799,56 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
               color: Colors.white,
             ),
           ),
-          title: Text(jobTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          title: Text(
+            jobTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: isUrdu ? 16 : 14),
+          ),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Amount: ${_formatCurrency(bid.amount)}'),
               Text(
-                'Status: ${bid.status.toUpperCase()}',
+                '${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}',
+                style: TextStyle(fontSize: isUrdu ? 14 : 12),
+              ),
+              Text(
+                '${'bid.status'.tr()}: ${_getBidStatusText(bid.status)}',
                 style: TextStyle(
                   color: _getBidStatusColor(bid.status),
                   fontWeight: FontWeight.bold,
+                  fontSize: isUrdu ? 14 : 12,
                 ),
               ),
             ],
           ),
           trailing: Text(
             timeago.format(bid.createdAt.toDate()),
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+              fontSize: isUrdu ? 14 : 12,
+            ),
           ),
         );
       },
     );
   }
 
+  String _getBidStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'bid.status_pending'.tr();
+      case 'accepted':
+        return 'bid.status_accepted'.tr();
+      case 'rejected':
+        return 'bid.status_rejected'.tr();
+      default:
+        return status;
+    }
+  }
+
   Widget _buildLoadingBids() {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return SizedBox(
       height: 150,
       child: Center(
@@ -821,8 +858,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
             CircularProgressIndicator(color: CColors.primary),
             const SizedBox(height: CSizes.md),
             Text(
-              'Loading your bids...',
-              style: Theme.of(context).textTheme.bodyMedium,
+              'common.loading_bids'.tr(),
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                fontSize: isUrdu ? 16 : 14,
+              ),
             ),
           ],
         ),
@@ -859,9 +898,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(workerLoadingProvider);
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Scaffold(
-      endDrawer: const DashboardDrawer(),
+      endDrawer: !isUrdu ? const DashboardDrawer() : null,
+      drawer: isUrdu ? const DashboardDrawer() : null,
       backgroundColor: Theme.of(context).brightness == Brightness.dark ? CColors.dark : CColors.lightGrey,
       body: isLoading
           ? _buildLoadingScreen()
@@ -893,7 +934,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 delegate: SliverChildListDelegate([
                   _buildSectionHeader(
                     context,
-                    'Performance Overview',
+                    'dashboard.performance_overview'.tr(),
                     showAction: false,
                   ),
                   const SizedBox(height: CSizes.spaceBtwItems),
@@ -901,8 +942,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                   const SizedBox(height: CSizes.spaceBtwSections),
                   _buildSectionHeader(
                     context,
-                    'Available Jobs',
-                    actionText: 'View All',
+                    'dashboard.available_jobs'.tr(),
+                    actionText: 'common.view_all'.tr(),
                     onAction: () => _showAllJobs(),
                   ),
                   const SizedBox(height: CSizes.spaceBtwItems),
@@ -912,7 +953,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                   const SizedBox(height: CSizes.spaceBtwSections),
                   _buildSectionHeader(
                     context,
-                    'My Bids',
+                    'dashboard.my_bids'.tr(),
                     showAction: false,
                   ),
                   const SizedBox(height: CSizes.spaceBtwItems),

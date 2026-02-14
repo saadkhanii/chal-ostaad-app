@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -71,8 +72,8 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bid accepted successfully!'),
+          SnackBar(
+            content: Text('bid.bid_accepted'.tr()),
             backgroundColor: CColors.success,
           ),
         );
@@ -81,7 +82,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to accept bid: $e'),
+            content: Text('bid.accept_failed'.tr(args: [e.toString()])),
             backgroundColor: CColors.error,
           ),
         );
@@ -96,8 +97,8 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bid rejected'),
+          SnackBar(
+            content: Text('bid.bid_rejected'.tr()),
             backgroundColor: CColors.info,
           ),
         );
@@ -106,11 +107,21 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to reject bid: $e'),
+            content: Text('bid.reject_failed'.tr(args: [e.toString()])),
             backgroundColor: CColors.error,
           ),
         );
       }
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'open': return 'job.status_open'.tr();
+      case 'in-progress': return 'job.status_in_progress'.tr();
+      case 'completed': return 'job.status_completed'.tr();
+      case 'cancelled': return 'job.status_cancelled'.tr();
+      default: return status;
     }
   }
 
@@ -121,6 +132,15 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
       case 'completed': return CColors.success;
       case 'cancelled': return CColors.error;
       default: return CColors.grey;
+    }
+  }
+
+  String _getBidStatusText(String status) {
+    switch (status) {
+      case 'pending': return 'bid.status_pending'.tr();
+      case 'accepted': return 'bid.status_accepted'.tr();
+      case 'rejected': return 'bid.status_rejected'.tr();
+      default: return status;
     }
   }
 
@@ -136,6 +156,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -144,7 +165,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CommonHeader(
-              title: 'Job Details',
+              title: 'job.job_details'.tr(),
               showBackButton: true,
               onBackPressed: () => Navigator.pop(context),
             ),
@@ -153,9 +174,9 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildJobDetailsCard(context, isDark),
+                  _buildJobDetailsCard(context, isDark, isUrdu),
                   const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildBidsSection(context, isDark),
+                  _buildBidsSection(context, isDark, isUrdu),
                 ],
               ),
             ),
@@ -165,7 +186,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
     );
   }
 
-  Widget _buildJobDetailsCard(BuildContext context, bool isDark) {
+  Widget _buildJobDetailsCard(BuildContext context, bool isDark, bool isUrdu) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.lg),
@@ -187,10 +208,11 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  widget.job.status.toUpperCase(),
+                  _getStatusText(widget.job.status),
                   style: Theme.of(context).textTheme.labelSmall!.copyWith(
                     color: _getStatusColor(widget.job.status),
                     fontWeight: FontWeight.w600,
+                    fontSize: isUrdu ? 12 : 10,
                   ),
                 ),
               ),
@@ -205,6 +227,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                   style: Theme.of(context).textTheme.labelSmall!.copyWith(
                     color: CColors.primary,
                     fontWeight: FontWeight.w600,
+                    fontSize: isUrdu ? 12 : 10,
                   ),
                 ),
               ),
@@ -216,6 +239,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
             style: Theme.of(context).textTheme.headlineSmall!.copyWith(
               fontWeight: FontWeight.w700,
               color: isDark ? CColors.textWhite : CColors.textPrimary,
+              fontSize: isUrdu ? 24 : 22,
             ),
           ),
           const SizedBox(height: 8),
@@ -224,6 +248,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
               height: 1.5,
+              fontSize: isUrdu ? 16 : 14,
             ),
           ),
           const SizedBox(height: 16),
@@ -232,9 +257,10 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
               Icon(Icons.access_time_outlined, size: 16, color: CColors.darkGrey),
               const SizedBox(width: 6),
               Text(
-                'Posted ${timeago.format(widget.job.createdAt.toDate())}',
+                '${'job.posted'.tr()} ${timeago.format(widget.job.createdAt.toDate())}',
                 style: Theme.of(context).textTheme.bodySmall!.copyWith(
                   color: CColors.darkGrey,
+                  fontSize: isUrdu ? 14 : 12,
                 ),
               ),
             ],
@@ -244,28 +270,29 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
     );
   }
 
-  Widget _buildBidsSection(BuildContext context, bool isDark) {
+  Widget _buildBidsSection(BuildContext context, bool isDark, bool isUrdu) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Bids Received (${_bids.length})',
+          '${'bid.bids_received'.tr()} (${_bids.length})',
           style: Theme.of(context).textTheme.titleLarge!.copyWith(
             fontWeight: FontWeight.w700,
             color: isDark ? CColors.textWhite : CColors.textPrimary,
+            fontSize: isUrdu ? 22 : 20,
           ),
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
         _isLoadingBids
             ? const Center(child: CircularProgressIndicator())
             : _bids.isEmpty
-                ? _buildEmptyBidsState(context)
-                : Column(children: _bids.map((bid) => _buildBidItem(bid, context, isDark)).toList()),
+            ? _buildEmptyBidsState(context, isUrdu)
+            : Column(children: _bids.map((bid) => _buildBidItem(bid, context, isDark, isUrdu)).toList()),
       ],
     );
   }
 
-  Widget _buildEmptyBidsState(BuildContext context) {
+  Widget _buildEmptyBidsState(BuildContext context, bool isUrdu) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -280,17 +307,19 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
           Icon(Icons.gavel_outlined, size: 50, color: CColors.darkGrey.withOpacity(0.5)),
           const SizedBox(height: CSizes.md),
           Text(
-            'No bids yet',
+            'bid.no_bids'.tr(),
             style: Theme.of(context).textTheme.titleMedium!.copyWith(
               color: isDark ? CColors.textWhite : CColors.textPrimary,
               fontWeight: FontWeight.w600,
+              fontSize: isUrdu ? 18 : 16,
             ),
           ),
           const SizedBox(height: CSizes.sm),
           Text(
-            'Bids will appear here when workers apply to your job',
+            'bid.no_bids_message'.tr(),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: CColors.darkGrey,
+              fontSize: isUrdu ? 16 : 14,
             ),
             textAlign: TextAlign.center,
           ),
@@ -299,7 +328,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
     );
   }
 
-  Widget _buildBidItem(BidModel bid, BuildContext context, bool isDark) {
+  Widget _buildBidItem(BidModel bid, BuildContext context, bool isDark, bool isUrdu) {
     return Container(
       margin: const EdgeInsets.only(bottom: CSizes.spaceBtwItems),
       padding: const EdgeInsets.all(CSizes.md),
@@ -329,36 +358,43 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                   style: Theme.of(context).textTheme.titleMedium!.copyWith(
                     fontWeight: FontWeight.w700,
                     color: isDark ? CColors.textWhite : CColors.textPrimary,
+                    fontSize: isUrdu ? 18 : 16,
                   ),
                 ),
-                
-                // Use Riverpod to watch worker details
+
                 Consumer(
                   builder: (context, ref, _) {
                     final workerAsync = ref.watch(workerDetailsProvider(bid.workerId));
-                    
+
                     return workerAsync.when(
                       data: (data) {
-                         final workerName = data?['name'] ?? 'Unknown Worker';
-                         return Text(
-                            'Worker: $workerName',
-                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                              color: CColors.darkGrey,
-                            ),
-                          );
+                        final workerName = data?['personalInfo']?['fullName'] ?? 'common.unknown'.tr();
+                        return Text(
+                          '${'bid.worker'.tr()}: $workerName',
+                          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                            color: CColors.darkGrey,
+                            fontSize: isUrdu ? 14 : 12,
+                          ),
+                        );
                       },
                       loading: () => Text(
-                        'Loading worker...',
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey),
+                        'common.loading'.tr(),
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey,
+                          fontSize: isUrdu ? 14 : 12,
+                        ),
                       ),
                       error: (_, __) => Text(
-                        'Worker: ${bid.workerId.substring(0, 8)}...',
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: CColors.darkGrey),
+                        '${'bid.worker'.tr()}: ${bid.workerId.substring(0, 8)}...',
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey,
+                          fontSize: isUrdu ? 14 : 12,
+                        ),
                       ),
                     );
                   },
                 ),
-                
+
                 if (bid.message != null && bid.message!.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -366,6 +402,7 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                     style: Theme.of(context).textTheme.bodySmall!.copyWith(
                       color: CColors.darkGrey,
                       fontStyle: FontStyle.italic,
+                      fontSize: isUrdu ? 14 : 12,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -377,8 +414,8 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
           if (bid.status == 'pending') ...[
             const SizedBox(width: CSizes.sm),
             Column(
-               mainAxisSize: MainAxisSize.min,
-               children: [
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 ElevatedButton(
                   onPressed: () => _acceptBid(bid),
                   style: ElevatedButton.styleFrom(
@@ -387,7 +424,10 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     minimumSize: const Size(60, 30),
                   ),
-                  child: const Text('Accept', style: TextStyle(fontSize: 12)),
+                  child: Text(
+                    'bid.accept'.tr(),
+                    style: TextStyle(fontSize: isUrdu ? 14 : 12),
+                  ),
                 ),
                 const SizedBox(height: 4),
                 OutlinedButton(
@@ -398,9 +438,12 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     minimumSize: const Size(60, 30),
                   ),
-                  child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                  child: Text(
+                    'bid.reject'.tr(),
+                    style: TextStyle(fontSize: isUrdu ? 14 : 12),
+                  ),
                 ),
-               ],
+              ],
             )
           ] else
             Container(
@@ -410,10 +453,11 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                bid.status.toUpperCase(),
+                _getBidStatusText(bid.status),
                 style: Theme.of(context).textTheme.labelSmall!.copyWith(
                   color: _getBidStatusColor(bid.status),
                   fontWeight: FontWeight.w600,
+                  fontSize: isUrdu ? 12 : 10,
                 ),
               ),
             ),

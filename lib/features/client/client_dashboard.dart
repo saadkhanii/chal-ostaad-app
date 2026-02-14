@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -28,7 +29,7 @@ class ClientDashboard extends ConsumerStatefulWidget {
 }
 
 class _ClientDashboardState extends ConsumerState<ClientDashboard> {
-  String _userName = 'Client';
+  String _userName = 'dashboard.client'.tr();
   String _clientId = '';
   String _clientEmail = '';
   String _bidFilter = 'all';
@@ -41,7 +42,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   @override
   void initState() {
     super.initState();
-    // Use addPostFrameCallback to modify provider state after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
     });
@@ -51,27 +51,22 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userUid = prefs.getString('user_uid');
-      // Try to get name from prefs first
       String? userName = prefs.getString('user_name');
       String? userEmail = prefs.getString('user_email');
 
       debugPrint('Loading client data - UID: $userUid, Name: $userName');
 
       if (userUid != null) {
-        // Fetch fresh data from Firestore to ensure we have the correct name
         try {
           final userDoc = await _firestore.collection('users').doc(userUid).get();
           if (userDoc.exists && userDoc.data() != null) {
             final data = userDoc.data()!;
-            // Check multiple possible fields for the name
-            final fetchedName = data['fullName'] ?? data['name'] ?? data['userName'] ?? userName ?? 'Client';
+            final fetchedName = data['fullName'] ?? data['name'] ?? data['userName'] ?? userName ?? 'dashboard.client'.tr();
             final fetchedEmail = data['email'] ?? userEmail ?? '';
 
-            // Update variables
             userName = fetchedName;
             userEmail = fetchedEmail;
 
-            // Update SharedPreferences
             await prefs.setString('user_name', fetchedName);
             await prefs.setString('user_email', fetchedEmail);
           }
@@ -82,7 +77,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         if (mounted) {
           setState(() {
             _clientId = userUid;
-            _userName = userName ?? 'Client';
+            _userName = userName ?? 'dashboard.client'.tr();
             _clientEmail = userEmail ?? '';
           });
           ref.read(clientLoadingProvider.notifier).state = false;
@@ -171,6 +166,21 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     }
   }
 
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'open':
+        return 'job.status_open'.tr();
+      case 'in-progress':
+        return 'job.status_in_progress'.tr();
+      case 'completed':
+        return 'job.status_completed'.tr();
+      case 'cancelled':
+        return 'job.status_cancelled'.tr();
+      default:
+        return status;
+    }
+  }
+
   Future<void> _updateJobStatus(String jobId, String newStatus) async {
     try {
       await _jobService.updateJobStatus(jobId, newStatus);
@@ -178,16 +188,16 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       String message = '';
       switch (newStatus) {
         case 'completed':
-          message = 'Job marked as completed!';
+          message = 'job.job_completed'.tr();
           break;
         case 'cancelled':
-          message = 'Job cancelled!';
+          message = 'job.job_cancelled'.tr();
           break;
         case 'in-progress':
-          message = 'Job started!';
+          message = 'job.job_started'.tr();
           break;
         case 'open':
-          message = 'Job reopened!';
+          message = 'job.job_reopened'.tr();
           break;
       }
 
@@ -203,7 +213,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update job: $e'),
+            content: Text('errors.update_failed'.tr(args: [e.toString()])),
             backgroundColor: CColors.error,
           ),
         );
@@ -212,9 +222,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   void _showJobActions(JobModel job) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Better for bottom sheets with content
+      isScrollControlled: true,
       builder: (context) {
         return Container(
           padding: const EdgeInsets.all(CSizes.lg),
@@ -222,18 +234,18 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Job Actions',
+                'job.job_actions'.tr(),
                 style: Theme.of(context).textTheme.headlineSmall!.copyWith(
                   fontWeight: FontWeight.w700,
+                  fontSize: isUrdu ? 22 : 20,
                 ),
               ),
               const SizedBox(height: CSizes.lg),
 
-              // View Details - Always available
               _buildActionTile(
                 context,
                 icon: Icons.remove_red_eye,
-                title: 'View Details',
+                title: 'job.view_details'.tr(),
                 color: CColors.info,
                 onTap: () {
                   Navigator.pop(context);
@@ -246,7 +258,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 _buildActionTile(
                   context,
                   icon: Icons.edit,
-                  title: 'Edit Job',
+                  title: 'job.edit_job'.tr(),
                   color: CColors.info,
                   onTap: () => _editJob(job),
                 ),
@@ -254,7 +266,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 _buildActionTile(
                   context,
                   icon: Icons.cancel,
-                  title: 'Cancel Job',
+                  title: 'job.cancel_job'.tr(),
                   color: CColors.warning,
                   onTap: () => _cancelJob(job.id!),
                 ),
@@ -265,7 +277,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 _buildActionTile(
                   context,
                   icon: Icons.check_circle,
-                  title: 'Mark as Completed',
+                  title: 'job.mark_completed'.tr(),
                   color: CColors.success,
                   onTap: () => _markJobAsCompleted(job.id!),
                 ),
@@ -273,7 +285,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 _buildActionTile(
                   context,
                   icon: Icons.cancel,
-                  title: 'Cancel Job',
+                  title: 'job.cancel_job'.tr(),
                   color: CColors.warning,
                   onTap: () => _cancelJob(job.id!),
                 ),
@@ -284,18 +296,17 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 _buildActionTile(
                   context,
                   icon: Icons.replay,
-                  title: 'Reopen Job',
+                  title: 'job.reopen_job'.tr(),
                   color: CColors.info,
                   onTap: () => _reopenJob(job.id!),
                 ),
                 const SizedBox(height: CSizes.sm),
               ],
 
-              // Delete Job - Always available (with confirmation)
               _buildActionTile(
                 context,
                 icon: Icons.delete,
-                title: 'Delete Job',
+                title: 'job.delete_job'.tr(),
                 color: CColors.error,
                 onTap: () => _deleteJob(job.id!),
               ),
@@ -303,7 +314,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
               const SizedBox(height: CSizes.lg),
               OutlinedButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+                child: Text('common.close'.tr()),
               ),
             ],
           ),
@@ -318,9 +329,14 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     required Color color,
     required VoidCallback onTap,
   }) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return ListTile(
       leading: Icon(icon, color: color),
-      title: Text(title),
+      title: Text(
+        title,
+        style: TextStyle(fontSize: isUrdu ? 18 : 16),
+      ),
       onTap: () {
         Navigator.pop(context);
         onTap();
@@ -330,7 +346,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
   Future<void> _editJob(JobModel job) async {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Edit Job - Coming Soon!')),
+      SnackBar(content: Text('common.coming_soon'.tr())),
     );
   }
 
@@ -338,18 +354,32 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     bool? confirmCancel = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
+        final isUrdu = context.locale.languageCode == 'ur';
+
         return AlertDialog(
-          title: const Text('Cancel Job'),
-          content: const Text('Are you sure you want to cancel this job?'),
+          title: Text(
+            'job.cancel_job'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 22 : 20),
+          ),
+          content: Text(
+            'job.confirm_cancel'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 16 : 14),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('No'),
+              child: Text(
+                'common.no'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: TextButton.styleFrom(foregroundColor: CColors.error),
-              child: const Text('Yes, Cancel'),
+              child: Text(
+                'job.yes_cancel'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
             ),
           ],
         );
@@ -369,18 +399,32 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
+        final isUrdu = context.locale.languageCode == 'ur';
+
         return AlertDialog(
-          title: const Text('Complete Job'),
-          content: const Text('Are you sure you want to mark this job as completed?'),
+          title: Text(
+            'job.complete_job'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 22 : 20),
+          ),
+          content: Text(
+            'job.confirm_complete'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 16 : 14),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('No'),
+              child: Text(
+                'common.no'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: TextButton.styleFrom(foregroundColor: CColors.success),
-              child: const Text('Yes, Complete'),
+              child: Text(
+                'job.yes_complete'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
             ),
           ],
         );
@@ -396,18 +440,32 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
+        final isUrdu = context.locale.languageCode == 'ur';
+
         return AlertDialog(
-          title: const Text('Delete Job'),
-          content: const Text('Are you sure you want to delete this job? This action cannot be undone.'),
+          title: Text(
+            'job.delete_job'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 22 : 20),
+          ),
+          content: Text(
+            'job.confirm_delete'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 16 : 14),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(
+                'common.cancel'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: TextButton.styleFrom(foregroundColor: CColors.error),
-              child: const Text('Delete'),
+              child: Text(
+                'job.delete'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
             ),
           ],
         );
@@ -419,8 +477,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         await _jobService.deleteJob(jobId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Job deleted successfully'),
+            SnackBar(
+              content: Text('job.job_deleted'.tr()),
               backgroundColor: CColors.success,
             ),
           );
@@ -429,7 +487,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to delete job: $e'),
+              content: Text('errors.delete_failed'.tr(args: [e.toString()])),
               backgroundColor: CColors.error,
             ),
           );
@@ -440,17 +498,17 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
   void _showAllJobs() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Show all jobs - Coming Soon!')),
+      SnackBar(content: Text('common.coming_soon'.tr())),
     );
   }
 
   Widget _buildLoadingScreen() {
-    return const Center(child: CircularProgressIndicator());
+    return Center(child: CircularProgressIndicator());
   }
 
   Widget _buildOpportunityCard(BuildContext context) {
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Container(
       width: double.infinity,
@@ -482,17 +540,19 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Post a New Job',
+            'dashboard.post_job'.tr(),
             style: Theme.of(context).textTheme.headlineSmall!.copyWith(
               color: CColors.white,
               fontWeight: FontWeight.bold,
+              fontSize: isUrdu ? 24 : 22,
             ),
           ),
           const SizedBox(height: CSizes.sm),
           Text(
-            'Find skilled workers for your needs',
+            'dashboard.find_workers'.tr(),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: CColors.white.withOpacity(0.9),
+              fontSize: isUrdu ? 16 : 14,
             ),
           ),
           const SizedBox(height: CSizes.lg),
@@ -505,7 +565,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 borderRadius: BorderRadius.circular(20),
               ),
             ),
-            child: const Text('Post Now'),
+            child: Text(
+              'dashboard.post_now'.tr(),
+              style: TextStyle(fontSize: isUrdu ? 16 : 14),
+            ),
           ),
         ],
       ),
@@ -513,6 +576,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   Widget _buildSectionHeader(BuildContext context, String title, {String? actionText, VoidCallback? onAction, bool showAction = true}) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -520,18 +585,21 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           title,
           style: Theme.of(context).textTheme.titleLarge!.copyWith(
             fontWeight: FontWeight.bold,
+            fontSize: isUrdu ? 22 : 20,
           ),
         ),
         if (showAction && actionText != null && onAction != null)
           TextButton(
             onPressed: onAction,
-            child: Text(actionText),
+            child: Text(
+              actionText,
+              style: TextStyle(fontSize: isUrdu ? 16 : 14),
+            ),
           ),
       ],
     );
   }
 
-  // ========== UPDATED: Dynamic Stats Row with Rupees ==========
   Widget _buildStatsRow(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _fetchClientStats(),
@@ -541,7 +609,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         }
 
         if (snapshot.hasError) {
-          return _buildStatItem(context, 'Error', '!', Icons.error);
+          return _buildStatItem(context, 'common.error'.tr(), '!', Icons.error);
         }
 
         final stats = snapshot.data ?? {
@@ -554,10 +622,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildStatItem(context, 'Posted Jobs', '${stats['postedJobs']}', Icons.work_outline),
-            _buildStatItem(context, 'Active Jobs', '${stats['activeJobs']}', Icons.work),
-            _buildStatItem(context, 'Completed', '${stats['completedJobs']}', Icons.check_circle),
-            _buildStatItem(context, 'Total Spent', _formatCurrency(stats['totalSpent']), Icons.attach_money),
+            _buildStatItem(context, 'dashboard.posted_jobs'.tr(), '${stats['postedJobs']}', Icons.work_outline),
+            _buildStatItem(context, 'dashboard.active_jobs'.tr(), '${stats['activeJobs']}', Icons.work),
+            _buildStatItem(context, 'dashboard.completed_jobs'.tr(), '${stats['completedJobs']}', Icons.check_circle),
+            _buildStatItem(context, 'dashboard.total_spent'.tr(), _formatCurrency(stats['totalSpent']), Icons.attach_money),
           ],
         );
       },
@@ -575,7 +643,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     }
 
     try {
-      // Fetch all jobs for this client
       final jobsSnapshot = await _firestore
           .collection('jobs')
           .where('clientId', isEqualTo: _clientId)
@@ -583,18 +650,15 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
       final jobs = jobsSnapshot.docs;
 
-      // Calculate basic stats
       final postedJobs = jobs.length;
       final activeJobs = jobs.where((doc) => doc['status'] == 'in-progress').length;
       final completedJobs = jobs.where((doc) => doc['status'] == 'completed').length;
 
-      // Get completed job IDs
       final completedJobIds = jobs
           .where((doc) => doc['status'] == 'completed')
           .map((doc) => doc.id)
           .toList();
 
-      // Calculate total spent from accepted bids
       double totalSpent = 0.0;
       if (completedJobIds.isNotEmpty) {
         final bidsSnapshot = await _firestore
@@ -630,34 +694,46 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStatItem(context, 'Posted Jobs', '...', Icons.work_outline),
-        _buildStatItem(context, 'Active Jobs', '...', Icons.work),
-        _buildStatItem(context, 'Completed', '...', Icons.check_circle),
-        _buildStatItem(context, 'Total Spent', '...', Icons.attach_money),
+        _buildStatItem(context, 'dashboard.posted_jobs'.tr(), '...', Icons.work_outline),
+        _buildStatItem(context, 'dashboard.active_jobs'.tr(), '...', Icons.work),
+        _buildStatItem(context, 'dashboard.completed_jobs'.tr(), '...', Icons.check_circle),
+        _buildStatItem(context, 'dashboard.total_spent'.tr(), '...', Icons.attach_money),
       ],
     );
   }
 
   Widget _buildStatItem(BuildContext context, String label, String value, IconData icon) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Column(
       children: [
         Icon(icon, color: CColors.primary, size: 28),
         const SizedBox(height: 8),
-        Text(value, style: Theme.of(context).textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge!.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: isUrdu ? 20 : 18,
+          ),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+            fontSize: isUrdu ? 14 : 12,
+          ),
+        ),
       ],
     );
   }
 
-  // Format currency in Pakistani Rupees
   String _formatCurrency(double amount) {
     if (amount == 0) return 'Rs 0';
 
-    if (amount >= 10000000) { // 1 Crore
+    if (amount >= 10000000) {
       return 'Rs ${(amount / 10000000).toStringAsFixed(1)}Cr';
-    } else if (amount >= 100000) { // 1 Lakh
+    } else if (amount >= 100000) {
       return 'Rs ${(amount / 100000).toStringAsFixed(1)}L';
-    } else if (amount >= 1000) { // 1 Thousand
+    } else if (amount >= 1000) {
       return 'Rs ${(amount / 1000).toStringAsFixed(1)}k';
     }
 
@@ -666,26 +742,39 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
   Widget _buildJobFilterChips() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
+
+    final filters = [
+      'common.all'.tr(),
+      'job.status_open'.tr(),
+      'job.status_in_progress'.tr(),
+      'job.status_completed'.tr(),
+    ];
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: ['All', 'Open', 'In Progress', 'Completed'].map((filter) {
-          final isSelected = _jobFilter.toLowerCase() == filter.toLowerCase().replaceAll(' ', '-');
+        children: filters.asMap().entries.map((entry) {
+          final index = entry.key;
+          final filter = entry.value;
+          final filterKey = ['all', 'open', 'in-progress', 'completed'][index];
+          final isSelected = _jobFilter == filterKey;
+
           return Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: ChoiceChip(
-              label: Text(filter),
+              label: Text(
+                filter,
+                style: TextStyle(fontSize: isUrdu ? 14 : 12),
+              ),
               selected: isSelected,
               onSelected: (selected) {
                 if (selected) {
                   setState(() {
-                    _jobFilter = filter.toLowerCase().replaceAll(' ', '-');
-                    if (_jobFilter == 'all') _jobFilter = 'all';
+                    _jobFilter = filterKey;
                   });
                 }
               },
-              // FIXED: Active and Inactive styling for light and dark themes
               selectedColor: CColors.primary,
               labelStyle: TextStyle(
                 color: isSelected
@@ -708,9 +797,14 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
   Widget _buildJobList() {
     if (_clientId.isEmpty) {
-      return const SizedBox(
+      return SizedBox(
         height: 200,
-        child: Center(child: Text('Please log in to view your jobs')),
+        child: Center(
+          child: Text(
+            'job.login_to_view'.tr(),
+            style: TextStyle(fontSize: context.locale.languageCode == 'ur' ? 16 : 14),
+          ),
+        ),
       );
     }
 
@@ -736,14 +830,24 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           debugPrint('Error fetching jobs: ${snapshot.error}');
           return SizedBox(
             height: 200,
-            child: Center(child: Text('Error loading jobs: ${snapshot.error}')),
+            child: Center(
+              child: Text(
+                '${'errors.jobs_load_failed'.tr()}: ${snapshot.error}',
+                style: TextStyle(fontSize: context.locale.languageCode == 'ur' ? 16 : 14),
+              ),
+            ),
           );
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const SizedBox(
+          return SizedBox(
             height: 200,
-            child: Center(child: Text('No jobs found. Post a job to get started!')),
+            child: Center(
+              child: Text(
+                'job.no_jobs_found'.tr(),
+                style: TextStyle(fontSize: context.locale.languageCode == 'ur' ? 16 : 14),
+              ),
+            ),
           );
         }
 
@@ -762,6 +866,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   Widget _buildJobCard(JobModel job) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Card(
       margin: const EdgeInsets.only(bottom: CSizes.md),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
@@ -782,6 +888,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                       job.title,
                       style: Theme.of(context).textTheme.titleMedium!.copyWith(
                         fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 18 : 16,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -795,10 +902,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                       border: Border.all(color: _getStatusColor(job.status)),
                     ),
                     child: Text(
-                      job.status.toUpperCase(),
+                      _getStatusText(job.status),
                       style: Theme.of(context).textTheme.labelSmall!.copyWith(
                         color: _getStatusColor(job.status),
                         fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 12 : 10,
                       ),
                     ),
                   ),
@@ -807,7 +915,9 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
               const SizedBox(height: CSizes.sm),
               Text(
                 job.description,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  fontSize: isUrdu ? 16 : 14,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -818,7 +928,9 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                   const SizedBox(width: 4),
                   Text(
                     timeago.format(job.createdAt.toDate()),
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                      fontSize: isUrdu ? 14 : 12,
+                    ),
                   ),
                   const Spacer(),
                   FutureBuilder<int>(
@@ -830,10 +942,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                           Icon(Icons.gavel, size: 16, color: CColors.primary),
                           const SizedBox(width: 4),
                           Text(
-                            '$count Bids',
+                            '${'bid.total_bids'.tr()}: $count',
                             style: Theme.of(context).textTheme.labelMedium!.copyWith(
                               color: CColors.primary,
                               fontWeight: FontWeight.bold,
+                              fontSize: isUrdu ? 14 : 12,
                             ),
                           ),
                         ],
@@ -860,9 +973,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLoading = ref.watch(clientLoadingProvider);
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Scaffold(
-      endDrawer: const DashboardDrawer(),
+      endDrawer: !isUrdu ? const DashboardDrawer() : null,
+      drawer: isUrdu ? const DashboardDrawer() : null,
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToPostJob,
@@ -900,7 +1015,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 delegate: SliverChildListDelegate([
                   _buildSectionHeader(
                     context,
-                    'Project Overview',
+                    'dashboard.project_overview'.tr(),
                     showAction: false,
                   ),
                   const SizedBox(height: CSizes.spaceBtwItems),
@@ -908,14 +1023,14 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                   const SizedBox(height: CSizes.spaceBtwSections),
                   _buildSectionHeader(
                     context,
-                    'My Posted Jobs',
-                    actionText: 'View All',
+                    'dashboard.my_jobs'.tr(),
+                    actionText: 'common.view_all'.tr(),
                     onAction: () => _showAllJobs(),
                   ),
                   const SizedBox(height: CSizes.spaceBtwItems),
                   _buildJobFilterChips(),
                   const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildJobList(), // ADDED: Display the job list
+                  _buildJobList(),
                   const SizedBox(height: CSizes.spaceBtwSections),
                 ]),
               ),

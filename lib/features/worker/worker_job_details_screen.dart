@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
@@ -35,7 +36,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
   final BidService _bidService = BidService();
   bool _isLoading = false;
   bool _hasExistingBid = false;
-  String _clientName = 'Loading...';
+  String _clientName = 'common.loading'.tr();
 
   @override
   void initState() {
@@ -79,14 +80,14 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
 
       if (mounted) {
         setState(() {
-          _clientName = 'Client';
+          _clientName = 'dashboard.client'.tr();
         });
       }
     } catch (e) {
       debugPrint('Error loading client name: $e');
       if (mounted) {
         setState(() {
-          _clientName = 'Client';
+          _clientName = 'dashboard.client'.tr();
         });
       }
     }
@@ -96,8 +97,8 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid bid amount'),
+        SnackBar(
+          content: Text('bid.valid_amount_required'.tr()),
           backgroundColor: CColors.warning,
           behavior: SnackBarBehavior.floating,
         ),
@@ -123,8 +124,8 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bid placed successfully!'),
+          SnackBar(
+            content: Text('bid.bid_placed'.tr()),
             backgroundColor: CColors.success,
             behavior: SnackBarBehavior.floating,
           ),
@@ -136,7 +137,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to place bid: $e'),
+            content: Text('bid.place_failed'.tr(args: [e.toString()])),
             backgroundColor: CColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -148,6 +149,21 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
           _isLoading = false;
         });
       }
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'open':
+        return 'job.status_open'.tr();
+      case 'in-progress':
+        return 'job.status_in_progress'.tr();
+      case 'completed':
+        return 'job.status_completed'.tr();
+      case 'cancelled':
+        return 'job.status_cancelled'.tr();
+      default:
+        return status;
     }
   }
 
@@ -169,6 +185,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -177,7 +194,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CommonHeader(
-              title: 'Job Details',
+              title: 'job.job'.tr(), // Changed to just "Job"
               showBackButton: true,
               onBackPressed: () => Navigator.pop(context),
             ),
@@ -186,9 +203,9 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildJobDetailsCard(context, isDark),
+                  _buildJobDetailsCard(context, isDark, isUrdu),
                   const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildBidForm(context, isDark),
+                  _buildBidForm(context, isDark, isUrdu),
                 ],
               ),
             ),
@@ -198,7 +215,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
     );
   }
 
-  Widget _buildJobDetailsCard(BuildContext context, bool isDark) {
+  Widget _buildJobDetailsCard(BuildContext context, bool isDark, bool isUrdu) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.lg),
@@ -220,10 +237,11 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  widget.job.status.toUpperCase(),
+                  _getStatusText(widget.job.status),
                   style: Theme.of(context).textTheme.labelSmall!.copyWith(
                     color: _getStatusColor(widget.job.status),
                     fontWeight: FontWeight.w600,
+                    fontSize: isUrdu ? 12 : 10,
                   ),
                 ),
               ),
@@ -238,6 +256,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
                   style: Theme.of(context).textTheme.labelSmall!.copyWith(
                     color: CColors.primary,
                     fontWeight: FontWeight.w600,
+                    fontSize: isUrdu ? 12 : 10,
                   ),
                 ),
               ),
@@ -249,6 +268,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
             style: Theme.of(context).textTheme.headlineSmall!.copyWith(
               fontWeight: FontWeight.w700,
               color: isDark ? CColors.textWhite : CColors.textPrimary,
+              fontSize: isUrdu ? 24 : 22,
             ),
           ),
           const SizedBox(height: 8),
@@ -257,27 +277,50 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
               height: 1.5,
+              fontSize: isUrdu ? 16 : 14,
             ),
           ),
           const SizedBox(height: 16),
-          Row(
+          // Fixed overflow issue with Wrap instead of Row
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
             children: [
-              Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
-              const SizedBox(width: 6),
-              Text(
-                'Posted by: $_clientName',
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                  color: CColors.darkGrey,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      '${'job.posted_by'.tr()}: $_clientName',
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                        color: CColors.darkGrey,
+                        fontSize: isUrdu ? 14 : 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Icon(Icons.access_time_outlined, size: 16, color: CColors.darkGrey),
-              const SizedBox(width: 6),
-              Text(
-                timeago.format(widget.job.createdAt.toDate()),
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                  color: CColors.darkGrey,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.access_time_outlined, size: 16, color: CColors.darkGrey),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      timeago.format(widget.job.createdAt.toDate()),
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                        color: CColors.darkGrey,
+                        fontSize: isUrdu ? 14 : 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -286,7 +329,7 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
     );
   }
 
-  Widget _buildBidForm(BuildContext context, bool isDark) {
+  Widget _buildBidForm(BuildContext context, bool isDark, bool isUrdu) {
     if (_hasExistingBid) {
       return Container(
         width: double.infinity,
@@ -301,18 +344,20 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
             const Icon(Icons.check_circle_outline, size: 40, color: CColors.success),
             const SizedBox(height: 12),
             Text(
-              'Bid Already Placed',
+              'bid.already_placed'.tr(),
               style: Theme.of(context).textTheme.titleMedium!.copyWith(
                 fontWeight: FontWeight.w700,
                 color: CColors.success,
+                fontSize: isUrdu ? 20 : 18,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'You have already submitted a bid for this job. Check your dashboard for updates.',
+              'bid.already_placed_message'.tr(),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
+                fontSize: isUrdu ? 16 : 14,
               ),
             ),
           ],
@@ -334,18 +379,20 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
             const Icon(Icons.lock_outline, size: 40, color: CColors.warning),
             const SizedBox(height: 12),
             Text(
-              'Job Closed',
+              'job.job_closed'.tr(),
               style: Theme.of(context).textTheme.titleMedium!.copyWith(
                 fontWeight: FontWeight.w700,
                 color: CColors.warning,
+                fontSize: isUrdu ? 20 : 18,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'This job is no longer accepting new bids.',
+              'job.no_longer_accepting'.tr(),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
+                fontSize: isUrdu ? 16 : 14,
               ),
             ),
           ],
@@ -357,10 +404,11 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Place Your Bid',
+          'bid.place_your_bid'.tr(),
           style: Theme.of(context).textTheme.titleLarge!.copyWith(
             fontWeight: FontWeight.w700,
             color: isDark ? CColors.textWhite : CColors.textPrimary,
+            fontSize: isUrdu ? 22 : 20,
           ),
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
@@ -377,28 +425,35 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
                 controller: _amountController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Bid Amount (PKR)',
+                  labelText: 'bid.amount_label'.tr(),
+                  hintText: 'bid.amount_hint'.tr(),
                   prefixText: 'Rs. ',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
                     borderSide: BorderSide(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
                   ),
+                  labelStyle: TextStyle(fontSize: isUrdu ? 16 : 14),
+                  hintStyle: TextStyle(fontSize: isUrdu ? 14 : 12),
                 ),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
               ),
               const SizedBox(height: CSizes.spaceBtwInputFields),
               TextField(
                 controller: _messageController,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Message (Optional)',
-                  hintText: 'Tell the client why you\'re the best fit...',
+                  labelText: 'bid.message_label'.tr(),
+                  hintText: 'bid.message_hint'.tr(),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
                     borderSide: BorderSide(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
                   ),
+                  labelStyle: TextStyle(fontSize: isUrdu ? 16 : 14),
+                  hintStyle: TextStyle(fontSize: isUrdu ? 14 : 12),
                 ),
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
               ),
               const SizedBox(height: CSizes.spaceBtwSections),
               SizedBox(
@@ -412,11 +467,14 @@ class _WorkerJobDetailsScreenState extends ConsumerState<WorkerJobDetailsScreen>
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text('Submit Bid'),
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                      : Text(
+                    'bid.submit_bid'.tr(),
+                    style: TextStyle(fontSize: isUrdu ? 18 : 16),
+                  ),
                 ),
               ),
             ],

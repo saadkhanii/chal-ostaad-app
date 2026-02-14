@@ -6,8 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -35,7 +35,6 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _descriptionController = TextEditingController();
   String? _selectedCategoryId;
   bool _isLoading = false;
-  final Logger _logger = Logger();
 
   List<Category> _categories = [];
   bool _isFetchingCategories = true;
@@ -48,22 +47,18 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     _fetchCategories();
   }
 
-  // Load client ID from SharedPreferences to ensure consistency
   Future<void> _loadClientId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userUid = prefs.getString('user_uid');
 
-      if (userUid != null) {
+      if (userUid != null && mounted) {
         setState(() {
           _clientId = userUid;
         });
-        _logger.i('Loaded client ID from SharedPreferences: $userUid');
-      } else {
-        _logger.w('No user UID found in SharedPreferences');
       }
     } catch (e) {
-      _logger.e('Error loading client ID: $e');
+      debugPrint('Error loading client ID: $e');
     }
   }
 
@@ -77,7 +72,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       final categoriesData = snapshot.docs.map((doc) {
         return Category(
           id: doc.id,
-          name: doc.data()['name'] ?? 'Unnamed Category',
+          name: doc.data()['name'] ?? 'job.unknown_category'.tr(),
         );
       }).toList();
 
@@ -87,93 +82,75 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           _isFetchingCategories = false;
         });
       }
-      _logger.i('Successfully fetched ${_categories.length} active categories.');
     } catch (e) {
-      _logger.e('Error fetching categories: $e');
+      debugPrint('Error fetching categories: $e');
       if (mounted) {
         setState(() {
           _isFetchingCategories = false;
         });
-        _showErrorMessage('Could not load categories. Please try again.');
+        _showErrorMessage('errors.load_categories_failed'.tr());
       }
     }
   }
 
-  // Updated job posting with better error handling and client ID consistency
   Future<void> _handlePostJob() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
+
     if (_selectedCategoryId == null) {
-      _showErrorMessage('Please select a job category.');
+      _showErrorMessage('job.category_required'.tr());
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // Use client ID from SharedPreferences OR try to get from auth as fallback
       String? clientIdToUse = _clientId;
 
       if (clientIdToUse == null) {
-        _logger.w('No client ID from SharedPreferences, trying Firebase Auth...');
         final user = FirebaseAuth.instanceFor(app: Firebase.app('client')).currentUser;
         if (user == null) {
-          throw Exception('You are not logged in. Please log in again.');
+          throw Exception('errors.not_logged_in'.tr());
         }
         clientIdToUse = user.uid;
-        _logger.i('Using client ID from Firebase Auth: $clientIdToUse');
-      } else {
-        _logger.i('Using client ID from SharedPreferences: $clientIdToUse');
       }
 
-      // Find the category name from the selected ID
       final selectedCategory = _categories.firstWhere(
               (cat) => cat.id == _selectedCategoryId,
-          orElse: () => Category(id: '', name: 'Unknown Category')
+          orElse: () => Category(id: '', name: 'job.unknown_category'.tr())
       );
 
       if (selectedCategory.id.isEmpty) {
-        throw Exception('Selected category not found.');
+        throw Exception('errors.category_not_found'.tr());
       }
 
       final newJob = JobModel(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         category: selectedCategory.name,
-        clientId: clientIdToUse!, // Use the consistent client ID
+        clientId: clientIdToUse!,
         createdAt: Timestamp.now(),
         status: 'open',
       );
 
-      _logger.i('Posting job with data: ${newJob.toJson()}');
-
-      // Add to Firestore and wait for completion
       final docRef = await FirebaseFirestore.instance
           .collection('jobs')
           .add(newJob.toJson());
 
-      _logger.i('Successfully posted job with ID: ${docRef.id} for client: $clientIdToUse');
-
-      // Verify the job was actually saved
       final savedJob = await docRef.get();
       if (savedJob.exists) {
-        _logger.i('Job verified in Firestore: ${savedJob.id}');
-        _showSuccessMessage('Job posted successfully!');
+        _showSuccessMessage('job.job_posted'.tr());
 
         if (mounted) {
-          Navigator.pop(context); // Go back to the dashboard
+          Navigator.pop(context);
         }
       } else {
-        throw Exception('Job was not saved properly to Firestore.');
+        throw Exception('errors.job_not_saved'.tr());
       }
 
     } on FirebaseException catch (e) {
-      _logger.e('Firebase error posting job: ${e.code} - ${e.message}');
-      _showErrorMessage('Firebase error: ${e.message ?? 'Failed to post job'}');
+      _showErrorMessage('${'errors.firebase_error'.tr()}: ${e.message}');
     } on Exception catch (e) {
-      _logger.e('Error posting job: $e');
-      _showErrorMessage('Failed to post job: ${e.toString()}');
+      _showErrorMessage('${'errors.post_job_failed'.tr()}: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -191,13 +168,15 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
+
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: SingleChildScrollView(
         child: Column(
           children: [
             CommonHeader(
-              title: 'Job',
+              title: 'job.job'.tr(),
               showBackButton: true,
               onBackPressed: () => Navigator.pop(context),
             ),
@@ -209,56 +188,44 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                        'Fill in the details below',
-                        style: Theme.of(context).textTheme.titleLarge
+                      'job.fill_details'.tr(),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: isUrdu ? 20 : 18,
+                      ),
                     ),
                     const SizedBox(height: CSizes.spaceBtwSections),
-            
-                    // Job Title
+
                     CTextField(
-                      label: 'Job Title',
-                      hintText: 'e.g., Fix leaky kitchen sink',
+                      label: 'job.job_title'.tr(),
+                      hintText: 'job.title_hint'.tr(),
                       controller: _titleController,
-                      validator: (value) => value == null || value.isEmpty ? 'Title is required' : null,
+                      validator: (value) => value == null || value.isEmpty
+                          ? 'job.title_required'.tr()
+                          : null,
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
-            
-                    // Job Description
+
                     CTextField(
-                      label: 'Job Description',
-                      hintText: 'Describe the task in detail...',
+                      label: 'job.job_description'.tr(),
+                      hintText: 'job.description_hint'.tr(),
                       controller: _descriptionController,
                       maxLines: 5,
-                      validator: (value) => value == null || value.isEmpty ? 'Description is required' : null,
+                      validator: (value) => value == null || value.isEmpty
+                          ? 'job.description_required'.tr()
+                          : null,
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
-            
-                    // Category Dropdown
-                    _buildCategoryDropdown(isDark),
-            
-                    // Debug info for client ID
-                    if (_clientId != null) ...[
-                      const SizedBox(height: CSizes.spaceBtwItems),
-                      Text(
-                        'Client ID: ${_clientId!.substring(0, 8)}...',
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                          color: CColors.darkGrey,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-            
+
+                    _buildCategoryDropdown(isDark, isUrdu),
+
                     const SizedBox(height: CSizes.spaceBtwSections),
-            
-                    // Post Job Button
+
                     _isLoading
                         ? const Center(child: CircularProgressIndicator())
                         : CButton(
-                      text: 'Post Job',
+                      text: 'job.post_job'.tr(),
                       onPressed: _handlePostJob,
                       width: double.infinity,
-                      backgroundColor: CColors.primary,
-                      foregroundColor: CColors.white,
                     ),
                   ],
                 ),
@@ -270,16 +237,29 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
-  Widget _buildCategoryDropdown(bool isDark) {
+  Widget _buildCategoryDropdown(bool isDark, bool isUrdu) {
     return DropdownButtonFormField<String>(
       value: _selectedCategoryId,
-      hint: Text(_isFetchingCategories ? 'Loading categories...' : 'Select a category'),
+      hint: Text(
+        _isFetchingCategories
+            ? 'job.loading_categories'.tr()
+            : 'job.select_category'.tr(),
+        style: TextStyle(fontSize: isUrdu ? 16 : 14),
+      ),
       isExpanded: true,
       decoration: InputDecoration(
-          labelText: 'Category',
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
-          prefixIcon: const Icon(Icons.category_outlined),
-          labelStyle: TextStyle(color: isDark ? CColors.light : CColors.dark)
+        labelText: 'job.category'.tr(),
+        labelStyle: TextStyle(
+          fontSize: isUrdu ? 16 : 14,
+          color: isDark ? CColors.light : CColors.dark,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        ),
+        prefixIcon: Icon(
+          Icons.category_outlined,
+          color: isDark ? CColors.lightGrey : CColors.darkGrey,
+        ),
       ),
       onChanged: _isFetchingCategories ? null : (newValue) {
         setState(() {
@@ -289,10 +269,13 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       items: _categories.map((Category category) {
         return DropdownMenuItem<String>(
           value: category.id,
-          child: Text(category.name),
+          child: Text(
+            category.name,
+            style: TextStyle(fontSize: isUrdu ? 16 : 14),
+          ),
         );
       }).toList(),
-      validator: (value) => value == null ? 'Category is required' : null,
+      validator: (value) => value == null ? 'job.category_required'.tr() : null,
     );
   }
 
@@ -303,6 +286,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         content: Text(message),
         backgroundColor: CColors.error,
         duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        ),
       ),
     );
   }
@@ -314,6 +301,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         content: Text(message),
         backgroundColor: CColors.success,
         duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        ),
       ),
     );
   }
