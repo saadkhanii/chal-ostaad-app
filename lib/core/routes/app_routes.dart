@@ -1,5 +1,4 @@
-// D:/FlutterProjects/chal_ostaad/lib/core/routes/app_routes.dart
-
+// lib/core/routes/app_routes.dart
 class AppRoutes {
   static const String splash = '/';
   static const String role = '/role';
@@ -11,6 +10,8 @@ class AppRoutes {
   static const String forgotPassword = '/forgot-password';
   static const String otpVerification = '/otp-verification';
   static const String postJob = '/post-job';
-
-// The '/set-password' route has been removed as it's no longer used.
+  static const String myJobs = '/my-jobs';
+  static const String myBids = '/my-bids';
+  static const String notifications = '/notifications';
+  static const String notificationSettings = '/notification-settings';
 }

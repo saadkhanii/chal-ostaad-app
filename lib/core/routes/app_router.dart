@@ -9,8 +9,15 @@ import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
 import '../../features/auth/screens/worker_signup.dart';
 import '../../features/client/client_dashboard.dart';
+import '../../features/client/my_jobs_screen.dart';
 import '../../features/client/post_job_screen.dart';
+import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
+
+// 🔔 Import Notification Screens
+import '../../features/notifications/notification_settings_screen.dart';
+import '../../features/notifications/notifications_screen.dart';
+
 import 'app_routes.dart';
 
 class AppRouter {
@@ -46,6 +53,18 @@ class AppRouter {
 
       case AppRoutes.forgotPassword:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());
+
+      case AppRoutes.myJobs:
+        return MaterialPageRoute(builder: (_) => const MyJobsScreen());
+
+      case AppRoutes.myBids:
+        return MaterialPageRoute(builder: (_) => const MyBidsScreen());
+    // 🔔 Notification Routes
+      case AppRoutes.notifications:
+        return MaterialPageRoute(builder: (_) => const NotificationsScreen());
+
+      case AppRoutes.notificationSettings:
+        return MaterialPageRoute(builder: (_) => const NotificationSettingsScreen());
 
     // --- OTP ROUTE LOGIC ---
       case AppRoutes.otpVerification:

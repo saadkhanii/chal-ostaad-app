@@ -12,7 +12,7 @@ import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
-import 'language_switch.dart';  // ← Import the existing LanguageSwitch
+import 'language_switch.dart';
 
 class DashboardDrawer extends ConsumerStatefulWidget {
   const DashboardDrawer({super.key});
@@ -72,7 +72,6 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
     final themeState = ref.watch(themeProvider);
     final isDark = themeState.isDark;
     final isUrdu = context.locale.languageCode == 'ur';
-    final currentLocale = ref.watch(localeProvider);
 
     final userName = _userInfo['name']!;
     final userEmail = _userInfo['email']!;
@@ -83,11 +82,11 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
       backgroundColor: isDark ? CColors.dark : CColors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.horizontal(
-          left: Radius.circular(CSizes.cardRadiusLg),  // Round left side
+          left: Radius.circular(CSizes.cardRadiusLg),
         ),
       ),
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,  // Force RTL for drawer content
+        textDirection: ui.TextDirection.rtl,
         child: Column(
           children: [
             // Header Section
@@ -209,6 +208,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
       padding: const EdgeInsets.symmetric(vertical: CSizes.sm),
       children: [
 
+        // Dashboard
         _buildDrawerItem(
           context,
           icon: Icons.dashboard_outlined,
@@ -217,11 +217,11 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-
           },
           isSelected: true,
         ),
 
+        // Profile
         _buildDrawerItem(
           context,
           icon: Icons.person_outline,
@@ -234,6 +234,20 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           },
         ),
 
+        // 🔔 Notifications
+        _buildDrawerItem(
+          context,
+          icon: Icons.notifications_outlined,
+          title: 'notification.notifications'.tr(),
+          isDark: isDark,
+          isUrdu: isUrdu,
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.pushNamed(context, AppRoutes.notificationSettings);
+          },
+        ),
+
+        // Settings
         _buildDrawerItem(
           context,
           icon: Icons.settings_outlined,
@@ -246,11 +260,11 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           },
         ),
 
-        // Language Switch Item
-        _buildLanguageSwitchItem(context, isDark, isUrdu),
+        // Language Section
+        _buildLanguageSection(context, isDark, isUrdu),
 
-        // Theme Switch Item
-        _buildThemeSwitchItem(context, isDark, isUrdu),
+        // Theme Toggle
+        _buildThemeToggle(context, isDark, isUrdu),
 
         // Divider
         Padding(
@@ -261,11 +275,13 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           child: Divider(height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
         ),
 
-        // Role-Specific Items
+        // Worker Specific Items
         if (isWorker) ..._buildWorkerSpecificItems(context, isDark, isUrdu),
+
+        // Client Specific Items
         if (isClient) ..._buildClientSpecificItems(context, isDark, isUrdu),
 
-        // Common Support Items
+        // Divider
         Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: CSizes.defaultSpace,
@@ -274,6 +290,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           child: Divider(height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
         ),
 
+        // Help & Support
         _buildDrawerItem(
           context,
           icon: Icons.help_outline,
@@ -286,6 +303,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           },
         ),
 
+        // About
         _buildDrawerItem(
           context,
           icon: Icons.info_outline,
@@ -301,7 +319,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
     );
   }
 
-  Widget _buildLanguageSwitchItem(BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildLanguageSection(BuildContext context, bool isDark, bool isUrdu) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: CSizes.sm, vertical: 4),
       child: Container(
@@ -327,7 +345,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Center(
-                child: LanguageSwitch(),  // ← Using the existing widget
+                child: LanguageSwitch(),
               ),
             ),
           ],
@@ -336,7 +354,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
     );
   }
 
-  Widget _buildThemeSwitchItem(BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildThemeToggle(BuildContext context, bool isDark, bool isUrdu) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: CSizes.sm, vertical: 4),
       child: Container(
@@ -351,7 +369,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             size: 24,
           ),
           title: Text(
-            isDark ? 'drawer.light_mode'.tr() : 'drawer.dark_mode'.tr(),
+            'settings.${isDark ? "light_mode" : "dark_mode"}'.tr(),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: isDark ? CColors.white : CColors.textPrimary,
               fontWeight: FontWeight.w400,
@@ -381,6 +399,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
   List<Widget> _buildWorkerSpecificItems(BuildContext context, bool isDark, bool isUrdu) {
     return [
       _buildSectionLabel(context, 'drawer.worker_tools'.tr(), isDark, isUrdu),
+
       _buildDrawerItem(
         context,
         icon: Icons.work_outline,
@@ -392,6 +411,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           _showComingSoon(context, 'drawer.coming_soon_bids'.tr());
         },
       ),
+
       _buildDrawerItem(
         context,
         icon: Icons.assignment_turned_in_outlined,
@@ -403,6 +423,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           _showComingSoon(context, 'drawer.coming_soon_projects'.tr());
         },
       ),
+
       _buildDrawerItem(
         context,
         icon: Icons.history_outlined,
@@ -414,6 +435,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           _showComingSoon(context, 'drawer.coming_soon_history'.tr());
         },
       ),
+
       _buildDrawerItem(
         context,
         icon: Icons.analytics_outlined,
@@ -431,6 +453,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
   List<Widget> _buildClientSpecificItems(BuildContext context, bool isDark, bool isUrdu) {
     return [
       _buildSectionLabel(context, 'drawer.client_tools'.tr(), isDark, isUrdu),
+
       _buildDrawerItem(
         context,
         icon: Icons.add_circle_outline,
@@ -442,6 +465,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           _showComingSoon(context, 'drawer.coming_soon_post_job'.tr());
         },
       ),
+
       _buildDrawerItem(
         context,
         icon: Icons.list_alt_outlined,
@@ -453,6 +477,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           _showComingSoon(context, 'drawer.coming_soon_my_jobs'.tr());
         },
       ),
+
       _buildDrawerItem(
         context,
         icon: Icons.gavel_outlined,
@@ -464,6 +489,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           _showComingSoon(context, 'drawer.coming_soon_received_bids'.tr());
         },
       ),
+
       _buildDrawerItem(
         context,
         icon: Icons.assignment_outlined,

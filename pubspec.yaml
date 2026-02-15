@@ -16,6 +16,15 @@ dependencies:
   intl: ^0.20.2
   easy_localization: ^3.0.8
 
+  # Notification packages
+  firebase_messaging: ^16.1.1
+  flutter_local_notifications: ^20.1.0
+
+  #Navigation bar
+  curved_navigation_bar: ^1.0.6
+  flutter_hooks: ^0.20.5
+  hooks_riverpod: ^2.6.1
+
   # Firebase
   firebase_core: ^4.2.1
   cloud_firestore: ^6.1.0

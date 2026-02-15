@@ -104,6 +104,7 @@
     "passwords_do_not_match": "Passwords do not match",
     "otp": "OTP"
   },
+
   "role": {
     "tagline": "Your trusted partner for finding work and workers",
     "need_help": "Need help with work?",
@@ -243,7 +244,21 @@
     "notifications": "Notifications",
     "no_notifications": "No notifications",
     "mark_read": "Mark as read",
-    "clear_all": "Clear all"
+    "clear_all": "Clear all",
+    "notifications_settings": "Notification Settings",
+    "enable_notifications": "Enable Notifications",
+    "receive_notifications": "Receive push notifications on this device",
+    "notification_types": "Notification Types",
+    "job_notifications": "Job Updates",
+    "job_notifications_desc": "New jobs, bids, and job status changes",
+    "chat_notifications": "Chat Messages",
+    "chat_notifications_desc": "New messages from clients and workers",
+    "payment_notifications": "Payment Updates",
+    "payment_notifications_desc": "Payment received, refunds, and withdrawals",
+    "promotion_notifications": "Promotions & Offers",
+    "promotion_notifications_desc": "Special offers and platform updates",
+    "notification_info": "You can customize which types of notifications you receive. Changes will apply to future notifications.",
+    "notifications_disabled_msg": "Notifications are currently disabled. Enable them to receive updates from Chal Ostaad."
   },
   "settings": {
     "settings": "Settings",

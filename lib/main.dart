@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chal_ostaad/core/providers/theme_provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:chal_ostaad/core/services/localization_service.dart';
+import 'package:chal_ostaad/core/services/notification_service.dart';
 import 'dart:ui' as ui;
 
 // Import providers
@@ -28,6 +29,10 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Initialize notification service
+    final notificationService = NotificationService();
+    await notificationService.initialize();
 
     // Initialize client app if needed
     try {

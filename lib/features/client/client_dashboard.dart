@@ -2,6 +2,7 @@
 import 'package:chal_ostaad/core/providers/auth_provider.dart';
 import 'package:chal_ostaad/features/client/post_job_screen.dart';
 import 'package:chal_ostaad/features/client/client_job_details_screen.dart';
+import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,10 +17,14 @@ import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/job_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
+import '../../shared/widgets/curved_nav_bar.dart'; // ← ADD THIS IMPORT
 import 'client_dashboard_header.dart';
+import 'my_jobs_screen.dart';
 
 // Create a state provider for loading
 final clientLoadingProvider = StateProvider<bool>((ref) => true);
+// Add page index provider for navigation
+final clientPageIndexProvider = StateProvider<int>((ref) => 0);
 
 class ClientDashboard extends ConsumerStatefulWidget {
   const ClientDashboard({super.key});
@@ -34,6 +39,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   String _clientEmail = '';
   String _bidFilter = 'all';
   String _jobFilter = 'all';
+  final ScrollController _scrollController = ScrollController(); // ← ADD THIS
 
   final JobService _jobService = JobService();
   final BidService _bidService = BidService();
@@ -45,6 +51,12 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose(); // ← ADD THIS
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -497,9 +509,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   void _showAllJobs() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('common.coming_soon'.tr())),
-    );
+    // Navigate to My Jobs tab instead of showing snackbar
+    ref.read(clientPageIndexProvider.notifier).state = 1;
   }
 
   Widget _buildLoadingScreen() {
@@ -969,74 +980,131 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
+  // Pages for bottom navigation
+  List<Widget> _getPages() {
+    return [
+      // Home Page (current dashboard)
+      _buildHomePage(),
+
+      // My Jobs Screen
+      const MyJobsScreen(),
+
+      // Center button - handled by nav bar
+      const SizedBox.shrink(),
+
+      // Notifications Screen
+      const NotificationsScreen(),
+
+      // Profile (placeholder)
+      _buildProfilePlaceholder(),
+    ];
+  }
+
+  Widget _buildHomePage() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLoading = ref.watch(clientLoadingProvider);
+
+    if (isLoading) {
+      return _buildLoadingScreen();
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadUserData,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                ClientDashboardHeader(userName: _userName),
+                Padding(
+                  padding: const EdgeInsets.all(CSizes.defaultSpace),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildOpportunityCard(context),
+                      const SizedBox(height: CSizes.spaceBtwSections),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _buildSectionHeader(
+                  context,
+                  'dashboard.project_overview'.tr(),
+                  showAction: false,
+                ),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildStatsRow(context),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildSectionHeader(
+                  context,
+                  'dashboard.my_jobs'.tr(),
+                  actionText: 'common.view_all'.tr(),
+                  onAction: () => _showAllJobs(),
+                ),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildJobFilterChips(),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildJobList(),
+                const SizedBox(height: CSizes.spaceBtwSections),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfilePlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_outline, size: 80, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            'common.coming_soon'.tr(),
+            style: const TextStyle(fontSize: 18, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Profile Page',
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isLoading = ref.watch(clientLoadingProvider);
     final isUrdu = context.locale.languageCode == 'ur';
+    final currentPageIndex = ref.watch(clientPageIndexProvider);
 
     return Scaffold(
       endDrawer: !isUrdu ? const DashboardDrawer() : null,
       drawer: isUrdu ? const DashboardDrawer() : null,
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToPostJob,
-        backgroundColor: CColors.primary,
-        foregroundColor: CColors.white,
-        child: const Icon(Icons.add),
+      // REMOVED floatingActionButton - Now using nav bar center button
+      body: IndexedStack(
+        index: currentPageIndex,
+        children: _getPages(),
       ),
-      body: isLoading
-          ? _buildLoadingScreen()
-          : RefreshIndicator(
-        onRefresh: _loadUserData,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  ClientDashboardHeader(userName: _userName),
-                  Padding(
-                    padding: const EdgeInsets.all(CSizes.defaultSpace),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildOpportunityCard(context),
-                        const SizedBox(height: CSizes.spaceBtwSections),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildSectionHeader(
-                    context,
-                    'dashboard.project_overview'.tr(),
-                    showAction: false,
-                  ),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildStatsRow(context),
-                  const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildSectionHeader(
-                    context,
-                    'dashboard.my_jobs'.tr(),
-                    actionText: 'common.view_all'.tr(),
-                    onAction: () => _showAllJobs(),
-                  ),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildJobFilterChips(),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildJobList(),
-                  const SizedBox(height: CSizes.spaceBtwSections),
-                ]),
-              ),
-            ),
-          ],
-        ),
+      bottomNavigationBar: CurvedNavBar(
+        currentIndex: currentPageIndex,
+        onTap: (index) {
+          ref.read(clientPageIndexProvider.notifier).state = index;
+        },
+        userRole: 'client',
+        scrollController: _scrollController,
       ),
     );
   }
