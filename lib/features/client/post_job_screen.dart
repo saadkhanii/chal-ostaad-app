@@ -1,5 +1,4 @@
 // lib/features/client/post_job_screen.dart
-
 import 'package:chal_ostaad/core/models/job_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,7 +22,14 @@ class Category {
 }
 
 class PostJobScreen extends ConsumerStatefulWidget {
-  const PostJobScreen({super.key});
+  final bool showAppBar;
+  final VoidCallback? onJobPosted;
+
+  const PostJobScreen({
+    super.key,
+    this.showAppBar = true, // Default to true for standalone navigation
+    this.onJobPosted,
+  });
 
   @override
   ConsumerState<PostJobScreen> createState() => _PostJobScreenState();
@@ -141,7 +147,12 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         _showSuccessMessage('job.job_posted'.tr());
 
         if (mounted) {
-          Navigator.pop(context);
+          // Call onJobPosted callback if provided, otherwise pop
+          if (widget.onJobPosted != null) {
+            widget.onJobPosted!();
+          } else {
+            Navigator.pop(context);
+          }
         }
       } else {
         throw Exception('errors.job_not_saved'.tr());
@@ -172,15 +183,19 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
+      body: Column(
+        children: [
+          // Conditionally show AppBar
+          if (widget.showAppBar)
             CommonHeader(
               title: 'job.job'.tr(),
               showBackButton: true,
               onBackPressed: () => Navigator.pop(context),
             ),
-            Padding(
+
+          // Main content
+          Expanded(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(CSizes.defaultSpace),
               child: Form(
                 key: _formKey,
@@ -231,8 +246,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

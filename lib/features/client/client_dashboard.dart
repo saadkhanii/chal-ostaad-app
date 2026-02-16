@@ -17,14 +17,14 @@ import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/job_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
-import '../../shared/widgets/curved_nav_bar.dart'; // ← ADD THIS IMPORT
+import '../../shared/widgets/curved_nav_bar.dart';
 import 'client_dashboard_header.dart';
 import 'my_jobs_screen.dart';
 
 // Create a state provider for loading
 final clientLoadingProvider = StateProvider<bool>((ref) => true);
-// Add page index provider for navigation
-final clientPageIndexProvider = StateProvider<int>((ref) => 0);
+// Add page index provider for navigation - START AT HOME (INDEX 2)
+final clientPageIndexProvider = StateProvider<int>((ref) => 2);
 
 class ClientDashboard extends ConsumerStatefulWidget {
   const ClientDashboard({super.key});
@@ -39,7 +39,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   String _clientEmail = '';
   String _bidFilter = 'all';
   String _jobFilter = 'all';
-  final ScrollController _scrollController = ScrollController(); // ← ADD THIS
+
+  // Create separate controllers for each scrollable page
+  final ScrollController _homeScrollController = ScrollController();
+  final ScrollController _myJobsScrollController = ScrollController();
+  final ScrollController _notificationsScrollController = ScrollController();
 
   final JobService _jobService = JobService();
   final BidService _bidService = BidService();
@@ -55,7 +59,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
   @override
   void dispose() {
-    _scrollController.dispose(); // ← ADD THIS
+    // Dispose all controllers
+    _homeScrollController.dispose();
+    _myJobsScrollController.dispose();
+    _notificationsScrollController.dispose();
     super.dispose();
   }
 
@@ -509,12 +516,12 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   void _showAllJobs() {
-    // Navigate to My Jobs tab instead of showing snackbar
-    ref.read(clientPageIndexProvider.notifier).state = 1;
+    // Navigate to My Jobs tab (index 0)
+    ref.read(clientPageIndexProvider.notifier).state = 0;
   }
 
   Widget _buildLoadingScreen() {
-    return Center(child: CircularProgressIndicator());
+    return const Center(child: CircularProgressIndicator());
   }
 
   Widget _buildOpportunityCard(BuildContext context) {
@@ -983,21 +990,45 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   // Pages for bottom navigation
   List<Widget> _getPages() {
     return [
-      // Home Page (current dashboard)
+      // Index 0: My Jobs (left button)
+      MyJobsScreen(scrollController: _myJobsScrollController),
+
+      // Index 1: Profile (left-center) - placeholder
+      _buildProfilePlaceholder(),
+
+      // Index 2: HOME (center button) - MAIN DASHBOARD
       _buildHomePage(),
 
-      // My Jobs Screen
-      const MyJobsScreen(),
+      // Index 3: Notifications (right-center)
+      NotificationsScreen(scrollController: _notificationsScrollController,
+        showAppBar: false,
+      ),
 
-      // Center button - handled by nav bar
-      const SizedBox.shrink(),
-
-      // Notifications Screen
-      const NotificationsScreen(),
-
-      // Profile (placeholder)
-      _buildProfilePlaceholder(),
+      // Index 4: Post Job (right button)
+      PostJobScreen(
+        showAppBar: false, // Add this parameter to hide the app bar
+        onJobPosted: () {
+          // After posting, go back to home
+          ref.read(clientPageIndexProvider.notifier).state = 2;
+        },
+      ),
     ];
+  }
+
+  Widget _buildPostJobPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_circle_outline, size: 80, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            'Tap + to post a job',
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHomePage() {
@@ -1011,8 +1042,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     return RefreshIndicator(
       onRefresh: _loadUserData,
       child: CustomScrollView(
-        controller: _scrollController,
+        controller: _homeScrollController,
         physics: const BouncingScrollPhysics(),
+        cacheExtent: 1000,
+        semanticChildCount: 10,
         slivers: [
           SliverToBoxAdapter(
             child: Column(
@@ -1089,11 +1122,26 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     final isUrdu = context.locale.languageCode == 'ur';
     final currentPageIndex = ref.watch(clientPageIndexProvider);
 
+    // Select the right controller based on active page
+    ScrollController activeController;
+    switch (currentPageIndex) {
+      case 0:
+        activeController = _myJobsScrollController;
+        break;
+      case 2:
+        activeController = _homeScrollController;
+        break;
+      case 3:
+        activeController = _notificationsScrollController;
+        break;
+      default:
+        activeController = _homeScrollController;
+    }
+
     return Scaffold(
       endDrawer: !isUrdu ? const DashboardDrawer() : null,
       drawer: isUrdu ? const DashboardDrawer() : null,
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      // REMOVED floatingActionButton - Now using nav bar center button
       body: IndexedStack(
         index: currentPageIndex,
         children: _getPages(),
@@ -1104,7 +1152,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           ref.read(clientPageIndexProvider.notifier).state = index;
         },
         userRole: 'client',
-        scrollController: _scrollController,
+        scrollController: activeController,
       ),
     );
   }

@@ -6,27 +6,45 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
-class NotificationsScreen extends ConsumerWidget {
-  const NotificationsScreen({super.key});
+import '../../core/constants/colors.dart';
+
+class NotificationsScreen extends ConsumerStatefulWidget {
+  final ScrollController? scrollController;
+  final bool showAppBar;
+
+  const NotificationsScreen({
+    super.key,
+    this.scrollController,
+    this.showAppBar = true, // Default to true for standalone navigation
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  @override
+  Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
+      // Conditionally show AppBar
+      appBar: widget.showAppBar
+          ? AppBar(
         title: Text('notification.notifications'.tr()),
         actions: [
           IconButton(
             icon: const Icon(Icons.done_all),
             onPressed: () {
-              // Mark all as read
               _markAllAsRead(context, user?.uid);
             },
             tooltip: 'notification.mark_all_read'.tr(),
           ),
         ],
-      ),
+      )
+          : null,
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
@@ -75,6 +93,8 @@ class NotificationsScreen extends ConsumerWidget {
           }
 
           return ListView.builder(
+            controller: widget.scrollController,
+            padding: const EdgeInsets.all(8),
             itemCount: notifications.length,
             itemBuilder: (context, index) {
               final doc = notifications[index];
@@ -99,46 +119,46 @@ class NotificationsScreen extends ConsumerWidget {
                     ),
                   );
                 },
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: notif['isRead'] == true
-                        ? Colors.grey[300]
-                        : Theme.of(context).primaryColor,
-                    child: Icon(
-                      _getNotificationIcon(notif['type']),
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  title: Text(
-                    notif['title'] ?? '',
-                    style: TextStyle(
-                      fontWeight: notif['isRead'] == true
-                          ? FontWeight.normal
-                          : FontWeight.bold,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(notif['body'] ?? ''),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatTimestamp(notif['timestamp']),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
+                child: Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: notif['isRead'] == true
+                          ? Colors.grey[300]
+                          : Theme.of(context).primaryColor,
+                      child: Icon(
+                        _getNotificationIcon(notif['type']),
+                        color: Colors.white,
+                        size: 20,
                       ),
-                    ],
+                    ),
+                    title: Text(
+                      notif['title'] ?? '',
+                      style: TextStyle(
+                        fontWeight: notif['isRead'] == true
+                            ? FontWeight.normal
+                            : FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(notif['body'] ?? ''),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatTimestamp(notif['timestamp']),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    onTap: () {
+                      _markAsRead(user?.uid, notifId);
+                      _navigateToNotification(context, notif);
+                    },
                   ),
-                  onTap: () {
-                    // Mark as read
-                    _markAsRead(user?.uid, notifId);
-
-                    // Navigate based on type
-                    _navigateToNotification(context, notif);
-                  },
                 ),
               );
             },
@@ -187,7 +207,6 @@ class NotificationsScreen extends ConsumerWidget {
         .update({'isRead': true});
   }
 
-  // FIXED: Added BuildContext parameter
   Future<void> _markAllAsRead(BuildContext context, String? userId) async {
     if (userId == null) return;
     final batch = FirebaseFirestore.instance.batch();
@@ -248,3 +267,4 @@ class NotificationsScreen extends ConsumerWidget {
     }
   }
 }
+

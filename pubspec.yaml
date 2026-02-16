@@ -42,14 +42,15 @@ dependencies:
   cupertino_icons: ^1.0.8
   timeago: ^3.7.1
 
-  # UI/UX
-  flutter_native_splash: ^2.3.10
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
   build_runner: ^2.4.7
+  flutter_native_splash: ^2.3.10
+
 
 flutter_launcher_icons:
   android: "ic_launcher"

@@ -32,25 +32,29 @@ class CurvedNavBar extends HookConsumerWidget {
     final user = FirebaseAuth.instance.currentUser;
     final isVisible = ref.watch(navBarVisibilityProvider);
 
+    // Track last scroll offset
+    final lastOffset = useRef(0.0);
+
     // Scroll listener for hide/show
     useEffect(() {
-      double lastScrollOffset = 0;
-      const threshold = 10.0;
-
       void listener() {
         if (!scrollController.hasClients) return;
 
         final currentOffset = scrollController.offset;
-        final isScrollingDown = currentOffset > lastScrollOffset && currentOffset > threshold;
-        final isScrollingUp = currentOffset < lastScrollOffset;
 
-        if (isScrollingDown && isVisible) {
-          ref.read(navBarVisibilityProvider.notifier).state = false;
-        } else if (isScrollingUp && !isVisible) {
+        // 🔥 FIX: Hide when scrolling down
+        if (currentOffset > lastOffset.value && currentOffset > 10) {
+          if (isVisible) {
+            ref.read(navBarVisibilityProvider.notifier).state = false;
+          }
+        }
+
+        // 🔥 FIX: ONLY show again when scrolled to the VERY TOP (offset <= 0)
+        else if (currentOffset <= 0 && !isVisible) {
           ref.read(navBarVisibilityProvider.notifier).state = true;
         }
 
-        lastScrollOffset = currentOffset;
+        lastOffset.value = currentOffset;
       }
 
       scrollController.addListener(listener);
@@ -58,7 +62,7 @@ class CurvedNavBar extends HookConsumerWidget {
     }, [scrollController]);
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       height: isVisible ? 70 : 0,
       child: isVisible
@@ -69,8 +73,8 @@ class CurvedNavBar extends HookConsumerWidget {
         color: CColors.primary,
         backgroundColor: Colors.transparent,
         buttonBackgroundColor: CColors.primary,
-        animationCurve: Curves.easeOutBack, // ✨ POP OUT EFFECT!
-        animationDuration: const Duration(milliseconds: 600),
+        animationCurve: Curves.easeOutCubic,
+        animationDuration: const Duration(milliseconds: 300),
         height: 70,
       )
           : const SizedBox.shrink(),
@@ -80,8 +84,8 @@ class CurvedNavBar extends HookConsumerWidget {
   List<Widget> _buildItems(BuildContext context, User? user) {
     if (userRole == 'client') {
       return [
-        const Icon(Icons.home_outlined, size: 28),
-        const Icon(Icons.work_outline, size: 28),
+        const Icon(Icons.work_outline, size: 28), // My Jobs (left)
+        const Icon(Icons.person_outline, size: 28), // Profile (left-center)
         Container(
           margin: const EdgeInsets.only(bottom: 20),
           decoration: BoxDecoration(
@@ -94,15 +98,15 @@ class CurvedNavBar extends HookConsumerWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.add_circle, size: 48, color: Colors.white),
+          child: const Icon(Icons.home, size: 48, color: Colors.white), // HOME IN MIDDLE
         ),
-        _buildNotificationIcon(context, user),
-        const Icon(Icons.person_outline, size: 28),
+        _buildNotificationIcon(context, user), // Notifications (right-center)
+        const Icon(Icons.add_circle, size: 28), // Post Job (right)
       ];
     } else {
       return [
-        const Icon(Icons.home_outlined, size: 28),
-        const Icon(Icons.search, size: 28),
+        const Icon(Icons.search, size: 28), // Find Jobs (left)
+        const Icon(Icons.person_outline, size: 28), // Profile (left-center)
         Container(
           margin: const EdgeInsets.only(bottom: 20),
           decoration: BoxDecoration(
@@ -115,10 +119,10 @@ class CurvedNavBar extends HookConsumerWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.gavel, size: 48, color: Colors.white),
+          child: const Icon(Icons.home, size: 48, color: Colors.white), // HOME IN MIDDLE
         ),
-        _buildNotificationIcon(context, user),
-        const Icon(Icons.person_outline, size: 28),
+        _buildNotificationIcon(context, user), // Notifications (right-center)
+        const Icon(Icons.gavel, size: 28), // My Bids (right)
       ];
     }
   }
@@ -172,34 +176,56 @@ class CurvedNavBar extends HookConsumerWidget {
   }
 
   void _handleTap(BuildContext context, int index) {
-    // Center button (index 2) has special navigation
+    // Center button (index 2) - HOME
     if (index == 2) {
-      if (userRole == 'client') {
-        Navigator.pushNamed(context, AppRoutes.postJob);
-      } else {
-        Navigator.pushNamed(context, AppRoutes.myBids);
+      onTap(2); // Navigate to home page (index 2)
+      return;
+    }
+
+    // Handle other buttons based on role
+    if (userRole == 'client') {
+      switch (index) {
+        case 0: // My Jobs (left)
+          onTap(0); // Navigate to My Jobs page (index 0)
+          break;
+        case 1: // Profile (left-center)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('common.coming_soon'.tr()),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(milliseconds: 800),
+            ),
+          );
+          break;
+        case 3: // Notifications (right-center)
+          Navigator.pushNamed(context, AppRoutes.notifications);
+          break;
+        case 4: // Post Job (right)
+          Navigator.pushNamed(context, AppRoutes.postJob);
+          break;
       }
-      return;
+    } else {
+      // Worker
+      switch (index) {
+        case 0: // Find Jobs (left)
+          onTap(0); // Navigate to Find Jobs page (index 0)
+          break;
+        case 1: // Profile (left-center)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('common.coming_soon'.tr()),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(milliseconds: 800),
+            ),
+          );
+          break;
+        case 3: // Notifications (right-center)
+          Navigator.pushNamed(context, AppRoutes.notifications);
+          break;
+        case 4: // My Bids (right)
+          Navigator.pushNamed(context, AppRoutes.myBids);
+          break;
+      }
     }
-
-    // Handle notifications tap (index 3)
-    if (index == 3) {
-      Navigator.pushNamed(context, AppRoutes.notifications);
-      return;
-    }
-
-    // Handle profile tap (index 4) - to be implemented
-    if (index == 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('common.coming_soon'.tr()),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    // Regular navigation for other tabs
-    onTap(index);
   }
 }
