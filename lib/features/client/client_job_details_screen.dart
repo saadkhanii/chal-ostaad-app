@@ -1,4 +1,5 @@
 // lib/features/client/client_job_details_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,22 +8,9 @@ import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
-import '../../core/models/bid_model.dart';
 import '../../core/models/job_model.dart';
-import '../../core/services/bid_service.dart';
-import '../../core/services/job_service.dart';
+import '../../core/models/bid_model.dart';
 import '../../shared/widgets/common_header.dart';
-
-// Provider to fetch worker details efficiently and cache them
-final workerDetailsProvider = FutureProvider.family<Map<String, dynamic>?, String>((ref, workerId) async {
-  try {
-    final doc = await FirebaseFirestore.instance.collection('workers').doc(workerId).get();
-    return doc.data();
-  } catch (e) {
-    debugPrint('Error fetching worker details: $e');
-    return null;
-  }
-});
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -34,125 +22,6 @@ class ClientJobDetailsScreen extends ConsumerStatefulWidget {
 }
 
 class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen> {
-  List<BidModel> _bids = [];
-  final BidService _bidService = BidService();
-  final JobService _jobService = JobService();
-  bool _isLoadingBids = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBids();
-  }
-
-  Future<void> _loadBids() async {
-    if (!mounted) return;
-    setState(() => _isLoadingBids = true);
-    try {
-      final bids = await _bidService.getBidsByJob(widget.job.id!);
-      if (mounted) {
-        setState(() {
-          _bids = bids;
-          _isLoadingBids = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading bids: $e');
-      if (mounted) {
-        setState(() => _isLoadingBids = false);
-      }
-    }
-  }
-
-  Future<void> _acceptBid(BidModel bid) async {
-    try {
-      await _bidService.updateBidStatus(bid.id!, 'accepted');
-      await _jobService.updateJobStatus(widget.job.id!, 'in-progress');
-      await _loadBids();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('bid.bid_accepted'.tr()),
-            backgroundColor: CColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('bid.accept_failed'.tr(args: [e.toString()])),
-            backgroundColor: CColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _rejectBid(BidModel bid) async {
-    try {
-      await _bidService.updateBidStatus(bid.id!, 'rejected');
-      await _loadBids();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('bid.bid_rejected'.tr()),
-            backgroundColor: CColors.info,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('bid.reject_failed'.tr(args: [e.toString()])),
-            backgroundColor: CColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'open': return 'job.status_open'.tr();
-      case 'in-progress': return 'job.status_in_progress'.tr();
-      case 'completed': return 'job.status_completed'.tr();
-      case 'cancelled': return 'job.status_cancelled'.tr();
-      default: return status;
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'open': return CColors.info;
-      case 'in-progress': return CColors.warning;
-      case 'completed': return CColors.success;
-      case 'cancelled': return CColors.error;
-      default: return CColors.grey;
-    }
-  }
-
-  String _getBidStatusText(String status) {
-    switch (status) {
-      case 'pending': return 'bid.status_pending'.tr();
-      case 'accepted': return 'bid.status_accepted'.tr();
-      case 'rejected': return 'bid.status_rejected'.tr();
-      default: return status;
-    }
-  }
-
-  Color _getBidStatusColor(String status) {
-    switch (status) {
-      case 'pending': return CColors.warning;
-      case 'accepted': return CColors.success;
-      case 'rejected': return CColors.error;
-      default: return CColors.grey;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -160,308 +29,153 @@ class _ClientJobDetailsScreenState extends ConsumerState<ClientJobDetailsScreen>
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CommonHeader(
-              title: 'job.job_details'.tr(),
-              showBackButton: true,
-              onBackPressed: () => Navigator.pop(context),
-            ),
-            Padding(
+      body: Column(
+        children: [
+          // Add CommonHeader
+          CommonHeader(
+            title: 'job.job_details'.tr(),
+            showBackButton: true,
+            onBackPressed: () => Navigator.pop(context),
+          ),
+
+          // Rest of the content
+          Expanded(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(CSizes.defaultSpace),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildJobDetailsCard(context, isDark, isUrdu),
+                  // Job details content here
+                  _buildJobDetails(context, isDark, isUrdu),
                   const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildBidsSection(context, isDark, isUrdu),
+                  _buildBidsList(context, isDark, isUrdu),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildJobDetailsCard(BuildContext context, bool isDark, bool isUrdu) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(CSizes.lg),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        color: isDark ? CColors.darkContainer : CColors.white,
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(widget.job.status).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _getStatusText(widget.job.status),
-                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                    color: _getStatusColor(widget.job.status),
-                    fontWeight: FontWeight.w600,
-                    fontSize: isUrdu ? 12 : 10,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: CColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  widget.job.category,
-                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                    color: CColors.primary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: isUrdu ? 12 : 10,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            widget.job.title,
-            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-              fontWeight: FontWeight.w700,
-              color: isDark ? CColors.textWhite : CColors.textPrimary,
-              fontSize: isUrdu ? 24 : 22,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.job.description,
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-              color: isDark ? CColors.textWhite.withOpacity(0.8) : CColors.darkerGrey,
-              height: 1.5,
-              fontSize: isUrdu ? 16 : 14,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Icon(Icons.access_time_outlined, size: 16, color: CColors.darkGrey),
-              const SizedBox(width: 6),
-              Text(
-                '${'job.posted'.tr()} ${timeago.format(widget.job.createdAt.toDate())}',
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                  color: CColors.darkGrey,
-                  fontSize: isUrdu ? 14 : 12,
-                ),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBidsSection(BuildContext context, bool isDark, bool isUrdu) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${'bid.bids_received'.tr()} (${_bids.length})',
-          style: Theme.of(context).textTheme.titleLarge!.copyWith(
-            fontWeight: FontWeight.w700,
-            color: isDark ? CColors.textWhite : CColors.textPrimary,
-            fontSize: isUrdu ? 22 : 20,
-          ),
-        ),
-        const SizedBox(height: CSizes.spaceBtwItems),
-        _isLoadingBids
-            ? const Center(child: CircularProgressIndicator())
-            : _bids.isEmpty
-            ? _buildEmptyBidsState(context, isUrdu)
-            : Column(children: _bids.map((bid) => _buildBidItem(bid, context, isDark, isUrdu)).toList()),
-      ],
-    );
-  }
-
-  Widget _buildEmptyBidsState(BuildContext context, bool isUrdu) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
+  Widget _buildJobDetails(BuildContext context, bool isDark, bool isUrdu) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 40.0),
+      padding: const EdgeInsets.all(CSizes.lg),
       decoration: BoxDecoration(
+        color: isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        color: isDark ? CColors.darkContainer : CColors.lightContainer,
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.gavel_outlined, size: 50, color: CColors.darkGrey.withOpacity(0.5)),
-          const SizedBox(height: CSizes.md),
           Text(
-            'bid.no_bids'.tr(),
-            style: Theme.of(context).textTheme.titleMedium!.copyWith(
-              color: isDark ? CColors.textWhite : CColors.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: isUrdu ? 18 : 16,
+            widget.job.title,
+            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+              fontWeight: FontWeight.bold,
+              fontSize: isUrdu ? 24 : 22,
             ),
           ),
           const SizedBox(height: CSizes.sm),
           Text(
-            'bid.no_bids_message'.tr(),
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-              color: CColors.darkGrey,
-              fontSize: isUrdu ? 16 : 14,
+            widget.job.description,
+            style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+              fontSize: isUrdu ? 18 : 16,
             ),
-            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: CSizes.md),
+          Row(
+            children: [
+              Icon(Icons.category, size: 20, color: CColors.primary),
+              const SizedBox(width: 8),
+              Text(
+                widget.job.category,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  fontSize: isUrdu ? 16 : 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: CSizes.sm),
+          Row(
+            children: [
+              Icon(Icons.access_time, size: 20, color: CColors.primary),
+              const SizedBox(width: 8),
+              Text(
+                timeago.format(widget.job.createdAt.toDate()),
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  fontSize: isUrdu ? 16 : 14,
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBidItem(BidModel bid, BuildContext context, bool isDark, bool isUrdu) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: CSizes.spaceBtwItems),
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        color: isDark ? CColors.darkContainer : CColors.white,
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: _getBidStatusColor(bid.status).withOpacity(0.1),
-              shape: BoxShape.circle,
+  Widget _buildBidsList(BuildContext context, bool isDark, bool isUrdu) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bids')
+          .where('jobId', isEqualTo: widget.job.id)
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Text(
+              'bid.no_bids_yet'.tr(),
+              style: TextStyle(fontSize: isUrdu ? 16 : 14),
             ),
-            child: Icon(Icons.person_outline, size: 20, color: _getBidStatusColor(bid.status)),
-          ),
-          const SizedBox(width: CSizes.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Rs. ${bid.amount}',
-                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? CColors.textWhite : CColors.textPrimary,
-                    fontSize: isUrdu ? 18 : 16,
-                  ),
-                ),
+          );
+        }
 
-                Consumer(
-                  builder: (context, ref, _) {
-                    final workerAsync = ref.watch(workerDetailsProvider(bid.workerId));
-
-                    return workerAsync.when(
-                      data: (data) {
-                        final workerName = data?['personalInfo']?['fullName'] ?? 'common.unknown'.tr();
-                        return Text(
-                          '${'bid.worker'.tr()}: $workerName',
-                          style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                            color: CColors.darkGrey,
-                            fontSize: isUrdu ? 14 : 12,
-                          ),
-                        );
-                      },
-                      loading: () => Text(
-                        'common.loading'.tr(),
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                          color: CColors.darkGrey,
-                          fontSize: isUrdu ? 14 : 12,
-                        ),
-                      ),
-                      error: (_, __) => Text(
-                        '${'bid.worker'.tr()}: ${bid.workerId.substring(0, 8)}...',
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                          color: CColors.darkGrey,
-                          fontSize: isUrdu ? 14 : 12,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                if (bid.message != null && bid.message!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '"${bid.message!}"',
-                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                      color: CColors.darkGrey,
-                      fontStyle: FontStyle.italic,
-                      fontSize: isUrdu ? 14 : 12,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (bid.status == 'pending') ...[
-            const SizedBox(width: CSizes.sm),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ElevatedButton(
-                  onPressed: () => _acceptBid(bid),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CColors.success,
-                    foregroundColor: CColors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: const Size(60, 30),
-                  ),
-                  child: Text(
-                    'bid.accept'.tr(),
-                    style: TextStyle(fontSize: isUrdu ? 14 : 12),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                OutlinedButton(
-                  onPressed: () => _rejectBid(bid),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: CColors.error,
-                    side: BorderSide(color: CColors.error),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: const Size(60, 30),
-                  ),
-                  child: Text(
-                    'bid.reject'.tr(),
-                    style: TextStyle(fontSize: isUrdu ? 14 : 12),
-                  ),
-                ),
-              ],
-            )
-          ] else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _getBidStatusColor(bid.status).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _getBidStatusText(bid.status),
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                  color: _getBidStatusColor(bid.status),
-                  fontWeight: FontWeight.w600,
-                  fontSize: isUrdu ? 12 : 10,
-                ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'bid.bids_received'.tr(),
+              style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: isUrdu ? 22 : 20,
               ),
             ),
-        ],
+            const SizedBox(height: CSizes.md),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: snapshot.data!.docs.length,
+              itemBuilder: (context, index) {
+                final doc = snapshot.data!.docs[index];
+                final bid = BidModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>);
+                return _buildBidCard(bid, context, isUrdu);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBidCard(BidModel bid, BuildContext context, bool isUrdu) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: CSizes.sm),
+      child: ListTile(
+        title: Text(
+          '${'bid.amount'.tr()}: Rs. ${bid.amount.toStringAsFixed(0)}',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: isUrdu ? 18 : 16),
+        ),
+        subtitle: bid.message != null ? Text(bid.message!) : null,
+        trailing: ElevatedButton(
+          onPressed: () {
+            // Handle accept bid
+          },
+          child: Text('bid.accept'.tr()),
+        ),
       ),
     );
   }

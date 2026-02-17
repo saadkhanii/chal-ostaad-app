@@ -9,7 +9,7 @@ import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
 import '../../features/auth/screens/worker_signup.dart';
 import '../../features/client/client_dashboard.dart';
-import '../../features/client/my_jobs_screen.dart';
+import '../../features/client/my_posted_jobs_screen.dart'; // Add this import
 import '../../features/client/post_job_screen.dart';
 import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
@@ -30,10 +30,9 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const RoleSelection());
 
       case AppRoutes.login:
-      // Just pass the route, Login will read arguments from ModalRoute
         return MaterialPageRoute(
-          builder: (_) => const Login(),  // ← No parameters needed
-          settings: settings,  // ← Pass settings so arguments are available
+          builder: (_) => const Login(),
+          settings: settings,
         );
 
       case AppRoutes.workerLogin:
@@ -54,11 +53,12 @@ class AppRouter {
       case AppRoutes.forgotPassword:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());
 
-      case AppRoutes.myJobs:
-        return MaterialPageRoute(builder: (_) => const MyJobsScreen());
+      case AppRoutes.myPostedJobs: // New route
+        return MaterialPageRoute(builder: (_) => const MyPostedJobsScreen());
 
       case AppRoutes.myBids:
         return MaterialPageRoute(builder: (_) => const MyBidsScreen());
+
     // 🔔 Notification Routes
       case AppRoutes.notifications:
         return MaterialPageRoute(builder: (_) => const NotificationsScreen());
@@ -80,7 +80,6 @@ class AppRouter {
             );
           }
         }
-        // Return an error route if arguments are missing or invalid
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
             body: Center(

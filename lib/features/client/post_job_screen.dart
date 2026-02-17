@@ -185,13 +185,20 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(
         children: [
-          // Conditionally show AppBar
-          if (widget.showAppBar)
-            CommonHeader(
-              title: 'job.job'.tr(),
-              showBackButton: true,
-              onBackPressed: () => Navigator.pop(context),
-            ),
+          // 🔥 FIX: Always show CommonHeader - ignore showAppBar
+          CommonHeader(
+            title: 'job.post_job'.tr(), // Better title
+            showBackButton: true, // Always show back button
+            onBackPressed: () {
+              // If there's a custom callback, use it, otherwise just pop
+              if (widget.onJobPosted != null) {
+                // This means we're in dashboard mode and should navigate away
+                widget.onJobPosted!();
+              } else {
+                Navigator.pop(context);
+              }
+            },
+          ),
 
           // Main content
           Expanded(

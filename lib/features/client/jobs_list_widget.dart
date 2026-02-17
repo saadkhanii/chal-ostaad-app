@@ -1,15 +1,14 @@
-// lib/features/client/my_jobs_screen.dart
+// lib/features/client/widgets/jobs_list_widget.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:easy_localization/easy_localization.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/constants/colors.dart';
-import '../../core/constants/sizes.dart';
-import '../../core/models/job_model.dart';
-import '../../shared/widgets/common_header.dart';
+import '../../../core/constants/colors.dart';
+import '../../../core/constants/sizes.dart';
+import '../../../core/models/job_model.dart';
 import 'client_job_details_screen.dart';
 
 // Provider to get bid count for a job
@@ -27,33 +26,30 @@ final bidCountProvider = FutureProvider.family<int, String>((ref, jobId) async {
   }
 });
 
-class MyJobsScreen extends ConsumerStatefulWidget {
+class JobsListWidget extends ConsumerStatefulWidget {
+  final String clientId;
   final ScrollController? scrollController;
+  final bool showFilters;
+  final int? limit; // For showing limited jobs on home page
+  final Function(JobModel)? onJobTap; // Optional callback
+  final EdgeInsetsGeometry? padding;
 
-  const MyJobsScreen({super.key, this.scrollController});
+  const JobsListWidget({
+    super.key,
+    required this.clientId,
+    this.scrollController,
+    this.showFilters = true,
+    this.limit,
+    this.onJobTap,
+    this.padding,
+  });
 
   @override
-  ConsumerState<MyJobsScreen> createState() => _MyJobsScreenState();
+  ConsumerState<JobsListWidget> createState() => _JobsListWidgetState();
 }
 
-class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
-  String _clientId = '';
+class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
   String _selectedFilter = 'all';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadClientId();
-  }
-
-  Future<void> _loadClientId() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() {
-        _clientId = prefs.getString('user_uid') ?? '';
-      });
-    }
-  }
 
   Color _getStatusColor(String status) {
     switch (status) {
@@ -75,26 +71,32 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
     }
   }
 
+  void _handleJobTap(JobModel job) {
+    if (widget.onJobTap != null) {
+      widget.onJobTap!(job);
+    } else {
+      // Default behavior: navigate to details
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ClientJobDetailsScreen(job: job),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      body: Column(
-        children: [
-          CommonHeader(
-            title: 'dashboard.my_jobs'.tr(),
-            showBackButton: true,
-            onBackPressed: () => Navigator.pop(context),
-          ),
-          _buildFilterChips(context, isDark, isUrdu),
-          Expanded(
-            child: _buildJobsList(context, isDark, isUrdu),
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        if (widget.showFilters) _buildFilterChips(context, isDark, isUrdu),
+        Expanded(
+          child: _buildJobsList(context, isDark, isUrdu),
+        ),
+      ],
     );
   }
 
@@ -144,7 +146,7 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
   }
 
   Widget _buildJobsList(BuildContext context, bool isDark, bool isUrdu) {
-    if (_clientId.isEmpty) {
+    if (widget.clientId.isEmpty) {
       return Center(
         child: Text(
           'job.login_to_view'.tr(),
@@ -155,7 +157,7 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
 
     Query query = FirebaseFirestore.instance
         .collection('jobs')
-        .where('clientId', isEqualTo: _clientId)
+        .where('clientId', isEqualTo: widget.clientId)
         .orderBy('createdAt', descending: true);
 
     if (_selectedFilter != 'all') {
@@ -189,10 +191,16 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
           );
         }
 
+        // Apply limit if specified
+        int itemCount = snapshot.data!.docs.length;
+        if (widget.limit != null && widget.limit! < itemCount) {
+          itemCount = widget.limit!;
+        }
+
         return ListView.builder(
           controller: widget.scrollController,
-          padding: const EdgeInsets.all(CSizes.defaultSpace),
-          itemCount: snapshot.data!.docs.length,
+          padding: widget.padding ?? const EdgeInsets.all(CSizes.defaultSpace),
+          itemCount: itemCount,
           itemBuilder: (context, index) {
             final doc = snapshot.data!.docs[index];
             final job = JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
@@ -208,14 +216,7 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
                   ),
                   elevation: 2,
                   child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ClientJobDetailsScreen(job: job),
-                        ),
-                      );
-                    },
+                    onTap: () => _handleJobTap(job),
                     borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
                     child: Padding(
                       padding: const EdgeInsets.all(CSizes.md),

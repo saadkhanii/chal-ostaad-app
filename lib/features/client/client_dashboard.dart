@@ -1,25 +1,24 @@
 // lib/features/client/client_dashboard.dart
-import 'package:chal_ostaad/core/providers/auth_provider.dart';
-import 'package:chal_ostaad/features/client/post_job_screen.dart';
+
 import 'package:chal_ostaad/features/client/client_job_details_screen.dart';
+import 'package:chal_ostaad/features/client/post_job_screen.dart';
 import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
+import 'package:chal_ostaad/features/client/my_posted_jobs_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:timeago/timeago.dart' as timeago;
 import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
-import '../../core/models/bid_model.dart';
 import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/job_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
 import '../../shared/widgets/curved_nav_bar.dart';
 import 'client_dashboard_header.dart';
-import 'my_jobs_screen.dart';
+import 'jobs_list_widget.dart';
 
 // Create a state provider for loading
 final clientLoadingProvider = StateProvider<bool>((ref) => true);
@@ -37,13 +36,13 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   String _userName = 'dashboard.client'.tr();
   String _clientId = '';
   String _clientEmail = '';
-  String _bidFilter = 'all';
-  String _jobFilter = 'all';
 
   // Create separate controllers for each scrollable page
-  final ScrollController _homeScrollController = ScrollController();
-  final ScrollController _myJobsScrollController = ScrollController();
-  final ScrollController _notificationsScrollController = ScrollController();
+  final ScrollController _myPostedJobsScrollController = ScrollController(); // Index 0
+  final ScrollController _postJobScrollController = ScrollController();      // Index 1
+  final ScrollController _homeScrollController = ScrollController();         // Index 2
+  final ScrollController _notificationsScrollController = ScrollController(); // Index 3
+  final ScrollController _profileScrollController = ScrollController();      // Index 4
 
   final JobService _jobService = JobService();
   final BidService _bidService = BidService();
@@ -60,9 +59,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   @override
   void dispose() {
     // Dispose all controllers
+    _myPostedJobsScrollController.dispose();
+    _postJobScrollController.dispose();
     _homeScrollController.dispose();
-    _myJobsScrollController.dispose();
     _notificationsScrollController.dispose();
+    _profileScrollController.dispose();
     super.dispose();
   }
 
@@ -101,7 +102,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           });
           ref.read(clientLoadingProvider.notifier).state = false;
         }
-        _debugJobPosting();
       } else {
         debugPrint('No user UID found in SharedPreferences');
         if (mounted) {
@@ -116,51 +116,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     }
   }
 
-  void _debugJobPosting() {
-    if (_clientId.isNotEmpty) {
-      debugPrint('=== DEBUG JOB POSTING ===');
-      debugPrint('Client ID: $_clientId');
-      debugPrint('Client Name: $_userName');
-      debugPrint('Client Email: $_clientEmail');
-
-      FirebaseFirestore.instance
-          .collection('jobs')
-          .where('clientId', isEqualTo: _clientId)
-          .get()
-          .then((snapshot) {
-        debugPrint('Total jobs found for client: ${snapshot.docs.length}');
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          debugPrint('Job: ${doc.id} - ${data['title']} - Status: ${data['status']}');
-        }
-      }).catchError((e) {
-        debugPrint('Error checking jobs: $e');
-      });
-    }
-  }
-
-  Future<int> _getBidCountForJob(String jobId) async {
-    try {
-      final bids = await _bidService.getBidsByJob(jobId);
-      return bids.length;
-    } catch (e) {
-      debugPrint('Error getting bid count for job $jobId: $e');
-      if (e.toString().contains('index') || e.toString().contains('FAILED_PRECONDITION')) {
-        return 0;
-      }
-      return 0;
-    }
-  }
-
-  void _navigateToPostJob() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => PostJobScreen()),
-    ).then((_) {
-      setState(() {});
-    });
-  }
-
   void _showJobDetails(JobModel job) {
     Navigator.push(
       context,
@@ -170,353 +125,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'open':
-        return CColors.info;
-      case 'in-progress':
-        return CColors.warning;
-      case 'completed':
-        return CColors.success;
-      case 'cancelled':
-        return CColors.error;
-      default:
-        return CColors.grey;
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'open':
-        return 'job.status_open'.tr();
-      case 'in-progress':
-        return 'job.status_in_progress'.tr();
-      case 'completed':
-        return 'job.status_completed'.tr();
-      case 'cancelled':
-        return 'job.status_cancelled'.tr();
-      default:
-        return status;
-    }
-  }
-
-  Future<void> _updateJobStatus(String jobId, String newStatus) async {
-    try {
-      await _jobService.updateJobStatus(jobId, newStatus);
-
-      String message = '';
-      switch (newStatus) {
-        case 'completed':
-          message = 'job.job_completed'.tr();
-          break;
-        case 'cancelled':
-          message = 'job.job_cancelled'.tr();
-          break;
-        case 'in-progress':
-          message = 'job.job_started'.tr();
-          break;
-        case 'open':
-          message = 'job.job_reopened'.tr();
-          break;
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: CColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('errors.update_failed'.tr(args: [e.toString()])),
-            backgroundColor: CColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showJobActions(JobModel job) {
-    final isUrdu = context.locale.languageCode == 'ur';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(CSizes.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'job.job_actions'.tr(),
-                style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: isUrdu ? 22 : 20,
-                ),
-              ),
-              const SizedBox(height: CSizes.lg),
-
-              _buildActionTile(
-                context,
-                icon: Icons.remove_red_eye,
-                title: 'job.view_details'.tr(),
-                color: CColors.info,
-                onTap: () {
-                  Navigator.pop(context);
-                  _showJobDetails(job);
-                },
-              ),
-              const SizedBox(height: CSizes.sm),
-
-              if (job.status == 'open') ...[
-                _buildActionTile(
-                  context,
-                  icon: Icons.edit,
-                  title: 'job.edit_job'.tr(),
-                  color: CColors.info,
-                  onTap: () => _editJob(job),
-                ),
-                const SizedBox(height: CSizes.sm),
-                _buildActionTile(
-                  context,
-                  icon: Icons.cancel,
-                  title: 'job.cancel_job'.tr(),
-                  color: CColors.warning,
-                  onTap: () => _cancelJob(job.id!),
-                ),
-                const SizedBox(height: CSizes.sm),
-              ],
-
-              if (job.status == 'in-progress') ...[
-                _buildActionTile(
-                  context,
-                  icon: Icons.check_circle,
-                  title: 'job.mark_completed'.tr(),
-                  color: CColors.success,
-                  onTap: () => _markJobAsCompleted(job.id!),
-                ),
-                const SizedBox(height: CSizes.sm),
-                _buildActionTile(
-                  context,
-                  icon: Icons.cancel,
-                  title: 'job.cancel_job'.tr(),
-                  color: CColors.warning,
-                  onTap: () => _cancelJob(job.id!),
-                ),
-                const SizedBox(height: CSizes.sm),
-              ],
-
-              if (job.status == 'completed') ...[
-                _buildActionTile(
-                  context,
-                  icon: Icons.replay,
-                  title: 'job.reopen_job'.tr(),
-                  color: CColors.info,
-                  onTap: () => _reopenJob(job.id!),
-                ),
-                const SizedBox(height: CSizes.sm),
-              ],
-
-              _buildActionTile(
-                context,
-                icon: Icons.delete,
-                title: 'job.delete_job'.tr(),
-                color: CColors.error,
-                onTap: () => _deleteJob(job.id!),
-              ),
-
-              const SizedBox(height: CSizes.lg),
-              OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('common.close'.tr()),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildActionTile(BuildContext context, {
-    required IconData icon,
-    required String title,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final isUrdu = context.locale.languageCode == 'ur';
-
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(
-        title,
-        style: TextStyle(fontSize: isUrdu ? 18 : 16),
-      ),
-      onTap: () {
-        Navigator.pop(context);
-        onTap();
-      },
-    );
-  }
-
-  Future<void> _editJob(JobModel job) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('common.coming_soon'.tr())),
-    );
-  }
-
-  Future<void> _cancelJob(String jobId) async {
-    bool? confirmCancel = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        final isUrdu = context.locale.languageCode == 'ur';
-
-        return AlertDialog(
-          title: Text(
-            'job.cancel_job'.tr(),
-            style: TextStyle(fontSize: isUrdu ? 22 : 20),
-          ),
-          content: Text(
-            'job.confirm_cancel'.tr(),
-            style: TextStyle(fontSize: isUrdu ? 16 : 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'common.no'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: TextButton.styleFrom(foregroundColor: CColors.error),
-              child: Text(
-                'job.yes_cancel'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmCancel == true) {
-      await _updateJobStatus(jobId, 'cancelled');
-    }
-  }
-
-  Future<void> _reopenJob(String jobId) async {
-    await _updateJobStatus(jobId, 'open');
-  }
-
-  Future<void> _markJobAsCompleted(String jobId) async {
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        final isUrdu = context.locale.languageCode == 'ur';
-
-        return AlertDialog(
-          title: Text(
-            'job.complete_job'.tr(),
-            style: TextStyle(fontSize: isUrdu ? 22 : 20),
-          ),
-          content: Text(
-            'job.confirm_complete'.tr(),
-            style: TextStyle(fontSize: isUrdu ? 16 : 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'common.no'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: TextButton.styleFrom(foregroundColor: CColors.success),
-              child: Text(
-                'job.yes_complete'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm == true) {
-      await _updateJobStatus(jobId, 'completed');
-    }
-  }
-
-  Future<void> _deleteJob(String jobId) async {
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        final isUrdu = context.locale.languageCode == 'ur';
-
-        return AlertDialog(
-          title: Text(
-            'job.delete_job'.tr(),
-            style: TextStyle(fontSize: isUrdu ? 22 : 20),
-          ),
-          content: Text(
-            'job.confirm_delete'.tr(),
-            style: TextStyle(fontSize: isUrdu ? 16 : 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'common.cancel'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: TextButton.styleFrom(foregroundColor: CColors.error),
-              child: Text(
-                'job.delete'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm == true) {
-      try {
-        await _jobService.deleteJob(jobId);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('job.job_deleted'.tr()),
-              backgroundColor: CColors.success,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('errors.delete_failed'.tr(args: [e.toString()])),
-              backgroundColor: CColors.error,
-            ),
-          );
-        }
-      }
-    }
-  }
-
   void _showAllJobs() {
-    // Navigate to My Jobs tab (index 0)
+    // Navigate to My Posted Jobs tab (index 0)
     ref.read(clientPageIndexProvider.notifier).state = 0;
   }
 
@@ -575,7 +185,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           ),
           const SizedBox(height: CSizes.lg),
           ElevatedButton(
-            onPressed: _navigateToPostJob,
+            onPressed: () {
+              // Navigate to post job tab (index 1)
+              ref.read(clientPageIndexProvider.notifier).state = 1;
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: CColors.white,
               foregroundColor: CColors.primary,
@@ -672,23 +285,30 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       final activeJobs = jobs.where((doc) => doc['status'] == 'in-progress').length;
       final completedJobs = jobs.where((doc) => doc['status'] == 'completed').length;
 
+      // Calculate total spent from accepted bids on completed jobs
+      double totalSpent = 0.0;
+
+      // Get IDs of completed jobs
       final completedJobIds = jobs
           .where((doc) => doc['status'] == 'completed')
           .map((doc) => doc.id)
           .toList();
 
-      double totalSpent = 0.0;
       if (completedJobIds.isNotEmpty) {
+        // Fetch accepted bids for completed jobs
         final bidsSnapshot = await _firestore
             .collection('bids')
             .where('jobId', whereIn: completedJobIds)
             .where('status', isEqualTo: 'accepted')
             .get();
 
-        totalSpent = bidsSnapshot.docs.fold(0.0, (sum, doc) {
-          final amount = doc['amount'] as num? ?? 0;
-          return sum + amount.toDouble();
-        });
+        // Sum up the amounts
+        for (var bidDoc in bidsSnapshot.docs) {
+          final amount = bidDoc['amount'];
+          if (amount is num) {
+            totalSpent += amount.toDouble();
+          }
+        }
       }
 
       return {
@@ -746,7 +366,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
 
   String _formatCurrency(double amount) {
     if (amount == 0) return 'Rs 0';
-
     if (amount >= 10000000) {
       return 'Rs ${(amount / 10000000).toStringAsFixed(1)}Cr';
     } else if (amount >= 100000) {
@@ -754,281 +373,46 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     } else if (amount >= 1000) {
       return 'Rs ${(amount / 1000).toStringAsFixed(1)}k';
     }
-
     return 'Rs ${amount.toStringAsFixed(0)}';
-  }
-
-  Widget _buildJobFilterChips() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isUrdu = context.locale.languageCode == 'ur';
-
-    final filters = [
-      'common.all'.tr(),
-      'job.status_open'.tr(),
-      'job.status_in_progress'.tr(),
-      'job.status_completed'.tr(),
-    ];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: filters.asMap().entries.map((entry) {
-          final index = entry.key;
-          final filter = entry.value;
-          final filterKey = ['all', 'open', 'in-progress', 'completed'][index];
-          final isSelected = _jobFilter == filterKey;
-
-          return Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: ChoiceChip(
-              label: Text(
-                filter,
-                style: TextStyle(fontSize: isUrdu ? 14 : 12),
-              ),
-              selected: isSelected,
-              onSelected: (selected) {
-                if (selected) {
-                  setState(() {
-                    _jobFilter = filterKey;
-                  });
-                }
-              },
-              selectedColor: CColors.primary,
-              labelStyle: TextStyle(
-                color: isSelected
-                    ? CColors.white
-                    : (isDark ? CColors.white : CColors.textPrimary),
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-              backgroundColor: isDark ? CColors.darkContainer : CColors.softGrey,
-              shape: StadiumBorder(
-                side: BorderSide(
-                  color: isSelected ? CColors.primary : (isDark ? CColors.darkGrey : CColors.grey),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildJobList() {
-    if (_clientId.isEmpty) {
-      return SizedBox(
-        height: 200,
-        child: Center(
-          child: Text(
-            'job.login_to_view'.tr(),
-            style: TextStyle(fontSize: context.locale.languageCode == 'ur' ? 16 : 14),
-          ),
-        ),
-      );
-    }
-
-    Query query = _firestore.collection('jobs')
-        .where('clientId', isEqualTo: _clientId)
-        .orderBy('createdAt', descending: true);
-
-    if (_jobFilter != 'all') {
-      query = query.where('status', isEqualTo: _jobFilter);
-    }
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(
-            height: 200,
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (snapshot.hasError) {
-          debugPrint('Error fetching jobs: ${snapshot.error}');
-          return SizedBox(
-            height: 200,
-            child: Center(
-              child: Text(
-                '${'errors.jobs_load_failed'.tr()}: ${snapshot.error}',
-                style: TextStyle(fontSize: context.locale.languageCode == 'ur' ? 16 : 14),
-              ),
-            ),
-          );
-        }
-
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return SizedBox(
-            height: 200,
-            child: Center(
-              child: Text(
-                'job.no_jobs_found'.tr(),
-                style: TextStyle(fontSize: context.locale.languageCode == 'ur' ? 16 : 14),
-              ),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
-          itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
-            final job = JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-            return _buildJobCard(job);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildJobCard(JobModel job) {
-    final isUrdu = context.locale.languageCode == 'ur';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: CSizes.md),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
-      elevation: 2,
-      child: InkWell(
-        onTap: () => _showJobDetails(job),
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(CSizes.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      job.title,
-                      style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: isUrdu ? 18 : 16,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(job.status).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _getStatusColor(job.status)),
-                    ),
-                    child: Text(
-                      _getStatusText(job.status),
-                      style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                        color: _getStatusColor(job.status),
-                        fontWeight: FontWeight.bold,
-                        fontSize: isUrdu ? 12 : 10,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: CSizes.sm),
-              Text(
-                job.description,
-                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                  fontSize: isUrdu ? 16 : 14,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: CSizes.md),
-              Row(
-                children: [
-                  Icon(Icons.access_time, size: 16, color: CColors.darkGrey),
-                  const SizedBox(width: 4),
-                  Text(
-                    timeago.format(job.createdAt.toDate()),
-                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                      fontSize: isUrdu ? 14 : 12,
-                    ),
-                  ),
-                  const Spacer(),
-                  FutureBuilder<int>(
-                    future: _getBidCountForJob(job.id!),
-                    builder: (context, snapshot) {
-                      final count = snapshot.data ?? 0;
-                      return Row(
-                        children: [
-                          Icon(Icons.gavel, size: 16, color: CColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${'bid.total_bids'.tr()}: $count',
-                            style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                              color: CColors.primary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: isUrdu ? 14 : 12,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(width: CSizes.md),
-                  IconButton(
-                    icon: const Icon(Icons.more_vert),
-                    onPressed: () => _showJobActions(job),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // Pages for bottom navigation
   List<Widget> _getPages() {
     return [
-      // Index 0: My Jobs (left button)
-      MyJobsScreen(scrollController: _myJobsScrollController),
-
-      // Index 1: Profile (left-center) - placeholder
-      _buildProfilePlaceholder(),
-
-      // Index 2: HOME (center button) - MAIN DASHBOARD
-      _buildHomePage(),
-
-      // Index 3: Notifications (right-center)
-      NotificationsScreen(scrollController: _notificationsScrollController,
-        showAppBar: false,
+      // Index 0: My Posted Jobs
+      MyPostedJobsScreen(
+        scrollController: _myPostedJobsScrollController,
       ),
 
-      // Index 4: Post Job (right button)
+      // Index 1: Post Job
       PostJobScreen(
-        showAppBar: false, // Add this parameter to hide the app bar
+        showAppBar: false,
         onJobPosted: () {
           // After posting, go back to home
           ref.read(clientPageIndexProvider.notifier).state = 2;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('job.job_posted'.tr()),
+              backgroundColor: CColors.success,
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         },
       ),
-    ];
-  }
 
-  Widget _buildPostJobPlaceholder() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.add_circle_outline, size: 80, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(
-            'Tap + to post a job',
-            style: const TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-        ],
+      // Index 2: Home Dashboard
+      _buildHomePage(),
+
+      // Index 3: Notifications
+      NotificationsScreen(
+        scrollController: _notificationsScrollController,
+        showAppBar: false,
       ),
-    );
+
+      // Index 4: Profile
+      _buildProfilePlaceholder(controller: _profileScrollController),
+    ];
   }
 
   Widget _buildHomePage() {
@@ -1044,8 +428,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       child: CustomScrollView(
         controller: _homeScrollController,
         physics: const BouncingScrollPhysics(),
-        cacheExtent: 1000,
-        semanticChildCount: 10,
         slivers: [
           SliverToBoxAdapter(
             child: Column(
@@ -1078,14 +460,21 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 const SizedBox(height: CSizes.spaceBtwSections),
                 _buildSectionHeader(
                   context,
-                  'dashboard.my_jobs'.tr(),
+                  'dashboard.recent_jobs'.tr(),
                   actionText: 'common.view_all'.tr(),
                   onAction: () => _showAllJobs(),
                 ),
                 const SizedBox(height: CSizes.spaceBtwItems),
-                _buildJobFilterChips(),
-                const SizedBox(height: CSizes.spaceBtwItems),
-                _buildJobList(),
+                if (_clientId.isNotEmpty)
+                  SizedBox(
+                    height: 400,
+                    child: JobsListWidget(
+                      clientId: _clientId,
+                      showFilters: false,
+                      limit: 3,
+                      onJobTap: (job) => _showJobDetails(job),
+                    ),
+                  ),
                 const SizedBox(height: CSizes.spaceBtwSections),
               ]),
             ),
@@ -1095,23 +484,32 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
-  Widget _buildProfilePlaceholder() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.person_outline, size: 80, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(
-            'common.coming_soon'.tr(),
-            style: const TextStyle(fontSize: 18, color: Colors.grey),
+  Widget _buildProfilePlaceholder({ScrollController? controller}) {
+    return Scrollbar(
+      controller: controller,
+      child: SingleChildScrollView(
+        controller: controller,
+        child: Container(
+          height: MediaQuery.of(context).size.height,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.person_outline, size: 80, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  'common.coming_soon'.tr(),
+                  style: const TextStyle(fontSize: 18, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Profile Page',
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Profile Page',
-            style: const TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1122,17 +520,23 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     final isUrdu = context.locale.languageCode == 'ur';
     final currentPageIndex = ref.watch(clientPageIndexProvider);
 
-    // Select the right controller based on active page
+    // CORRECT controller mapping based on index
     ScrollController activeController;
     switch (currentPageIndex) {
-      case 0:
-        activeController = _myJobsScrollController;
+      case 0: // My Posted Jobs
+        activeController = _myPostedJobsScrollController;
         break;
-      case 2:
+      case 1: // Post Job
+        activeController = _postJobScrollController;
+        break;
+      case 2: // Home Dashboard
         activeController = _homeScrollController;
         break;
-      case 3:
+      case 3: // Notifications
         activeController = _notificationsScrollController;
+        break;
+      case 4: // Profile
+        activeController = _profileScrollController;
         break;
       default:
         activeController = _homeScrollController;
@@ -1149,7 +553,39 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       bottomNavigationBar: CurvedNavBar(
         currentIndex: currentPageIndex,
         onTap: (index) {
+          // Update the page index
           ref.read(clientPageIndexProvider.notifier).state = index;
+
+          // Reset scroll position of the new page
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            switch (index) {
+              case 0:
+                if (_myPostedJobsScrollController.hasClients) {
+                  _myPostedJobsScrollController.jumpTo(0);
+                }
+                break;
+              case 1:
+                if (_postJobScrollController.hasClients) {
+                  _postJobScrollController.jumpTo(0);
+                }
+                break;
+              case 2:
+                if (_homeScrollController.hasClients) {
+                  _homeScrollController.jumpTo(0);
+                }
+                break;
+              case 3:
+                if (_notificationsScrollController.hasClients) {
+                  _notificationsScrollController.jumpTo(0);
+                }
+                break;
+              case 4:
+                if (_profileScrollController.hasClients) {
+                  _profileScrollController.jumpTo(0);
+                }
+                break;
+            }
+          });
         },
         userRole: 'client',
         scrollController: activeController,
