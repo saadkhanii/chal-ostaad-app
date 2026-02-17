@@ -11,6 +11,7 @@ import '../../features/auth/screens/worker_signup.dart';
 import '../../features/client/client_dashboard.dart';
 import '../../features/client/my_posted_jobs_screen.dart'; // Add this import
 import '../../features/client/post_job_screen.dart';
+import '../../features/worker/find_jobs_screen.dart';
 import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
 
@@ -55,7 +56,8 @@ class AppRouter {
 
       case AppRoutes.myPostedJobs: // New route
         return MaterialPageRoute(builder: (_) => const MyPostedJobsScreen());
-
+      case AppRoutes.findJobs:
+        return MaterialPageRoute(builder: (_) => const FindJobsScreen());
       case AppRoutes.myBids:
         return MaterialPageRoute(builder: (_) => const MyBidsScreen());
 

@@ -15,6 +15,7 @@ class AppRoutes {
   static const String myBids = '/my-bids';
   static const String notifications = '/notifications';
   static const String notificationSettings = '/notification-settings';
+  static const String findJobs = '/find-jobs';
 
   // You can keep old route for backward compatibility if needed
   @Deprecated('Use myPostedJobs instead')

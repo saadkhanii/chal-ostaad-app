@@ -1,7 +1,10 @@
 // lib/features/worker/worker_dashboard.dart
 
 import 'package:chal_ostaad/features/worker/worker_dashboard_header.dart';
-import 'package:chal_ostaad/features/worker/worker_job_details_screen.dart' as job_details; // Added alias
+import 'package:chal_ostaad/features/worker/worker_job_details_screen.dart' as job_details;
+import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
+import 'package:chal_ostaad/features/worker/find_jobs_screen.dart';
+import 'package:chal_ostaad/features/worker/my_bids_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,9 +20,12 @@ import '../../core/services/bid_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/worker_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
+import '../../shared/widgets/curved_nav_bar.dart';
 
 // State provider for worker loading
 final workerLoadingProvider = StateProvider<bool>((ref) => true);
+// Page index provider - START AT HOME (INDEX 2)
+final workerPageIndexProvider = StateProvider<int>((ref) => 2);
 
 class WorkerDashboard extends ConsumerStatefulWidget {
   const WorkerDashboard({super.key});
@@ -34,6 +40,13 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   String _workerCategory = '';
   int _selectedFilter = 0; // 0: All, 1: My Category
 
+  // Create separate controllers for each scrollable page
+  final ScrollController _findJobsScrollController = ScrollController(); // Index 0
+  final ScrollController _myBidsScrollController = ScrollController();    // Index 1
+  final ScrollController _homeScrollController = ScrollController();      // Index 2
+  final ScrollController _notificationsScrollController = ScrollController(); // Index 3
+  final ScrollController _profileScrollController = ScrollController();   // Index 4
+
   final WorkerService _workerService = WorkerService();
   final BidService _bidService = BidService();
   final List<String> _filterOptions = ['dashboard.all_jobs'.tr(), 'dashboard.my_category'.tr()];
@@ -47,6 +60,17 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
     });
+  }
+
+  @override
+  void dispose() {
+    // Dispose all controllers
+    _findJobsScrollController.dispose();
+    _myBidsScrollController.dispose();
+    _homeScrollController.dispose();
+    _notificationsScrollController.dispose();
+    _profileScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -105,10 +129,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         'jobsWon': 0,
         'earnings': 0.0,
         'rating': 'N/A',
-        'totalBids': 0,
-        'pendingBids': 0,
-        'acceptedBids': 0,
-        'rejectedBids': 0,
       };
     }
 
@@ -120,35 +140,19 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
 
       final bids = bidsSnapshot.docs;
       final totalBids = bids.length;
-
-      final pendingBids = bids.where((doc) => doc['status'] == 'pending').length;
       final acceptedBids = bids.where((doc) => doc['status'] == 'accepted').length;
-      final rejectedBids = bids.where((doc) => doc['status'] == 'rejected').length;
 
       double earnings = 0.0;
       final acceptedBidDocs = bids.where((doc) => doc['status'] == 'accepted');
 
       for (final doc in acceptedBidDocs) {
         final amount = doc['amount'];
-        double bidAmount = 0.0;
-
-        if (amount is int) {
-          bidAmount = amount.toDouble();
-        } else if (amount is double) {
-          bidAmount = amount;
-        } else if (amount is String) {
-          try {
-            final cleanedAmount = amount.replaceAll(RegExp(r'[^0-9\.]'), '');
-            bidAmount = double.parse(cleanedAmount);
-          } catch (e) {
-            bidAmount = 0.0;
-          }
-        } else if (amount is num) {
-          bidAmount = amount.toDouble();
+        if (amount is num) {
+          earnings += amount.toDouble();
         }
-        earnings += bidAmount;
       }
 
+      // Get rating
       double rating = 0.0;
       String ratingText = 'N/A';
       try {
@@ -173,10 +177,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         'jobsWon': acceptedBids,
         'earnings': earnings,
         'rating': ratingText,
-        'totalBids': totalBids,
-        'pendingBids': pendingBids,
-        'acceptedBids': acceptedBids,
-        'rejectedBids': rejectedBids,
       };
     } catch (e) {
       debugPrint('Error fetching worker stats: $e');
@@ -185,10 +185,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
         'jobsWon': 0,
         'earnings': 0.0,
         'rating': 'N/A',
-        'totalBids': 0,
-        'pendingBids': 0,
-        'acceptedBids': 0,
-        'rejectedBids': 0,
       };
     }
   }
@@ -197,7 +193,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => job_details.WorkerJobDetailsScreen( // ← Using the alias
+        builder: (context) => job_details.WorkerJobDetailsScreen(
           job: job,
           workerId: _workerId,
           workerCategory: _workerCategory,
@@ -208,131 +204,120 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   }
 
   void _showAllJobs() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('common.coming_soon'.tr())),
-    );
+    // Navigate to Find Jobs tab (index 0)
+    ref.read(workerPageIndexProvider.notifier).state = 0;
   }
 
-  Widget _buildStatsRow(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchWorkerStats(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingStats(context);
-        }
-
-        if (snapshot.hasError) {
-          return _buildStatItem(context, 'common.error'.tr(), '!', Icons.error);
-        }
-
-        final stats = snapshot.data ?? {
-          'bidsPlaced': 0,
-          'jobsWon': 0,
-          'earnings': 0.0,
-          'rating': 'N/A',
-        };
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildStatItem(context, 'dashboard.bids_placed'.tr(), '${stats['bidsPlaced']}', Icons.gavel),
-            _buildStatItem(context, 'dashboard.jobs_won'.tr(), '${stats['jobsWon']}', Icons.emoji_events),
-            _buildStatItem(context, 'dashboard.earnings'.tr(), _formatCurrency(stats['earnings']), Icons.attach_money),
-            _buildStatItem(context, 'dashboard.rating'.tr(), '${stats['rating']}', Icons.star),
-          ],
-        );
-      },
-    );
+  void _showAllBids() {
+    // Navigate to My Bids tab (index 1)
+    ref.read(workerPageIndexProvider.notifier).state = 1;
   }
 
-  Widget _buildLoadingStats(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildStatItem(context, 'dashboard.bids_placed'.tr(), '...', Icons.gavel),
-        _buildStatItem(context, 'dashboard.jobs_won'.tr(), '...', Icons.emoji_events),
-        _buildStatItem(context, 'dashboard.earnings'.tr(), '...', Icons.attach_money),
-        _buildStatItem(context, 'dashboard.rating'.tr(), '...', Icons.star),
-      ],
-    );
+  // Pages for bottom navigation
+  List<Widget> _getPages() {
+    return [
+      // Index 0: Find Jobs
+      FindJobsScreen(
+        scrollController: _findJobsScrollController,
+        showAppBar: false,
+      ),
+
+      // Index 1: My Bids
+      MyBidsScreen(
+        scrollController: _myBidsScrollController,
+        showAppBar: false,
+      ),
+
+      // Index 2: Home Dashboard
+      _buildHomePage(),
+
+      // Index 3: Notifications
+      NotificationsScreen(
+        scrollController: _notificationsScrollController,
+        showAppBar: false,
+      ),
+
+      // Index 4: Profile
+      _buildProfilePlaceholder(controller: _profileScrollController),
+    ];
   }
 
-  String _formatCurrency(double amount) {
-    if (amount == 0) return 'Rs 0';
+  Widget _buildHomePage() {
+    final isLoading = ref.watch(workerLoadingProvider);
 
-    if (amount >= 10000000) {
-      return 'Rs ${(amount / 10000000).toStringAsFixed(1)}Cr';
-    } else if (amount >= 100000) {
-      return 'Rs ${(amount / 100000).toStringAsFixed(1)}L';
-    } else if (amount >= 1000) {
-      return 'Rs ${(amount / 1000).toStringAsFixed(1)}k';
+    if (isLoading) {
+      return _buildLoadingScreen();
     }
 
-    return 'Rs ${amount.toStringAsFixed(0)}';
-  }
-
-  Widget _buildStatItem(BuildContext context, String label, String value, IconData icon) {
-    final isUrdu = context.locale.languageCode == 'ur';
-
-    return Column(
-      children: [
-        Icon(icon, color: CColors.primary, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge!.copyWith(
-            fontWeight: FontWeight.bold,
-            fontSize: isUrdu ? 20 : 18,
-          ),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall!.copyWith(
-            fontSize: isUrdu ? 14 : 12,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLoadingScreen() {
-    return Column(
-      children: [
-        Container(
-          height: 200,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [CColors.primary, CColors.secondary],
-            ),
-          ),
-          child: const Center(
-            child: CircularProgressIndicator(color: CColors.white),
-          ),
-        ),
-        Expanded(
-          child: Center(
+    return RefreshIndicator(
+      onRefresh: _loadUserData,
+      child: CustomScrollView(
+        controller: _homeScrollController,
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(color: CColors.primary),
-                const SizedBox(height: CSizes.md),
-                Text(
-                  'common.loading_dashboard'.tr(),
-                  style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                    color: CColors.textSecondary,
+                WorkerDashboardHeader(userName: _userName),
+                Padding(
+                  padding: const EdgeInsets.all(CSizes.defaultSpace),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildOpportunityCard(context),
+                      const SizedBox(height: CSizes.spaceBtwSections),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _buildSectionHeader(
+                  context,
+                  'dashboard.performance_overview'.tr(),
+                  showAction: false,
+                ),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildStatsRow(context),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildSectionHeader(
+                  context,
+                  'dashboard.available_jobs'.tr(),
+                  actionText: 'common.view_all'.tr(),
+                  onAction: () => _showAllJobs(),
+                ),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildFilterChips(),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildJobFeed(limit: 3),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildSectionHeader(
+                  context,
+                  'dashboard.recent_bids'.tr(),
+                  actionText: 'common.view_all'.tr(),
+                  onAction: () => _showAllBids(),
+                ),
+                const SizedBox(height: CSizes.spaceBtwItems),
+                _buildMyBidsList(limit: 3),
+                const SizedBox(height: CSizes.spaceBtwSections * 2),
+              ]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
+  Widget _buildLoadingScreen() {
+    return const Center(child: CircularProgressIndicator());
+  }
+
   Widget _buildOpportunityCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
 
     return Container(
@@ -454,6 +439,86 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     );
   }
 
+  Widget _buildStatsRow(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _fetchWorkerStats(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingStats(context);
+        }
+
+        if (snapshot.hasError) {
+          return _buildStatItem(context, 'common.error'.tr(), '!', Icons.error);
+        }
+
+        final stats = snapshot.data ?? {
+          'bidsPlaced': 0,
+          'jobsWon': 0,
+          'earnings': 0.0,
+          'rating': 'N/A',
+        };
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildStatItem(context, 'dashboard.bids_placed'.tr(), '${stats['bidsPlaced']}', Icons.gavel),
+            _buildStatItem(context, 'dashboard.jobs_won'.tr(), '${stats['jobsWon']}', Icons.emoji_events),
+            _buildStatItem(context, 'dashboard.earnings'.tr(), _formatCurrency(stats['earnings']), Icons.attach_money),
+            _buildStatItem(context, 'dashboard.rating'.tr(), '${stats['rating']}', Icons.star),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildLoadingStats(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _buildStatItem(context, 'dashboard.bids_placed'.tr(), '...', Icons.gavel),
+        _buildStatItem(context, 'dashboard.jobs_won'.tr(), '...', Icons.emoji_events),
+        _buildStatItem(context, 'dashboard.earnings'.tr(), '...', Icons.attach_money),
+        _buildStatItem(context, 'dashboard.rating'.tr(), '...', Icons.star),
+      ],
+    );
+  }
+
+  Widget _buildStatItem(BuildContext context, String label, String value, IconData icon) {
+    final isUrdu = context.locale.languageCode == 'ur';
+
+    return Column(
+      children: [
+        Icon(icon, color: CColors.primary, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge!.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: isUrdu ? 20 : 18,
+          ),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+            fontSize: isUrdu ? 14 : 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCurrency(double amount) {
+    if (amount == 0) return 'Rs 0';
+    if (amount >= 10000000) {
+      return 'Rs ${(amount / 10000000).toStringAsFixed(1)}Cr';
+    } else if (amount >= 100000) {
+      return 'Rs ${(amount / 100000).toStringAsFixed(1)}L';
+    } else if (amount >= 1000) {
+      return 'Rs ${(amount / 1000).toStringAsFixed(1)}k';
+    }
+    return 'Rs ${amount.toStringAsFixed(0)}';
+  }
+
   Widget _buildFilterChips() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
@@ -500,7 +565,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     );
   }
 
-  Widget _buildJobFeed() {
+  Widget _buildJobFeed({int? limit}) {
     if (_workerId.isEmpty) {
       return _buildEmptyState('errors.login_to_view_jobs'.tr());
     }
@@ -529,10 +594,15 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           return _buildEmptyState('job.no_jobs_available'.tr());
         }
 
+        int itemCount = snapshot.data!.docs.length;
+        if (limit != null && limit < itemCount) {
+          itemCount = limit;
+        }
+
         return ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: itemCount,
           itemBuilder: (context, index) {
             final doc = snapshot.data!.docs[index];
             final job = JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
@@ -580,7 +650,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                       border: Border.all(color: CColors.info),
                     ),
                     child: Text(
-                      job.category.toUpperCase(),
+                      job.category,
                       style: Theme.of(context).textTheme.labelSmall!.copyWith(
                         color: CColors.info,
                         fontWeight: FontWeight.bold,
@@ -697,7 +767,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     );
   }
 
-  Widget _buildMyBidsList() {
+  Widget _buildMyBidsList({int? limit}) {
     if (_workerId.isEmpty) {
       return _buildEmptyState('errors.login_to_view_bids'.tr());
     }
@@ -707,7 +777,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           .collection('bids')
           .where('workerId', isEqualTo: _workerId)
           .orderBy('createdAt', descending: true)
-          .limit(5)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -722,22 +791,26 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           return _buildEmptyState('bid.no_bids_placed'.tr());
         }
 
+        int itemCount = snapshot.data!.docs.length;
+        if (limit != null && limit < itemCount) {
+          itemCount = limit;
+        }
+
         return ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: itemCount,
           itemBuilder: (context, index) {
             final doc = snapshot.data!.docs[index];
-            final data = doc.data() as Map<String, dynamic>;
             final bid = BidModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>);
-            return _buildBidItem(bid, data);
+            return _buildBidItem(bid);
           },
         );
       },
     );
   }
 
-  Widget _buildBidItem(BidModel bid, Map<String, dynamic> data) {
+  Widget _buildBidItem(BidModel bid) {
     final isUrdu = context.locale.languageCode == 'ur';
 
     return FutureBuilder<DocumentSnapshot>(
@@ -745,6 +818,22 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
       builder: (context, jobSnapshot) {
         if (jobSnapshot.connectionState == ConnectionState.waiting) {
           return ListTile(
+            title: Text('common.loading'.tr()),
+          );
+        }
+
+        if (!jobSnapshot.hasData || !jobSnapshot.data!.exists) {
+          return ListTile(
+            title: Text('job.job_not_found'.tr()),
+          );
+        }
+
+        final jobData = jobSnapshot.data!.data() as Map<String, dynamic>;
+        final jobTitle = jobData['title'] ?? 'job.unknown'.tr();
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: CSizes.sm),
+          child: ListTile(
             leading: CircleAvatar(
               backgroundColor: _getBidStatusColor(bid.status),
               child: Icon(
@@ -754,78 +843,23 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
               ),
             ),
             title: Text(
-              'common.loading'.tr(),
-              style: TextStyle(
-                color: CColors.grey,
-                fontSize: isUrdu ? 16 : 14,
-              ),
+              jobTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Text(
-              '${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}',
-              style: TextStyle(fontSize: isUrdu ? 14 : 12),
-            ),
-          );
-        }
-
-        if (!jobSnapshot.hasData || !jobSnapshot.data!.exists) {
-          return ListTile(
-            leading: CircleAvatar(
-              backgroundColor: CColors.error,
-              child: Icon(Icons.error, size: 20, color: Colors.white),
-            ),
-            title: Text(
-              'job.job_not_found'.tr(),
-              style: TextStyle(
-                color: CColors.error,
-                fontSize: isUrdu ? 16 : 14,
-              ),
-            ),
-            subtitle: Text(
-              '${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}',
-              style: TextStyle(fontSize: isUrdu ? 14 : 12),
-            ),
-          );
-        }
-
-        final jobData = jobSnapshot.data!.data() as Map<String, dynamic>;
-        final jobTitle = jobData['title'] ?? 'job.unknown'.tr();
-
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: _getBidStatusColor(bid.status),
-            child: Icon(
-              _getBidStatusIcon(bid.status),
-              size: 20,
-              color: Colors.white,
-            ),
-          ),
-          title: Text(
-            jobTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: isUrdu ? 16 : 14),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}',
-                style: TextStyle(fontSize: isUrdu ? 14 : 12),
-              ),
-              Text(
-                '${'bid.status'.tr()}: ${_getBidStatusText(bid.status)}',
-                style: TextStyle(
-                  color: _getBidStatusColor(bid.status),
-                  fontWeight: FontWeight.bold,
-                  fontSize: isUrdu ? 14 : 12,
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${'bid.amount'.tr()}: ${_formatCurrency(bid.amount)}'),
+                Text(
+                  '${'bid.status'.tr()}: ${_getBidStatusText(bid.status)}',
+                  style: TextStyle(color: _getBidStatusColor(bid.status)),
                 ),
-              ),
-            ],
-          ),
-          trailing: Text(
-            timeago.format(bid.createdAt.toDate()),
-            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-              fontSize: isUrdu ? 14 : 12,
+              ],
+            ),
+            trailing: Text(
+              timeago.format(bid.createdAt.toDate()),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
         );
@@ -835,10 +869,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
 
   String _getBidStatusText(String status) {
     switch (status) {
-      case 'pending':
-        return 'bid.status_pending'.tr();
       case 'accepted':
         return 'bid.status_accepted'.tr();
+      case 'pending':
+        return 'bid.status_pending'.tr();
       case 'rejected':
         return 'bid.status_rejected'.tr();
       default:
@@ -895,75 +929,111 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     }
   }
 
+  Widget _buildProfilePlaceholder({ScrollController? controller}) {
+    return Scrollbar(
+      controller: controller,
+      child: SingleChildScrollView(
+        controller: controller,
+        child: Container(
+          height: MediaQuery.of(context).size.height,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.person_outline, size: 80, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  'common.coming_soon'.tr(),
+                  style: const TextStyle(fontSize: 18, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Profile Page',
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(workerLoadingProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
+    final currentPageIndex = ref.watch(workerPageIndexProvider);
+
+    // Select the right controller based on active page
+    ScrollController activeController;
+    switch (currentPageIndex) {
+      case 0: // Find Jobs
+        activeController = _findJobsScrollController;
+        break;
+      case 1: // My Bids
+        activeController = _myBidsScrollController;
+        break;
+      case 2: // Home Dashboard
+        activeController = _homeScrollController;
+        break;
+      case 3: // Notifications
+        activeController = _notificationsScrollController;
+        break;
+      case 4: // Profile
+        activeController = _profileScrollController;
+        break;
+      default:
+        activeController = _homeScrollController;
+    }
 
     return Scaffold(
       endDrawer: !isUrdu ? const DashboardDrawer() : null,
       drawer: isUrdu ? const DashboardDrawer() : null,
-      backgroundColor: Theme.of(context).brightness == Brightness.dark ? CColors.dark : CColors.lightGrey,
-      body: isLoading
-          ? _buildLoadingScreen()
-          : RefreshIndicator(
-        onRefresh: _loadUserData,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  WorkerDashboardHeader(userName: _userName),
-                  Padding(
-                    padding: const EdgeInsets.all(CSizes.defaultSpace),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildOpportunityCard(context),
-                        const SizedBox(height: CSizes.spaceBtwSections),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildSectionHeader(
-                    context,
-                    'dashboard.performance_overview'.tr(),
-                    showAction: false,
-                  ),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildStatsRow(context),
-                  const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildSectionHeader(
-                    context,
-                    'dashboard.available_jobs'.tr(),
-                    actionText: 'common.view_all'.tr(),
-                    onAction: () => _showAllJobs(),
-                  ),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildFilterChips(),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildJobFeed(),
-                  const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildSectionHeader(
-                    context,
-                    'dashboard.my_bids'.tr(),
-                    showAction: false,
-                  ),
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildMyBidsList(),
-                  const SizedBox(height: CSizes.spaceBtwSections * 2),
-                ]),
-              ),
-            ),
-          ],
-        ),
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
+      body: IndexedStack(
+        index: currentPageIndex,
+        children: _getPages(),
+      ),
+      bottomNavigationBar: CurvedNavBar(
+        currentIndex: currentPageIndex,
+        onTap: (index) {
+          // Update the page index
+          ref.read(workerPageIndexProvider.notifier).state = index;
+
+          // Reset scroll position of the new page
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            switch (index) {
+              case 0:
+                if (_findJobsScrollController.hasClients) {
+                  _findJobsScrollController.jumpTo(0);
+                }
+                break;
+              case 1:
+                if (_myBidsScrollController.hasClients) {
+                  _myBidsScrollController.jumpTo(0);
+                }
+                break;
+              case 2:
+                if (_homeScrollController.hasClients) {
+                  _homeScrollController.jumpTo(0);
+                }
+                break;
+              case 3:
+                if (_notificationsScrollController.hasClients) {
+                  _notificationsScrollController.jumpTo(0);
+                }
+                break;
+              case 4:
+                if (_profileScrollController.hasClients) {
+                  _profileScrollController.jumpTo(0);
+                }
+                break;
+            }
+          });
+        },
+        userRole: 'worker',
+        scrollController: activeController,
       ),
     );
   }

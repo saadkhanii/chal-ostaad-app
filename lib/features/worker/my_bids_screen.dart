@@ -1,4 +1,5 @@
 // lib/features/worker/screens/my_bids_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -28,7 +29,14 @@ final jobForBidProvider = FutureProvider.family<JobModel?, String>((ref, jobId) 
 });
 
 class MyBidsScreen extends ConsumerStatefulWidget {
-  const MyBidsScreen({super.key});
+  final ScrollController? scrollController;
+  final bool showAppBar;
+
+  const MyBidsScreen({
+    super.key,
+    this.scrollController,
+    this.showAppBar = true,
+  });
 
   @override
   ConsumerState<MyBidsScreen> createState() => _MyBidsScreenState();
@@ -88,10 +96,13 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(
         children: [
+          // Header with conditional back button
           CommonHeader(
-            title: 'dashboard.my_bids'.tr(),
-            showBackButton: true,
-            onBackPressed: () => Navigator.pop(context),
+            title: 'My Bids',
+            showBackButton: widget.showAppBar,
+            onBackPressed: widget.showAppBar
+                ? () => Navigator.pop(context)
+                : null,
           ),
           _buildFilterChips(context, isDark, isUrdu),
           Expanded(
@@ -194,6 +205,7 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
         }
 
         return ListView.builder(
+          controller: widget.scrollController,
           padding: const EdgeInsets.all(CSizes.defaultSpace),
           itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
