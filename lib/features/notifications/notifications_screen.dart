@@ -522,20 +522,25 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     switch (type) {
       case 'new_job':
       case 'bid_accepted':
+      case 'bid_rejected':
       case 'job_started':
       case 'job_completed':
         if (jobId != null) {
-          // Navigate to job details - you'll need to define these routes in AppRoutes
-          Navigator.pushNamed(context, '/job-details', arguments: jobId);
+          Navigator.pushNamed(context, AppRoutes.jobDetails, arguments: jobId);
         }
         break;
       case 'chat_message':
         if (chatId != null) {
-          Navigator.pushNamed(context, '/chat', arguments: chatId);
+          Navigator.pushNamed(context, AppRoutes.chat, arguments: chatId);
         }
         break;
       case 'payment_received':
-        Navigator.pushNamed(context, '/wallet');
+        Navigator.pushNamed(context, AppRoutes.wallet);
+        break;
+      case 'review_received':
+        Navigator.pushNamed(context, AppRoutes.reviews);
+        break;
+      default:
         break;
     }
   }

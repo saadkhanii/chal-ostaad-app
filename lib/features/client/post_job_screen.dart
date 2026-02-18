@@ -10,6 +10,7 @@ import 'package:easy_localization/easy_localization.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
+import '../../core/services/job_service.dart';
 import '../../shared/widgets/Cbutton.dart';
 import '../../shared/widgets/CtextField.dart';
 import '../../shared/widgets/common_header.dart';
@@ -145,6 +146,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       final savedJob = await docRef.get();
       if (savedJob.exists) {
         _showSuccessMessage('job.job_posted'.tr());
+
+        final jobService = JobService();
+        await jobService.createJob(newJob);
 
         if (mounted) {
           // Call onJobPosted callback if provided, otherwise pop

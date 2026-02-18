@@ -1,15 +1,37 @@
-// lib/core/services/job_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
-
 import '../models/job_model.dart';
+import 'notification_service.dart';
+import 'client_service.dart';
 
 class JobService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final NotificationService _notificationService = NotificationService();
+  final ClientService _clientService = ClientService();
 
   Future<String> createJob(JobModel job) async {
     try {
       final docRef = await _firestore.collection('jobs').add(job.toJson());
+
+      // Send notifications to relevant workers
+      try {
+        final workerIds = await _notificationService.getRelevantWorkersForJob(job.category);
+        if (workerIds.isNotEmpty) {
+          final clientName = await _clientService.getClientName(job.clientId);
+          await _notificationService.sendJobPostedNotification(
+            jobId: docRef.id,
+            jobTitle: job.title,
+            clientId: job.clientId,
+            clientName: clientName,
+            workerIds: workerIds,
+            category: job.category,
+          );
+          print('Notifications sent to ${workerIds.length} workers');
+        }
+      } catch (e) {
+        print('Error sending job notifications: $e');
+      }
+
       return docRef.id;
     } catch (e) {
       throw Exception('Failed to create job: $e');

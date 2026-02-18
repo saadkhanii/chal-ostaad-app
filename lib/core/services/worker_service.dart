@@ -37,6 +37,38 @@ class WorkerService {
     }
   }
 
+  /// Get workers by category ID
+  Future<List<String>> getWorkerIdsByCategory(String categoryId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('workers')
+          .where('workInfo.categoryId', isEqualTo: categoryId)
+          .where('accountStatus', isEqualTo: 'active')
+          .get();
+
+      return querySnapshot.docs.map((doc) => doc.id).toList();
+    } catch (e) {
+      debugPrint('Error getting workers by category: $e');
+      return [];
+    }
+  }
+
+  /// Get worker name by ID
+  Future<String> getWorkerName(String workerId) async {
+    try {
+      final doc = await _firestore.collection('workers').doc(workerId).get();
+      if (doc.exists) {
+        final data = doc.data();
+        final personalInfo = data?['personalInfo'] as Map<String, dynamic>?;
+        return personalInfo?['name'] ?? 'Worker';
+      }
+      return 'Worker';
+    } catch (e) {
+      debugPrint('Error getting worker name: $e');
+      return 'Worker';
+    }
+  }
+
   Future<WorkerModel?> getWorkerById(String workerId) async {
     try {
       final doc = await _firestore.collection('workers').doc(workerId).get();

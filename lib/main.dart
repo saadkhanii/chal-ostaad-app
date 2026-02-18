@@ -15,6 +15,9 @@ import 'core/providers/shared_prefs_provider.dart';
 import 'core/routes/app_router.dart';
 import 'core/routes/app_routes.dart';
 
+// Global navigator key for notification navigation
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -60,12 +63,11 @@ void main() async {
   runApp(
     ProviderScope(
       overrides: [
-        // Override the sharedPreferencesProvider with actual instance
         sharedPreferencesProvider.overrideWithValue(sharedPreferences),
       ],
       child: EasyLocalization(
         supportedLocales: LocalizationService.supportedLocales,
-        path: LocalizationService.path, // Path to your translations
+        path: LocalizationService.path,
         fallbackLocale: LocalizationService.defaultLocale,
         child: const ChalOstaadApp(),
       ),
@@ -82,7 +84,7 @@ class ChalOstaadApp extends ConsumerWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-
+      navigatorKey: navigatorKey, // 👈 Added
       theme: CAppTheme.lightTheme,
       darkTheme: CAppTheme.darkTheme,
       themeMode: themeState.themeMode == ThemeModeType.system
@@ -90,12 +92,9 @@ class ChalOstaadApp extends ConsumerWidget {
           : (themeState.themeMode == ThemeModeType.dark
           ? ThemeMode.dark
           : ThemeMode.light),
-
       locale: context.locale,
       supportedLocales: context.supportedLocales,
       localizationsDelegates: context.localizationDelegates,
-
-
       builder: (context, child) {
         return Directionality(
           textDirection: context.locale.languageCode == 'ur'
@@ -104,10 +103,8 @@ class ChalOstaadApp extends ConsumerWidget {
           child: child!,
         );
       },
-
       initialRoute: AppRoutes.splash,
       onGenerateRoute: AppRouter.generateRoute,
     );
-
   }
 }

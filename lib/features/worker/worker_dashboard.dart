@@ -297,7 +297,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 const SizedBox(height: CSizes.spaceBtwSections),
                 _buildSectionHeader(
                   context,
-                  'dashboard.recent_bids'.tr(),
+                  'bid.recent_bids'.tr(),
                   actionText: 'common.view_all'.tr(),
                   onAction: () => _showAllBids(),
                 ),

@@ -1,7 +1,4 @@
-// lib/shared/widgets/dashboard_drawer.dart
-
 import 'package:chal_ostaad/core/providers/auth_provider.dart';
-import 'package:chal_ostaad/core/providers/locale_provider.dart';
 import 'package:chal_ostaad/core/providers/theme_provider.dart';
 import 'package:chal_ostaad/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -72,6 +71,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
     final themeState = ref.watch(themeProvider);
     final isDark = themeState.isDark;
     final isUrdu = context.locale.languageCode == 'ur';
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     final userName = _userInfo['name']!;
     final userEmail = _userInfo['email']!;
@@ -86,7 +86,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         ),
       ),
       child: Directionality(
-        textDirection: ui.TextDirection.rtl,
+        textDirection: isUrdu ? ui.TextDirection.rtl : ui.TextDirection.ltr,
         child: Column(
           children: [
             // Header Section
@@ -96,7 +96,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _buildDrawerItems(context, userRole, isDark, isUrdu),
+                  : _buildDrawerItems(context, userRole, isDark, isUrdu, currentUser),
             ),
 
             // Footer Section
@@ -200,7 +200,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
     );
   }
 
-  Widget _buildDrawerItems(BuildContext context, String userRole, bool isDark, bool isUrdu) {
+  Widget _buildDrawerItems(BuildContext context, String userRole, bool isDark, bool isUrdu, User? currentUser) {
     final bool isWorker = userRole == 'worker';
     final bool isClient = userRole == 'client';
 
@@ -217,6 +217,13 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
+            // Navigate to home tab (index 2)
+            if (isWorker) {
+              // You'll need to access the provider - this is just a placeholder
+              // ref.read(workerPageIndexProvider.notifier).state = 2;
+            } else if (isClient) {
+              // ref.read(clientPageIndexProvider.notifier).state = 2;
+            }
           },
           isSelected: true,
         ),
@@ -230,15 +237,47 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            _showComingSoon(context, 'drawer.coming_soon_profile'.tr());
+            // Navigate to profile tab (index 4)
+            if (isWorker) {
+              // ref.read(workerPageIndexProvider.notifier).state = 4;
+            } else if (isClient) {
+              // ref.read(clientPageIndexProvider.notifier).state = 4;
+            }
           },
         ),
 
-        // 🔔 Notifications
+        // 🔔 Notifications with Badge
+        if (currentUser != null)
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .collection('notifications')
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+              return _buildDrawerItem(
+                context,
+                icon: Icons.notifications_outlined,
+                title: 'notification.notifications'.tr(),
+                isDark: isDark,
+                isUrdu: isUrdu,
+                badgeCount: unreadCount,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, AppRoutes.notifications);
+                },
+              );
+            },
+          ),
+
+        // Notification Settings
         _buildDrawerItem(
           context,
-          icon: Icons.notifications_outlined,
-          title: 'notification.notifications'.tr(),
+          icon: Icons.settings_outlined,
+          title: 'notification.notifications_settings'.tr(),
           isDark: isDark,
           isUrdu: isUrdu,
           onTap: () {
@@ -316,6 +355,107 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildDrawerItem(
+      BuildContext context, {
+        required IconData icon,
+        required String title,
+        required VoidCallback onTap,
+        required bool isDark,
+        required bool isUrdu,
+        bool isSelected = false,
+        int badgeCount = 0,
+      }) {
+    final Color itemColor = isSelected
+        ? CColors.primary
+        : (isDark ? CColors.white : CColors.textPrimary);
+
+    final Color iconColor = isSelected
+        ? CColors.primary
+        : (isDark ? CColors.white : CColors.darkGrey);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: CSizes.sm, vertical: 2),
+      child: ListTile(
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              icon,
+              color: iconColor,
+              size: 24,
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                right: -6,
+                top: -6,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: CColors.error,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    badgeCount > 9 ? '9+' : '$badgeCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: itemColor,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  fontSize: isUrdu ? 16 : 14,
+                ),
+              ),
+            ),
+            if (badgeCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: CColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  badgeCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        ),
+        selected: isSelected,
+        selectedTileColor: CColors.primary.withOpacity(0.1),
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: CSizes.md),
+        visualDensity: const VisualDensity(vertical: -1),
+      ),
     );
   }
 
@@ -408,6 +548,8 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
+          // Navigate to my bids tab (index 1 for worker)
+          // ref.read(workerPageIndexProvider.notifier).state = 1;
           _showComingSoon(context, 'drawer.coming_soon_bids'.tr());
         },
       ),
@@ -462,6 +604,8 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
+          // Navigate to post job tab (index 1 for client)
+          // ref.read(clientPageIndexProvider.notifier).state = 1;
           _showComingSoon(context, 'drawer.coming_soon_post_job'.tr());
         },
       ),
@@ -474,6 +618,8 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
+          // Navigate to my jobs tab (index 0 for client)
+          // ref.read(clientPageIndexProvider.notifier).state = 0;
           _showComingSoon(context, 'drawer.coming_soon_my_jobs'.tr());
         },
       ),
@@ -515,51 +661,6 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           letterSpacing: 1.2,
           fontSize: isUrdu ? 14 : 12,
         ),
-      ),
-    );
-  }
-
-  Widget _buildDrawerItem(
-      BuildContext context, {
-        required IconData icon,
-        required String title,
-        required VoidCallback onTap,
-        required bool isDark,
-        required bool isUrdu,
-        bool isSelected = false,
-      }) {
-    final Color itemColor = isSelected
-        ? CColors.primary
-        : (isDark ? CColors.white : CColors.textPrimary);
-
-    final Color iconColor = isSelected
-        ? CColors.primary
-        : (isDark ? CColors.white : CColors.darkGrey);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: CSizes.sm, vertical: 2),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: iconColor,
-          size: 24,
-        ),
-        title: Text(
-          title,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: itemColor,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            fontSize: isUrdu ? 16 : 14,
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        ),
-        selected: isSelected,
-        selectedTileColor: CColors.primary.withOpacity(0.1),
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: CSizes.md),
-        visualDensity: const VisualDensity(vertical: -1),
       ),
     );
   }

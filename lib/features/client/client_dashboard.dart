@@ -460,7 +460,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                 const SizedBox(height: CSizes.spaceBtwSections),
                 _buildSectionHeader(
                   context,
-                  'dashboard.recent_jobs'.tr(),
+                  'bid.recent_jobs'.tr(),
                   actionText: 'common.view_all'.tr(),
                   onAction: () => _showAllJobs(),
                 ),

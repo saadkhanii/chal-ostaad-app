@@ -116,6 +116,7 @@
     "client_dashboard": "Client Dashboard",
     "worker_dashboard": "Worker Dashboard",
     "post_job": "Post a Job",
+
     "find_work": "Find Work",
     "my_jobs": "My Jobs",
     "my_bids": "My Bids",
@@ -192,6 +193,7 @@
   },
   "bid": {
     "place_bid": "Place Bid",
+    "recent_bids": "Recent Bids",
     "bid_amount": "Bid Amount",
     "bid_message": "Message (Optional)",
     "your_bid": "Your Bid",

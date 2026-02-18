@@ -1,14 +1,16 @@
-// lib/core/services/notification_service.dart
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:chal_ostaad/core/routes/app_routes.dart';
+import 'package:chal_ostaad/main.dart'; // for navigatorKey
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Handle background messages
   print("Handling background message: ${message.messageId}");
+  // You can also save to Firestore here if needed
 }
 
 class NotificationService {
@@ -25,33 +27,25 @@ class NotificationService {
   static const String _notificationsEnabledKey = 'notifications_enabled';
 
   Future<void> initialize() async {
-    // Set background message handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // Request permissions
     await _requestPermissions();
-
-    // Setup local notifications
     await _setupLocalNotifications();
-
-    // Get and save token if user is logged in
     await _handleTokenRefresh();
 
-    // Listen for token refresh
     _fcm.onTokenRefresh.listen((token) {
       _saveTokenToFirestore(token);
     });
 
-    // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    // Handle when app is opened from terminated state
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      _handleMessage(initialMessage);
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _handleMessage(initialMessage);
+      });
     }
 
-    // Handle when app is in background and opened
     FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
   }
 
@@ -62,25 +56,22 @@ class NotificationService {
       sound: true,
       provisional: false,
     );
-
     if (settings.authorizationStatus != AuthorizationStatus.authorized) {
       print('User declined notification permissions');
     }
   }
 
   Future<void> _setupLocalNotifications() async {
-    // FIXED: Correct initialization for v20.1.0
     const AndroidInitializationSettings androidSettings =
     AndroidInitializationSettings('@mipmap/ic_launcher');
-
     const DarwinInitializationSettings iosSettings =
     DarwinInitializationSettings();
-
     const InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
     );
 
+    // Fix: Use named parameter 'settings' for older plugin versions
     await _localNotifications.initialize(
       settings: initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
@@ -90,11 +81,9 @@ class NotificationService {
       },
     );
 
-
-    // Create notification channel for Android
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'chal_ostaad_channel', // id
-      'Chal Ostaad Notifications', // name
+      'chal_ostaad_channel',
+      'Chal Ostaad Notifications',
       description: 'Notifications for Chal Ostaad app',
       importance: Importance.max,
     );
@@ -119,6 +108,28 @@ class NotificationService {
     try {
       String? userId = _auth.currentUser?.uid;
       if (userId != null) {
+        final clientDoc = await _firestore.collection('clients').doc(userId).get();
+        if (clientDoc.exists) {
+          await _firestore.collection('clients').doc(userId).set({
+            'fcmToken': token,
+            'lastTokenUpdate': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } else {
+          final user = _auth.currentUser;
+          if (user?.email != null) {
+            final workerQuery = await _firestore
+                .collection('workers')
+                .where('personalInfo.email', isEqualTo: user!.email)
+                .limit(1)
+                .get();
+            if (workerQuery.docs.isNotEmpty) {
+              await _firestore.collection('workers').doc(workerQuery.docs.first.id).set({
+                'fcmToken': token,
+                'lastTokenUpdate': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+            }
+          }
+        }
         await _firestore.collection('users').doc(userId).set({
           'fcmToken': token,
           'lastTokenUpdate': FieldValue.serverTimestamp(),
@@ -130,55 +141,61 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    // Show local notification
-    _showLocalNotification(message);
-
-    // Save to Firestore
+    _areNotificationsEnabled().then((enabled) {
+      if (enabled) {
+        _showLocalNotification(message);
+      }
+    });
     _saveNotificationToFirestore(message);
   }
 
   void _handleMessage(RemoteMessage message) {
-    // Navigate based on notification data
     _navigateBasedOnType(message.data);
   }
 
   void _handlePayload(String payload) {
-    // Parse payload and navigate
-    print('Notification tapped with payload: $payload');
+    try {
+      final Map<String, dynamic> data = Map.fromEntries(
+          payload.replaceAll('{', '').replaceAll('}', '').split(', ').map((e) {
+            final parts = e.split(': ');
+            return MapEntry(parts[0], parts[1]);
+          }));
+      _navigateBasedOnType(data);
+    } catch (e) {
+      print('Error parsing payload: $e');
+    }
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
     RemoteNotification? notification = message.notification;
-
     if (notification != null) {
-      // Check if notifications are enabled in settings
       SharedPreferences prefs = await SharedPreferences.getInstance();
       bool notificationsEnabled = prefs.getBool(_notificationsEnabledKey) ?? true;
-
       if (!notificationsEnabled) return;
 
-      // FIXED: Correct show method for v20.1.0
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+      AndroidNotificationDetails(
+        'chal_ostaad_channel',
+        'Chal Ostaad Notifications',
+        channelDescription: 'Notifications for Chal Ostaad app',
+        importance: Importance.high,
+        priority: Priority.high,
+      );
+      const DarwinNotificationDetails iosPlatformChannelSpecifics =
+      DarwinNotificationDetails();
+      const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+        iOS: iosPlatformChannelSpecifics,
+      );
+
+      // Fix: Use named parameters for show()
       await _localNotifications.show(
         id: notification.hashCode,
         title: notification.title,
         body: notification.body,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'chal_ostaad_channel',
-            'Chal Ostaad Notifications',
-            channelDescription: 'Notifications for Chal Ostaad app',
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
-        ),
+        notificationDetails: platformChannelSpecifics,
         payload: message.data.toString(),
       );
-
     }
   }
 
@@ -187,20 +204,49 @@ class NotificationService {
     if (userId == null) return;
 
     try {
-      await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('notifications')
-          .add({
-        'title': message.notification?.title,
-        'body': message.notification?.body,
+      final clientDoc = await _firestore.collection('clients').doc(userId).get();
+      final isClient = clientDoc.exists;
+
+      final notificationData = {
+        'title': message.notification?.title ?? message.data['title'] ?? 'Notification',
+        'body': message.notification?.body ?? message.data['body'] ?? '',
         'type': message.data['type'] ?? 'general',
         'jobId': message.data['jobId'],
         'chatId': message.data['chatId'],
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
         'data': message.data,
-      });
+      };
+
+      if (isClient) {
+        await _firestore
+            .collection('clients')
+            .doc(userId)
+            .collection('notifications')
+            .add(notificationData);
+      } else {
+        final user = _auth.currentUser;
+        if (user?.email != null) {
+          final workerQuery = await _firestore
+              .collection('workers')
+              .where('personalInfo.email', isEqualTo: user!.email)
+              .limit(1)
+              .get();
+          if (workerQuery.docs.isNotEmpty) {
+            await _firestore
+                .collection('workers')
+                .doc(workerQuery.docs.first.id)
+                .collection('notifications')
+                .add(notificationData);
+          }
+        }
+      }
+
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('notifications')
+          .add(notificationData);
     } catch (e) {
       print('Error saving notification: $e');
     }
@@ -211,30 +257,185 @@ class NotificationService {
     String? jobId = data['jobId'];
     String? chatId = data['chatId'];
 
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) return;
+
     switch (type) {
       case 'new_job':
       case 'bid_accepted':
+      case 'bid_rejected':
       case 'job_started':
       case 'job_completed':
         if (jobId != null) {
-          // Navigate to job details
-          // AppRouter.navigateTo('/job/$jobId');
+          navigator.pushNamed(AppRoutes.jobDetails, arguments: jobId);
         }
         break;
       case 'chat_message':
         if (chatId != null) {
-          // Navigate to chat
-          // AppRouter.navigateTo('/chat/$chatId');
+          navigator.pushNamed(AppRoutes.chat, arguments: chatId);
         }
         break;
       case 'payment_received':
-      // Navigate to wallet
-      // AppRouter.navigateTo('/wallet');
+        navigator.pushNamed(AppRoutes.wallet);
         break;
       case 'review_received':
-      // Navigate to reviews
-      // AppRouter.navigateTo('/reviews');
+        navigator.pushNamed(AppRoutes.reviews);
         break;
+      default:
+        navigator.pushNamed(AppRoutes.notifications);
+        break;
+    }
+  }
+
+  // ============== PUBLIC SENDING METHODS ==============
+
+  Future<void> sendJobPostedNotification({
+    required String jobId,
+    required String jobTitle,
+    required String clientId,
+    required String clientName,
+    required List<String> workerIds,
+    required String category,
+  }) async {
+    try {
+      final batch = _firestore.batch();
+      for (final workerId in workerIds) {
+        final notificationData = {
+          'title': 'New Job Posted',
+          'body': '$clientName posted a new job: $jobTitle in $category',
+          'type': 'new_job',
+          'jobId': jobId,
+          'clientId': clientId,
+          'isRead': false,
+          'timestamp': FieldValue.serverTimestamp(),
+          'data': {
+            'jobId': jobId,
+            'clientId': clientId,
+            'clientName': clientName,
+            'jobTitle': jobTitle,
+            'category': category,
+          },
+        };
+        final workerNotificationRef = _firestore
+            .collection('workers')
+            .doc(workerId)
+            .collection('notifications')
+            .doc();
+        batch.set(workerNotificationRef, notificationData);
+        final userNotificationRef = _firestore
+            .collection('users')
+            .doc(workerId)
+            .collection('notifications')
+            .doc();
+        batch.set(userNotificationRef, notificationData);
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error sending job notifications: $e');
+    }
+  }
+
+  Future<void> sendBidPlacedNotification({
+    required String jobId,
+    required String jobTitle,
+    required String workerId,
+    required String workerName,
+    required double bidAmount,
+    required String clientId,
+  }) async {
+    try {
+      final batch = _firestore.batch();
+      final notificationData = {
+        'title': 'New Bid Received',
+        'body': '$workerName placed a bid of ₹$bidAmount on your job "$jobTitle"',
+        'type': 'bid_received',
+        'jobId': jobId,
+        'workerId': workerId,
+        'bidAmount': bidAmount,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'data': {
+          'jobId': jobId,
+          'workerId': workerId,
+          'workerName': workerName,
+          'bidAmount': bidAmount,
+          'jobTitle': jobTitle,
+        },
+      };
+      final clientNotificationRef = _firestore
+          .collection('clients')
+          .doc(clientId)
+          .collection('notifications')
+          .doc();
+      batch.set(clientNotificationRef, notificationData);
+      final userNotificationRef = _firestore
+          .collection('users')
+          .doc(clientId)
+          .collection('notifications')
+          .doc();
+      batch.set(userNotificationRef, notificationData);
+      await batch.commit();
+    } catch (e) {
+      print('Error sending bid notification: $e');
+    }
+  }
+
+  Future<void> sendBidStatusNotification({
+    required String jobId,
+    required String jobTitle,
+    required String workerId,
+    required String clientName,
+    required String status,
+  }) async {
+    try {
+      String title = status == 'accepted' ? 'Bid Accepted' : 'Bid Rejected';
+      String body = status == 'accepted'
+          ? 'Your bid for "$jobTitle" has been accepted by $clientName'
+          : 'Your bid for "$jobTitle" has been rejected';
+      final batch = _firestore.batch();
+      final notificationData = {
+        'title': title,
+        'body': body,
+        'type': status == 'accepted' ? 'bid_accepted' : 'bid_rejected',
+        'jobId': jobId,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'data': {
+          'jobId': jobId,
+          'jobTitle': jobTitle,
+          'clientName': clientName,
+          'status': status,
+        },
+      };
+      final workerNotificationRef = _firestore
+          .collection('workers')
+          .doc(workerId)
+          .collection('notifications')
+          .doc();
+      batch.set(workerNotificationRef, notificationData);
+      final userNotificationRef = _firestore
+          .collection('users')
+          .doc(workerId)
+          .collection('notifications')
+          .doc();
+      batch.set(userNotificationRef, notificationData);
+      await batch.commit();
+    } catch (e) {
+      print('Error sending bid status notification: $e');
+    }
+  }
+
+  Future<List<String>> getRelevantWorkersForJob(String category) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('workers')
+          .where('workInfo.categoryId', isEqualTo: category)
+          .where('accountStatus', isEqualTo: 'active')
+          .get();
+      return querySnapshot.docs.map((doc) => doc.id).toList();
+    } catch (e) {
+      print('Error getting relevant workers: $e');
+      return [];
     }
   }
 
@@ -242,6 +443,26 @@ class NotificationService {
     try {
       String? userId = _auth.currentUser?.uid;
       if (userId != null) {
+        final clientDoc = await _firestore.collection('clients').doc(userId).get();
+        if (clientDoc.exists) {
+          await _firestore.collection('clients').doc(userId).update({
+            'fcmToken': FieldValue.delete(),
+          });
+        } else {
+          final user = _auth.currentUser;
+          if (user?.email != null) {
+            final workerQuery = await _firestore
+                .collection('workers')
+                .where('personalInfo.email', isEqualTo: user!.email)
+                .limit(1)
+                .get();
+            if (workerQuery.docs.isNotEmpty) {
+              await _firestore.collection('workers').doc(workerQuery.docs.first.id).update({
+                'fcmToken': FieldValue.delete(),
+              });
+            }
+          }
+        }
         await _firestore.collection('users').doc(userId).update({
           'fcmToken': FieldValue.delete(),
         });
@@ -251,7 +472,6 @@ class NotificationService {
     }
   }
 
-  // Notification settings methods
   Future<bool> areNotificationsEnabled() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_notificationsEnabledKey) ?? true;
@@ -260,5 +480,9 @@ class NotificationService {
   Future<void> setNotificationsEnabled(bool enabled) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notificationsEnabledKey, enabled);
+  }
+
+  Future<bool> _areNotificationsEnabled() async {
+    return await areNotificationsEnabled();
   }
 }
