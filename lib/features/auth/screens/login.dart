@@ -1,6 +1,7 @@
 // lib/features/auth/screens/login.dart
 
 import 'package:chal_ostaad/core/routes/app_routes.dart';
+import 'package:chal_ostaad/core/services/notification_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -138,16 +139,13 @@ class _LoginState extends State<Login> {
     return userName;
   }
 
-  // Fixed translation method for login message
   String _getLoginMessage(String role) {
     final isUrdu = context.locale.languageCode == 'ur';
     final template = 'auth.login_as'.tr();
 
     if (isUrdu) {
-      // For Urdu: replace {0} with role
       return template.replaceAll('{0}', role);
     } else {
-      // For English: simple concatenation without parentheses
       return '$template $role.';
     }
   }
@@ -212,8 +210,6 @@ class _LoginState extends State<Login> {
                             ),
                           ),
                           const SizedBox(height: CSizes.xs),
-
-                          // Login message with role - FIXED
                           Text(
                             _getLoginMessage(displayRole),
                             style: textTheme.bodyMedium?.copyWith(
@@ -222,7 +218,6 @@ class _LoginState extends State<Login> {
                             ),
                           ),
                           const SizedBox(height: CSizes.md),
-
                           CTextField(
                             label: 'auth.email'.tr(),
                             hintText: 'auth.email_hint'.tr(),
@@ -237,7 +232,6 @@ class _LoginState extends State<Login> {
                             validator: _validateEmail,
                           ),
                           const SizedBox(height: CSizes.md),
-
                           CTextField(
                             label: 'auth.password'.tr(),
                             hintText: 'auth.password_hint'.tr(),
@@ -261,8 +255,6 @@ class _LoginState extends State<Login> {
                             validator: _validatePassword,
                           ),
                           const SizedBox(height: CSizes.md),
-
-                          // Remember me toggle
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -315,9 +307,7 @@ class _LoginState extends State<Login> {
                                 ),
                             ],
                           ),
-
                           const SizedBox(height: CSizes.sm),
-
                           Align(
                             alignment: Alignment.centerRight,
                             child: TextButton(
@@ -332,7 +322,6 @@ class _LoginState extends State<Login> {
                               ),
                             ),
                           ),
-
                           const SizedBox(height: CSizes.sm),
                           _buildLoginButton(authState, userRole, ref),
                           const SizedBox(height: CSizes.lg),
@@ -353,24 +342,19 @@ class _LoginState extends State<Login> {
   Future<void> _loadCredentialsForRole(String userRole) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
       if (mounted) {
         setState(() {
           _rememberMe = prefs.getBool('remember_me') ?? true;
         });
       }
-
       if (_rememberMe) {
         final emailKey = _getRoleSpecificKey('saved_email', userRole);
         final passwordKey = _getRoleSpecificKey('saved_password', userRole);
-
         final savedEmail = prefs.getString(emailKey);
         final savedPassword = prefs.getString(passwordKey);
-
         if (savedEmail != null && savedEmail.isNotEmpty) {
           _emailController.text = savedEmail;
         }
-
         if (savedPassword != null && savedPassword.isNotEmpty) {
           _passwordController.text = savedPassword;
         }
@@ -382,14 +366,13 @@ class _LoginState extends State<Login> {
 
   Future<void> _handleLogin(String userRole, WidgetRef ref) async {
     if (!_formKey.currentState!.validate()) return;
-
     if (userRole.isEmpty || userRole == 'user') {
       _showErrorMessage('errors.role_required'.tr());
       return;
     }
 
     final authNotifier = ref.read(authProvider.notifier);
-    ref.read(authProvider.notifier).state = const AuthState(isLoading: true);
+    authNotifier.state = const AuthState(isLoading: true);
 
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -406,8 +389,8 @@ class _LoginState extends State<Login> {
         throw Exception('errors.email_not_registered'.tr(args: [userRole]));
       }
 
-      final firebaseApp = Firebase.app(userRole);
-      final auth = FirebaseAuth.instanceFor(app: firebaseApp);
+      // 🔥 FIXED: Use DEFAULT Firebase instance instead of named app instances
+      final auth = FirebaseAuth.instance;
 
       final userCredential = await auth.signInWithEmailAndPassword(
         email: email,
@@ -424,13 +407,15 @@ class _LoginState extends State<Login> {
       }
 
       final userName = _extractUserName(docData, email, userRole);
-
       await _saveCredentials(userRole);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_name', userName);
       await prefs.setString('user_email', email);
       await prefs.setString('user_uid', userCredential.user!.uid);
+
+      // Link the device token to the default Firebase user
+      await NotificationService().updateToken();
 
       authNotifier.state = AuthState(
         isLoading: false,

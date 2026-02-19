@@ -10,52 +10,25 @@ import 'package:chal_ostaad/core/services/localization_service.dart';
 import 'package:chal_ostaad/core/services/notification_service.dart';
 import 'dart:ui' as ui;
 
-// Import providers
 import 'core/providers/shared_prefs_provider.dart';
 import 'core/routes/app_router.dart';
 import 'core/routes/app_routes.dart';
 
-// Global navigator key for notification navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize SharedPreferences early
   final sharedPreferences = await SharedPreferences.getInstance();
-
-  // Initialize EasyLocalization
   await EasyLocalization.ensureInitialized();
 
-  // Firebase initialization
   try {
+    // 🔥 ALWAYS use the default app
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Initialize notification service
     final notificationService = NotificationService();
     await notificationService.initialize();
-
-    // Initialize client app if needed
-    try {
-      Firebase.app('client');
-    } catch (_) {
-      await Firebase.initializeApp(
-        name: 'client',
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-
-    // Initialize worker app if needed
-    try {
-      Firebase.app('worker');
-    } catch (_) {
-      await Firebase.initializeApp(
-        name: 'worker',
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
   } catch (e) {
     print('Firebase initialization error: $e');
   }
@@ -84,7 +57,7 @@ class ChalOstaadApp extends ConsumerWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      navigatorKey: navigatorKey, // 👈 Added
+      navigatorKey: navigatorKey,
       theme: CAppTheme.lightTheme,
       darkTheme: CAppTheme.darkTheme,
       themeMode: themeState.themeMode == ThemeModeType.system
