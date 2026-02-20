@@ -30,7 +30,8 @@
     "coming_soon": "جلد آرہا ہے!",
     "update_failed": "اپ ڈیٹ ناکام: {0}",
     "delete_failed": "حذف کرنا ناکام: {0}",
-    "jobs_load_failed": "ملازمتیں لوڈ کرنے میں خرابی"
+    "jobs_load_failed": "ملازمتیں لوڈ کرنے میں خرابی",
+    "not_available": "دستیاب نہیں"
   },
   "auth": {
     "login": "لاگ ان",
@@ -141,7 +142,6 @@
     "bidding_platform": "بولی لگانے کا پلیٹ فارم",
     "find_next_project": "اپنا اگلا منصوبہ تلاش کریں",
     "bidding_description": "اپنے زمرے میں مسابقتی بولیاں لگائیں اور منصوبے جیتیں۔ آج ہی کمائی شروع کریں!"
-
   },
   "job": {
     "job": "کام",
@@ -194,6 +194,7 @@
     "place_bid": "بولی لگائیں",
     "bid_amount": "بولی کی رقم",
     "recent_bids": "حالیہ بولیاں",
+    "recent_jobs": "حالیہ ملازمتیں",
     "bid_message": "پیغام (اختیاری)",
     "your_bid": "آپ کی بولی",
     "bid_placed": "بولی کامیابی سے لگ گئی!",
@@ -251,15 +252,21 @@
     "receive_notifications": "پش اطلاعات وصول کریں",
     "job_notifications": "کام کی اطلاعات",
     "chat_notifications": "چیٹ کی اطلاعات",
-  "notification_types": "اطلاعات کی اقسام",
-  "job_notifications_desc": "نئے کام، بولیاں، اور کام کی صورتحال",
-  "chat_notifications_desc": "کلائنٹس اور ورکرز سے نئے پیغامات",
-  "payment_notifications": "ادائیگی کی اطلاعات",
-  "payment_notifications_desc": "ادائیگی موصول، رقم کی واپسی، اور نکاسی",
-  "promotion_notifications": "پروموشنز اور آفرز",
-  "promotion_notifications_desc": "خصوصی پیشکش اور پلیٹ فارم اپ ڈیٹس",
-  "notification_info": "آپ منتخب کر سکتے ہیں کہ کس قسم کی اطلاعات وصول کرنی ہیں۔ تبدیلیاں مستقبل کی اطلاعات پر لاگو ہوں گی۔",
-  "notifications_disabled_msg": "اطلاعات فی الحال غیر فعال ہیں۔ چال استاد سے اپ ڈیٹس حاصل کرنے کے لیے انہیں فعال کریں۔"
+    "notification_types": "اطلاعات کی اقسام",
+    "job_notifications_desc": "نئے کام، بولیاں، اور کام کی صورتحال",
+    "chat_notifications_desc": "کلائنٹس اور ورکرز سے نئے پیغامات",
+    "payment_notifications": "ادائیگی کی اطلاعات",
+    "payment_notifications_desc": "ادائیگی موصول، رقم کی واپسی، اور نکاسی",
+    "promotion_notifications": "پروموشنز اور آفرز",
+    "promotion_notifications_desc": "خصوصی پیشکش اور پلیٹ فارم اپ ڈیٹس",
+    "notification_info": "آپ منتخب کر سکتے ہیں کہ کس قسم کی اطلاعات وصول کرنی ہیں۔ تبدیلیاں مستقبل کی اطلاعات پر لاگو ہوں گی۔",
+    "notifications_disabled_msg": "اطلاعات فی الحال غیر فعال ہیں۔ چال استاد سے اپ ڈیٹس حاصل کرنے کے لیے انہیں فعال کریں۔",
+    "login_to_view": "اطلاعات دیکھنے کے لیے براہ کرم لاگ ان کریں۔",
+    "unread_one": "آپ کے پاس {count} نہ پڑھی ہوئی اطلاع ہے۔",
+    "unread_other": "آپ کے پاس {count} نہ پڑھی ہوئی اطلاعات ہیں۔",
+    "mark_all_read": "سب کو پڑھا ہوا نشان زد کریں",
+    "confirm_delete": "کیا آپ واقعی اس اطلاع کو حذف کرنا چاہتے ہیں؟",
+    "deleted": "اطلاع حذف کر دی گئی۔"
   },
   "settings": {
     "settings": "ترتیبات",

@@ -30,7 +30,8 @@
     "coming_soon": "Coming Soon!",
     "update_failed": "Failed to update: {0}",
     "delete_failed": "Failed to delete: {0}",
-    "jobs_load_failed": "Error loading jobs"
+    "jobs_load_failed": "Error loading jobs",
+    "not_available": "N/A"
   },
   "auth": {
     "login": "Login",
@@ -104,7 +105,6 @@
     "passwords_do_not_match": "Passwords do not match",
     "otp": "OTP"
   },
-
   "role": {
     "tagline": "Your trusted partner for finding work and workers",
     "need_help": "Need help with work?",
@@ -116,7 +116,6 @@
     "client_dashboard": "Client Dashboard",
     "worker_dashboard": "Worker Dashboard",
     "post_job": "Post a Job",
-
     "find_work": "Find Work",
     "my_jobs": "My Jobs",
     "my_bids": "My Bids",
@@ -194,6 +193,7 @@
   "bid": {
     "place_bid": "Place Bid",
     "recent_bids": "Recent Bids",
+    "recent_jobs": "Recent Jobs",
     "bid_amount": "Bid Amount",
     "bid_message": "Message (Optional)",
     "your_bid": "Your Bid",
@@ -260,7 +260,13 @@
     "promotion_notifications": "Promotions & Offers",
     "promotion_notifications_desc": "Special offers and platform updates",
     "notification_info": "You can customize which types of notifications you receive. Changes will apply to future notifications.",
-    "notifications_disabled_msg": "Notifications are currently disabled. Enable them to receive updates from Chal Ostaad."
+    "notifications_disabled_msg": "Notifications are currently disabled. Enable them to receive updates from Chal Ostaad.",
+    "login_to_view": "Please log in to view your notifications.",
+    "unread_one": "You have {count} unread notification.",
+    "unread_other": "You have {count} unread notifications.",
+    "mark_all_read": "Mark all as read",
+    "confirm_delete": "Are you sure you want to delete this notification?",
+    "deleted": "Notification deleted."
   },
   "settings": {
     "settings": "Settings",

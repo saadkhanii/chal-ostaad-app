@@ -11,6 +11,7 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/services/job_service.dart';
+import '../../core/services/notification_service.dart';
 import '../../shared/widgets/Cbutton.dart';
 import '../../shared/widgets/CtextField.dart';
 import '../../shared/widgets/common_header.dart';
@@ -28,7 +29,7 @@ class PostJobScreen extends ConsumerStatefulWidget {
 
   const PostJobScreen({
     super.key,
-    this.showAppBar = true, // Default to true for standalone navigation
+    this.showAppBar = true,
     this.onJobPosted,
   });
 
@@ -46,26 +47,29 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   List<Category> _categories = [];
   bool _isFetchingCategories = true;
   String? _clientId;
+  String? _clientName;
 
   @override
   void initState() {
     super.initState();
-    _loadClientId();
+    _loadClientInfo();
     _fetchCategories();
   }
 
-  Future<void> _loadClientId() async {
+  Future<void> _loadClientInfo() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userUid = prefs.getString('user_uid');
+      final userName = prefs.getString('user_name') ?? 'A client';
 
       if (userUid != null && mounted) {
         setState(() {
           _clientId = userUid;
+          _clientName = userName;
         });
       }
     } catch (e) {
-      debugPrint('Error loading client ID: $e');
+      debugPrint('Error loading client info: $e');
     }
   }
 
@@ -92,9 +96,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     } catch (e) {
       debugPrint('Error fetching categories: $e');
       if (mounted) {
-        setState(() {
-          _isFetchingCategories = false;
-        });
+        setState(() => _isFetchingCategories = false);
         _showErrorMessage('errors.load_categories_failed'.tr());
       }
     }
@@ -115,43 +117,54 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
       if (clientIdToUse == null) {
         final user = FirebaseAuth.instanceFor(app: Firebase.app('client')).currentUser;
-        if (user == null) {
-          throw Exception('errors.not_logged_in'.tr());
-        }
+        if (user == null) throw Exception('errors.not_logged_in'.tr());
         clientIdToUse = user.uid;
       }
 
       final selectedCategory = _categories.firstWhere(
-              (cat) => cat.id == _selectedCategoryId,
-          orElse: () => Category(id: '', name: 'job.unknown_category'.tr())
+            (cat) => cat.id == _selectedCategoryId,
+        orElse: () => Category(id: '', name: 'job.unknown_category'.tr()),
       );
 
-      if (selectedCategory.id.isEmpty) {
-        throw Exception('errors.category_not_found'.tr());
-      }
+      if (selectedCategory.id.isEmpty) throw Exception('errors.category_not_found'.tr());
 
       final newJob = JobModel(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         category: selectedCategory.name,
-        clientId: clientIdToUse!,
+        clientId: clientIdToUse,
         createdAt: Timestamp.now(),
         status: 'open',
       );
 
-      final docRef = await FirebaseFirestore.instance
-          .collection('jobs')
-          .add(newJob.toJson());
-
+      final docRef = await FirebaseFirestore.instance.collection('jobs').add(newJob.toJson());
       final savedJob = await docRef.get();
+
       if (savedJob.exists) {
         _showSuccessMessage('job.job_posted'.tr());
 
         final jobService = JobService();
         await jobService.createJob(newJob);
 
+        // 🔔 Send push notifications to relevant workers
+        final notificationService = NotificationService();
+        final workerIds = await notificationService.getRelevantWorkersForJob(selectedCategory.id);
+
+        if (workerIds.isNotEmpty) {
+          await notificationService.sendJobPostedNotification(
+            jobId: docRef.id,
+            jobTitle: newJob.title,
+            clientId: clientIdToUse,
+            clientName: _clientName ?? 'A client',
+            workerIds: workerIds,
+            category: selectedCategory.name,
+          );
+          debugPrint('Notifications sent to ${workerIds.length} workers');
+        } else {
+          debugPrint('No matching workers found for category: ${selectedCategory.name}');
+        }
+
         if (mounted) {
-          // Call onJobPosted callback if provided, otherwise pop
           if (widget.onJobPosted != null) {
             widget.onJobPosted!();
           } else {
@@ -161,15 +174,12 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       } else {
         throw Exception('errors.job_not_saved'.tr());
       }
-
     } on FirebaseException catch (e) {
       _showErrorMessage('${'errors.firebase_error'.tr()}: ${e.message}');
     } on Exception catch (e) {
       _showErrorMessage('${'errors.post_job_failed'.tr()}: ${e.toString()}');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -189,22 +199,17 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(
         children: [
-          // 🔥 FIX: Always show CommonHeader - ignore showAppBar
           CommonHeader(
-            title: 'job.post_job'.tr(), // Better title
-            showBackButton: true, // Always show back button
+            title: 'job.post_job'.tr(),
+            showBackButton: true,
             onBackPressed: () {
-              // If there's a custom callback, use it, otherwise just pop
               if (widget.onJobPosted != null) {
-                // This means we're in dashboard mode and should navigate away
                 widget.onJobPosted!();
               } else {
                 Navigator.pop(context);
               }
             },
           ),
-
-          // Main content
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(CSizes.defaultSpace),
@@ -220,7 +225,6 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                       ),
                     ),
                     const SizedBox(height: CSizes.spaceBtwSections),
-
                     CTextField(
                       label: 'job.job_title'.tr(),
                       hintText: 'job.title_hint'.tr(),
@@ -230,7 +234,6 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                           : null,
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
-
                     CTextField(
                       label: 'job.job_description'.tr(),
                       hintText: 'job.description_hint'.tr(),
@@ -241,11 +244,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                           : null,
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
-
                     _buildCategoryDropdown(isDark, isUrdu),
-
                     const SizedBox(height: CSizes.spaceBtwSections),
-
                     _isLoading
                         ? const Center(child: CircularProgressIndicator())
                         : CButton(
@@ -288,17 +288,12 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         ),
       ),
       onChanged: _isFetchingCategories ? null : (newValue) {
-        setState(() {
-          _selectedCategoryId = newValue;
-        });
+        setState(() => _selectedCategoryId = newValue);
       },
       items: _categories.map((Category category) {
         return DropdownMenuItem<String>(
           value: category.id,
-          child: Text(
-            category.name,
-            style: TextStyle(fontSize: isUrdu ? 16 : 14),
-          ),
+          child: Text(category.name, style: TextStyle(fontSize: isUrdu ? 16 : 14)),
         );
       }).toList(),
       validator: (value) => value == null ? 'job.category_required'.tr() : null,

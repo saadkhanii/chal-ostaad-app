@@ -19,6 +19,7 @@ dependencies:
   # Notification packages
   firebase_messaging: ^16.1.1
   flutter_local_notifications: ^20.1.0
+  dart_jsonwebtoken: ^2.8.1
 
   #Navigation bar
   curved_navigation_bar: ^1.0.6
@@ -75,26 +76,12 @@ flutter:
     - assets/icons/
     - assets/images/
     - assets/logos/
+    - assets/service_account.json
 
     # Translation files
     - assets/translations/
     - assets/translations/en.json
     - assets/translations/ur.json
 
-  # Comment out fonts until you add them
-  # fonts:
-  #   - family: NotoSans
-  #     fonts:
-  #       - asset: assets/fonts/NotoSans-Regular.ttf
-  #       - asset: assets/fonts/NotoSans-Bold.ttf
-  #         weight: 700
-  #       - asset: assets/fonts/NotoSans-Italic.ttf
-  #         style: italic
-  #
-  #   - family: NotoNaskhArabic
-  #     fonts:
-  #       - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
-  #       - asset: assets/fonts/NotoNaskhArabic-Bold.ttf
-  #         weight: 700
-  #       - asset: assets/fonts/NotoNaskhArabic-Medium.ttf
-  #         weight: 500
+
+
