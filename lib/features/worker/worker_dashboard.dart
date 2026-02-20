@@ -443,67 +443,91 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     return FutureBuilder<Map<String, dynamic>>(
       future: _fetchWorkerStats(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingStats(context);
-        }
-
-        if (snapshot.hasError) {
-          return _buildStatItem(context, 'common.error'.tr(), '!', Icons.error);
-        }
-
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final stats = snapshot.data ?? {
           'bidsPlaced': 0,
           'jobsWon': 0,
           'earnings': 0.0,
           'rating': 'N/A',
         };
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildStatItem(context, 'dashboard.bids_placed'.tr(), '${stats['bidsPlaced']}', Icons.gavel),
-            _buildStatItem(context, 'dashboard.jobs_won'.tr(), '${stats['jobsWon']}', Icons.emoji_events),
-            _buildStatItem(context, 'dashboard.earnings'.tr(), _formatCurrency(stats['earnings']), Icons.attach_money),
-            _buildStatItem(context, 'dashboard.rating'.tr(), '${stats['rating']}', Icons.star),
-          ],
+        final items = [
+          {'label': 'dashboard.bids_placed'.tr(), 'value': isLoading ? '...' : '${stats['bidsPlaced']}', 'icon': Icons.gavel},
+          {'label': 'dashboard.jobs_won'.tr(), 'value': isLoading ? '...' : '${stats['jobsWon']}', 'icon': Icons.emoji_events},
+          {'label': 'dashboard.earnings'.tr(), 'value': isLoading ? '...' : _formatCurrency(stats['earnings']), 'icon': Icons.attach_money},
+          {'label': 'dashboard.rating'.tr(), 'value': isLoading ? '...' : '${stats['rating']}', 'icon': Icons.star},
+        ];
+        return GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.6,
+          children: items.map((item) => _buildStatCard(
+            context,
+            label: item['label'] as String,
+            value: item['value'] as String,
+            icon: item['icon'] as IconData,
+          )).toList(),
         );
       },
     );
   }
 
-  Widget _buildLoadingStats(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildStatItem(context, 'dashboard.bids_placed'.tr(), '...', Icons.gavel),
-        _buildStatItem(context, 'dashboard.jobs_won'.tr(), '...', Icons.emoji_events),
-        _buildStatItem(context, 'dashboard.earnings'.tr(), '...', Icons.attach_money),
-        _buildStatItem(context, 'dashboard.rating'.tr(), '...', Icons.star),
-      ],
-    );
-  }
-
-  Widget _buildStatItem(BuildContext context, String label, String value, IconData icon) {
+  Widget _buildStatCard(BuildContext context, {
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
-
-    return Column(
-      children: [
-        Icon(icon, color: CColors.primary, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge!.copyWith(
-            fontWeight: FontWeight.bold,
-            fontSize: isUrdu ? 20 : 18,
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? CColors.darkContainer : CColors.white,
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: CColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: CColors.primary, size: 22),
           ),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall!.copyWith(
-            fontSize: isUrdu ? 14 : 12,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isUrdu ? 18 : 16,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                    fontSize: isUrdu ? 12 : 11,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

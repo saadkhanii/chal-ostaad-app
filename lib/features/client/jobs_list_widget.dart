@@ -11,15 +11,14 @@ import '../../../core/constants/sizes.dart';
 import '../../../core/models/job_model.dart';
 import 'client_job_details_screen.dart';
 
-// Provider to get bid count for a job
+// ✅ FIXED: Use .get() instead of .count() which is unreliable
 final bidCountProvider = FutureProvider.family<int, String>((ref, jobId) async {
   try {
     final snapshot = await FirebaseFirestore.instance
         .collection('bids')
         .where('jobId', isEqualTo: jobId)
-        .count()
         .get();
-    return snapshot.count ?? 0;
+    return snapshot.docs.length;
   } catch (e) {
     debugPrint('Error getting bid count: $e');
     return 0;
@@ -30,8 +29,8 @@ class JobsListWidget extends ConsumerStatefulWidget {
   final String clientId;
   final ScrollController? scrollController;
   final bool showFilters;
-  final int? limit; // For showing limited jobs on home page
-  final Function(JobModel)? onJobTap; // Optional callback
+  final int? limit;
+  final Function(JobModel)? onJobTap;
   final EdgeInsetsGeometry? padding;
 
   const JobsListWidget({
@@ -75,12 +74,9 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     if (widget.onJobTap != null) {
       widget.onJobTap!(job);
     } else {
-      // Default behavior: navigate to details
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => ClientJobDetailsScreen(job: job),
-        ),
+        MaterialPageRoute(builder: (_) => ClientJobDetailsScreen(job: job)),
       );
     }
   }
@@ -93,9 +89,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     return Column(
       children: [
         if (widget.showFilters) _buildFilterChips(context, isDark, isUrdu),
-        Expanded(
-          child: _buildJobsList(context, isDark, isUrdu),
-        ),
+        Expanded(child: _buildJobsList(context, isDark, isUrdu)),
       ],
     );
   }
@@ -131,9 +125,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                 ),
                 selected: isSelected,
                 onSelected: (selected) {
-                  if (selected) {
-                    setState(() => _selectedFilter = filterKey);
-                  }
+                  if (selected) setState(() => _selectedFilter = filterKey);
                 },
                 selectedColor: CColors.primary,
                 backgroundColor: isDark ? CColors.darkContainer : CColors.lightContainer,
@@ -148,10 +140,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
   Widget _buildJobsList(BuildContext context, bool isDark, bool isUrdu) {
     if (widget.clientId.isEmpty) {
       return Center(
-        child: Text(
-          'job.login_to_view'.tr(),
-          style: TextStyle(fontSize: isUrdu ? 16 : 14),
-        ),
+        child: Text('job.login_to_view'.tr(), style: TextStyle(fontSize: isUrdu ? 16 : 14)),
       );
     }
 
@@ -180,18 +169,14 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.work_outline, size: 64, color: Colors.grey),
+                const Icon(Icons.work_outline, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text(
-                  'job.no_jobs_found'.tr(),
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
+                Text('job.no_jobs_found'.tr(), style: const TextStyle(fontSize: 16, color: Colors.grey)),
               ],
             ),
           );
         }
 
-        // Apply limit if specified
         int itemCount = snapshot.data!.docs.length;
         if (widget.limit != null && widget.limit! < itemCount) {
           itemCount = widget.limit!;
@@ -237,6 +222,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
@@ -276,49 +262,11 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                                 ),
                               ),
                               const Spacer(),
+                              // ✅ Bid count with proper loading/error states
                               bidCountAsync.when(
-                                data: (count) => Row(
-                                  children: [
-                                    Icon(Icons.gavel, size: 16, color: CColors.primary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${'bid.total_bids'.tr()}: $count',
-                                      style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                                        color: CColors.primary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: isUrdu ? 14 : 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                loading: () => Row(
-                                  children: [
-                                    Icon(Icons.gavel, size: 16, color: CColors.primary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${'bid.total_bids'.tr()}: ...',
-                                      style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                                        color: CColors.primary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: isUrdu ? 14 : 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                error: (_, __) => Row(
-                                  children: [
-                                    Icon(Icons.gavel, size: 16, color: CColors.primary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${'bid.total_bids'.tr()}: 0',
-                                      style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                                        color: CColors.primary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: isUrdu ? 14 : 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                data: (count) => _buildBidCount(context, isUrdu, count.toString()),
+                                loading: () => _buildBidCount(context, isUrdu, '...'),
+                                error: (_, __) => _buildBidCount(context, isUrdu, '0'),
                               ),
                             ],
                           ),
@@ -332,6 +280,24 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildBidCount(BuildContext context, bool isUrdu, String count) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.gavel, size: 16, color: CColors.primary),
+        const SizedBox(width: 4),
+        Text(
+          '${'bid.total_bids'.tr()}: $count',
+          style: Theme.of(context).textTheme.labelMedium!.copyWith(
+            color: CColors.primary,
+            fontWeight: FontWeight.bold,
+            fontSize: isUrdu ? 14 : 12,
+          ),
+        ),
+      ],
     );
   }
 }
