@@ -1,5 +1,4 @@
 // lib/core/services/worker_service.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +7,8 @@ import '../models/worker_model.dart';
 
 class WorkerService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // ── Current worker ───────────────────────────────────────────────
 
   Future<WorkerModel?> getCurrentWorker() async {
     try {
@@ -18,7 +19,6 @@ class WorkerService {
         throw Exception('No user email found in shared preferences');
       }
 
-      // Query workers collection by email
       final querySnapshot = await _firestore
           .collection('workers')
           .where('personalInfo.email', isEqualTo: userEmail)
@@ -30,36 +30,41 @@ class WorkerService {
       }
 
       final doc = querySnapshot.docs.first;
-      return WorkerModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>);
+      return WorkerModel.fromSnapshot(
+          doc as DocumentSnapshot<Map<String, dynamic>>);
     } catch (e) {
       debugPrint('Error fetching worker data: $e');
       rethrow;
     }
   }
 
-  /// Get workers by category ID
-  Future<List<String>> getWorkerIdsByCategory(String categoryId) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection('workers')
-          .where('workInfo.categoryId', isEqualTo: categoryId)
-          .where('accountStatus', isEqualTo: 'active')
-          .get();
+  // ── Get by ID ────────────────────────────────────────────────────
 
-      return querySnapshot.docs.map((doc) => doc.id).toList();
+  Future<WorkerModel?> getWorkerById(String workerId) async {
+    try {
+      final doc =
+      await _firestore.collection('workers').doc(workerId).get();
+      if (doc.exists) {
+        return WorkerModel.fromSnapshot(
+            doc as DocumentSnapshot<Map<String, dynamic>>);
+      }
+      return null;
     } catch (e) {
-      debugPrint('Error getting workers by category: $e');
-      return [];
+      debugPrint('Error fetching worker by ID: $e');
+      return null;
     }
   }
 
-  /// Get worker name by ID
+  // ── Get worker name ──────────────────────────────────────────────
+
   Future<String> getWorkerName(String workerId) async {
     try {
-      final doc = await _firestore.collection('workers').doc(workerId).get();
+      final doc =
+      await _firestore.collection('workers').doc(workerId).get();
       if (doc.exists) {
         final data = doc.data();
-        final personalInfo = data?['personalInfo'] as Map<String, dynamic>?;
+        final personalInfo =
+        data?['personalInfo'] as Map<String, dynamic>?;
         return personalInfo?['name'] ?? 'Worker';
       }
       return 'Worker';
@@ -69,20 +74,68 @@ class WorkerService {
     }
   }
 
-  Future<WorkerModel?> getWorkerById(String workerId) async {
+  // ── Category-based worker IDs (used by notification service) ────
+  //
+  // NOTE: Firestore cannot do radius queries natively.
+  // We fetch all workers in the category here, then Phase 2's
+  // LocationService.filterWorkersByRadius() will trim the list
+  // to only those within the job's serviceRadius.
+  Future<List<String>> getWorkerIdsByCategory(String categoryId) async {
     try {
-      final doc = await _firestore.collection('workers').doc(workerId).get();
-      if (doc.exists) {
-        return WorkerModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>);
-      }
-      return null;
+      final querySnapshot = await _firestore
+          .collection('workers')
+          .where('workInfo.categoryId', isEqualTo: categoryId)
+          .where('account.accountStatus', isEqualTo: 'active')
+          .get();
+
+      return querySnapshot.docs.map((doc) => doc.id).toList();
     } catch (e) {
-      debugPrint('Error fetching worker by ID: $e');
-      return null;
+      debugPrint('Error getting workers by category: $e');
+      return [];
     }
   }
 
-  Future<void> updateWorkerProfile(String workerId, Map<String, dynamic> updates) async {
+  // ── Location updates ─────────────────────────────────────────────
+
+  /// Call this whenever the worker's live GPS position changes.
+  /// Updates only the locationInfo.currentLocation field — does not
+  /// touch any other worker data.
+  Future<void> updateCurrentLocation(
+      String workerId, double latitude, double longitude) async {
+    try {
+      await _firestore.collection('workers').doc(workerId).update({
+        'locationInfo.currentLocation':
+        GeoPoint(latitude, longitude),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint(
+          'Worker $workerId location updated: $latitude, $longitude');
+    } catch (e) {
+      debugPrint('Error updating worker location: $e');
+      rethrow;
+    }
+  }
+
+  /// Call this when a worker sets their home/base location in profile settings.
+  Future<void> updateHomeLocation(
+      String workerId, double latitude, double longitude) async {
+    try {
+      await _firestore.collection('workers').doc(workerId).update({
+        'locationInfo.homeLocation': GeoPoint(latitude, longitude),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint(
+          'Worker $workerId home location updated: $latitude, $longitude');
+    } catch (e) {
+      debugPrint('Error updating home location: $e');
+      rethrow;
+    }
+  }
+
+  // ── Profile update ───────────────────────────────────────────────
+
+  Future<void> updateWorkerProfile(
+      String workerId, Map<String, dynamic> updates) async {
     try {
       await _firestore.collection('workers').doc(workerId).update({
         ...updates,
@@ -94,11 +147,11 @@ class WorkerService {
     }
   }
 
-  // Get worker stats from jobs collection
+  // ── Stats ────────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> getWorkerStats(String workerId) async {
     try {
-      // This would query the jobs collection to calculate actual stats
-      // For now, returning placeholder data
+      // TODO: calculate from real jobs data in Phase 5
       return {
         'completedJobs': 0,
         'ongoingJobs': 0,

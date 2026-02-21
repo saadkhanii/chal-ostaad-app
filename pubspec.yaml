@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Localization - FIXED VERSION
+  # Localization
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.2
@@ -21,7 +21,7 @@ dependencies:
   flutter_local_notifications: ^20.1.0
   dart_jsonwebtoken: ^2.8.1
 
-  #Navigation bar
+  # Navigation bar
   curved_navigation_bar: ^1.0.6
   flutter_hooks: ^0.20.5
   hooks_riverpod: ^2.6.1
@@ -38,12 +38,18 @@ dependencies:
   logger: ^2.6.2
   google_fonts: ^6.3.2
 
-  # Riverpod - Use stable version
+  # Riverpod
   flutter_riverpod: ^2.4.9
   cupertino_icons: ^1.0.8
   timeago: ^3.7.1
 
-
+  # ── Maps & Location (100% Free — No API key required) ────────────
+  flutter_map: ^7.0.2              # OSM map widget — no API key needed
+  latlong2: ^0.9.1                 # LatLng type used by flutter_map
+  geolocator: ^13.0.2              # Device GPS + permissions
+  # Geocoding uses existing 'http' package via Nominatim REST API — no extra dep
+  url_launcher: ^6.3.1             # Open directions in Google/Apple Maps app
+  # ─────────────────────────────────────────────────────────────────
 
 dev_dependencies:
   flutter_test:
@@ -68,20 +74,13 @@ flutter_native_splash:
 flutter:
   uses-material-design: true
 
-  # Enable localization code generation
   generate: true
 
   assets:
-    # Icons and Images
     - assets/icons/
     - assets/images/
     - assets/logos/
     - assets/service_account.json
-
-    # Translation files
     - assets/translations/
     - assets/translations/en.json
     - assets/translations/ur.json
-
-
-

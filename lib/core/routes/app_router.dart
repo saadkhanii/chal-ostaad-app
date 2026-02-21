@@ -2,6 +2,8 @@ import 'package:chal_ostaad/features/auth/screens/login.dart';
 import 'package:chal_ostaad/features/splash/role_selection.dart';
 import 'package:chal_ostaad/features/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
+import '../../core/models/job_model.dart';
+import '../../core/models/worker_model.dart';
 import '../../features/auth/screens/client_signup.dart';
 import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
@@ -9,22 +11,19 @@ import '../../features/auth/screens/worker_signup.dart';
 import '../../features/client/client_dashboard.dart';
 import '../../features/client/my_posted_jobs_screen.dart';
 import '../../features/client/post_job_screen.dart';
+import '../../features/maps/jobs_map_screen.dart';           // ← NEW
 import '../../features/worker/find_jobs_screen.dart';
 import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
 import '../../features/notifications/notification_settings_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
-// TODO: Import your actual job details, chat, wallet, reviews screens
-// import '../../features/job/job_details_screen.dart';
-// import '../../features/chat/chat_screen.dart';
-// import '../../features/wallet/wallet_screen.dart';
-// import '../../features/reviews/reviews_screen.dart';
 
 import 'app_routes.dart';
 
 class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
+
       case AppRoutes.splash:
         return MaterialPageRoute(builder: (_) => const SplashScreen());
 
@@ -65,50 +64,55 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const NotificationsScreen());
 
       case AppRoutes.notificationSettings:
-        return MaterialPageRoute(builder: (_) => const NotificationSettingsScreen());
+        return MaterialPageRoute(
+            builder: (_) => const NotificationSettingsScreen());
 
-    // New routes – replace with actual screens
+    // ── Jobs Map ─────────────────────────────────────────────────
+    // Pass arguments as a Map:
+    //
+    // Worker view (shows radius + nearby jobs):
+    //   Navigator.pushNamed(context, AppRoutes.jobsMap, arguments: {
+    //     'worker': currentWorker,   // WorkerModel
+    //     'jobs':   nearbyJobs,      // List<JobModel>
+    //   });
+    //
+    // Client view (shows their posted jobs as pins):
+    //   Navigator.pushNamed(context, AppRoutes.jobsMap, arguments: {
+    //     'jobs': myPostedJobs,      // List<JobModel>
+    //   });
+      case AppRoutes.jobsMap:
+        final args = settings.arguments as Map<String, dynamic>?;
+        final worker = args?['worker'] as WorkerModel?;
+        final jobs   = args?['jobs']   as List<JobModel>?;
+        return MaterialPageRoute(
+          builder: (_) => JobsMapScreen(
+            worker: worker,
+            jobs:   jobs ?? [],
+          ),
+        );
+    // ─────────────────────────────────────────────────────────────
+
       case AppRoutes.jobDetails:
         final jobId = settings.arguments as String?;
-        // TODO: Replace with your actual JobDetailsScreen
         return MaterialPageRoute(
           builder: (_) => Scaffold(
-            appBar: AppBar(title: Text('Job Details')),
+            appBar: AppBar(title: const Text('Job Details')),
             body: Center(child: Text('Job ID: $jobId')),
           ),
-        ); // removed const
+        );
 
       case AppRoutes.chat:
         final chatId = settings.arguments as String?;
-        // TODO: Replace with your actual ChatScreen
         return MaterialPageRoute(
           builder: (_) => Scaffold(
-            appBar: AppBar(title: Text('Chat')),
+            appBar: AppBar(title: const Text('Chat')),
             body: Center(child: Text('Chat ID: $chatId')),
           ),
-        ); // removed const
-
-      // case AppRoutes.wallet:
-      // // TODO: Replace with your actual WalletScreen
-      //   return MaterialPageRoute(
-      //     builder: (_) => const Scaffold(
-      //       appBar: AppBar(title: Text('Wallet')),
-      //       body: Center(child: Text('Wallet Screen')),
-      //     ),
-      //   ); // const is fine because the Scaffold is const
-      //
-      // case AppRoutes.reviews:
-      // // TODO: Replace with your actual ReviewsScreen
-      //   return MaterialPageRoute(
-      //     builder: (_) => const Scaffold(
-      //       appBar: AppBar(title: Text('Reviews')),
-      //       body: Center(child: Text('Reviews Screen')),
-      //     ),
-      //   ); // const is fine
+        );
 
       case AppRoutes.otpVerification:
         if (settings.arguments is Map<String, dynamic>) {
-          final args = settings.arguments as Map<String, dynamic>;
+          final args  = settings.arguments as Map<String, dynamic>;
           final email = args['email'];
           if (email != null) {
             return MaterialPageRoute(
@@ -118,16 +122,18 @@ class AppRouter {
         }
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
-            body: Center(child: Text('Error: Email address is required for OTP screen.')),
+            body: Center(
+                child: Text(
+                    'Error: Email address is required for OTP screen.')),
           ),
-        ); // const Scaffold is okay
+        );
 
       default:
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
-            body: Center(child: Text("No route found")),
+            body: Center(child: Text('No route found')),
           ),
-        ); // const Scaffold is okay
+        );
     }
   }
 }
