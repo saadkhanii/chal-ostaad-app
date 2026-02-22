@@ -1,5 +1,4 @@
 // lib/features/client/widgets/jobs_list_widget.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,10 +8,11 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/models/job_model.dart';
+import '../../core/routes/app_routes.dart';
 import 'client_job_details_screen.dart';
 
-// ✅ FIXED: Use .get() instead of .count() which is unreliable
-final bidCountProvider = FutureProvider.family<int, String>((ref, jobId) async {
+final bidCountProvider =
+FutureProvider.family<int, String>((ref, jobId) async {
   try {
     final snapshot = await FirebaseFirestore.instance
         .collection('bids')
@@ -29,6 +29,7 @@ class JobsListWidget extends ConsumerStatefulWidget {
   final String clientId;
   final ScrollController? scrollController;
   final bool showFilters;
+  final bool showMapButton;   // ← NEW: toggle map FAB
   final int? limit;
   final Function(JobModel)? onJobTap;
   final EdgeInsetsGeometry? padding;
@@ -37,7 +38,8 @@ class JobsListWidget extends ConsumerStatefulWidget {
     super.key,
     required this.clientId,
     this.scrollController,
-    this.showFilters = true,
+    this.showFilters   = true,
+    this.showMapButton = true,  // ← on by default
     this.limit,
     this.onJobTap,
     this.padding,
@@ -52,21 +54,21 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'open': return CColors.success;
-      case 'in-progress': return CColors.warning;
-      case 'completed': return CColors.info;
-      case 'cancelled': return CColors.error;
-      default: return CColors.grey;
+      case 'open':         return CColors.success;
+      case 'in-progress':  return CColors.warning;
+      case 'completed':    return CColors.info;
+      case 'cancelled':    return CColors.error;
+      default:             return CColors.grey;
     }
   }
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'open': return 'job.status_open'.tr();
-      case 'in-progress': return 'job.status_in_progress'.tr();
-      case 'completed': return 'job.status_completed'.tr();
-      case 'cancelled': return 'job.status_cancelled'.tr();
-      default: return status;
+      case 'open':         return 'job.status_open'.tr();
+      case 'in-progress':  return 'job.status_in_progress'.tr();
+      case 'completed':    return 'job.status_completed'.tr();
+      case 'cancelled':    return 'job.status_cancelled'.tr();
+      default:             return status;
     }
   }
 
@@ -76,9 +78,20 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     } else {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ClientJobDetailsScreen(job: job)),
+        MaterialPageRoute(
+            builder: (_) => ClientJobDetailsScreen(job: job)),
       );
     }
+  }
+
+  void _openMapView(List<JobModel> jobs) {
+    Navigator.pushNamed(
+      context,
+      AppRoutes.jobsMap,
+      arguments: {
+        'jobs': jobs, // client view — no worker passed
+      },
+    );
   }
 
   @override
@@ -88,13 +101,15 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
 
     return Column(
       children: [
-        if (widget.showFilters) _buildFilterChips(context, isDark, isUrdu),
+        if (widget.showFilters)
+          _buildFilterChips(context, isDark, isUrdu),
         Expanded(child: _buildJobsList(context, isDark, isUrdu)),
       ],
     );
   }
 
-  Widget _buildFilterChips(BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildFilterChips(
+      BuildContext context, bool isDark, bool isUrdu) {
     final filters = [
       'common.all'.tr(),
       'job.status_open'.tr(),
@@ -103,32 +118,40 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     ];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
+      padding: const EdgeInsets.symmetric(
+          horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: filters.asMap().entries.map((entry) {
-            final index = entry.key;
-            final filter = entry.value;
-            final filterKey = ['all', 'open', 'in-progress', 'completed'][index];
+            final index     = entry.key;
+            final filter    = entry.value;
+            final filterKey =
+            ['all', 'open', 'in-progress', 'completed'][index];
             final isSelected = _selectedFilter == filterKey;
 
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: FilterChip(
-                label: Text(
-                  filter,
-                  style: TextStyle(
-                    fontSize: isUrdu ? 14 : 12,
-                    color: isSelected ? Colors.white : (isDark ? Colors.white : CColors.textPrimary),
-                  ),
-                ),
+                label: Text(filter,
+                    style: TextStyle(
+                      fontSize: isUrdu ? 14 : 12,
+                      color: isSelected
+                          ? Colors.white
+                          : (isDark
+                          ? Colors.white
+                          : CColors.textPrimary),
+                    )),
                 selected: isSelected,
                 onSelected: (selected) {
-                  if (selected) setState(() => _selectedFilter = filterKey);
+                  if (selected) {
+                    setState(() => _selectedFilter = filterKey);
+                  }
                 },
                 selectedColor: CColors.primary,
-                backgroundColor: isDark ? CColors.darkContainer : CColors.lightContainer,
+                backgroundColor: isDark
+                    ? CColors.darkContainer
+                    : CColors.lightContainer,
               ),
             );
           }).toList(),
@@ -137,10 +160,12 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     );
   }
 
-  Widget _buildJobsList(BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildJobsList(
+      BuildContext context, bool isDark, bool isUrdu) {
     if (widget.clientId.isEmpty) {
       return Center(
-        child: Text('job.login_to_view'.tr(), style: TextStyle(fontSize: isUrdu ? 16 : 14)),
+        child: Text('job.login_to_view'.tr(),
+            style: TextStyle(fontSize: isUrdu ? 16 : 14)),
       );
     }
 
@@ -159,19 +184,20 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
-
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.work_outline, size: 64, color: Colors.grey),
+                const Icon(Icons.work_outline,
+                    size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text('job.no_jobs_found'.tr(), style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                Text('job.no_jobs_found'.tr(),
+                    style: const TextStyle(
+                        fontSize: 16, color: Colors.grey)),
               ],
             ),
           );
@@ -182,108 +208,191 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
           itemCount = widget.limit!;
         }
 
-        return ListView.builder(
-          controller: widget.scrollController,
-          padding: widget.padding ?? const EdgeInsets.all(CSizes.defaultSpace),
-          itemCount: itemCount,
-          itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
-            final job = JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+        final allJobs = snapshot.data!.docs.map((doc) {
+          return JobModel.fromMap(
+              doc.data() as Map<String, dynamic>, doc.id);
+        }).toList();
 
-            return Consumer(
-              builder: (context, ref, _) {
-                final bidCountAsync = ref.watch(bidCountProvider(job.id!));
+        final jobsWithLocation =
+        allJobs.where((j) => j.hasLocation).toList();
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: CSizes.md),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-                  ),
-                  elevation: 2,
-                  child: InkWell(
-                    onTap: () => _handleJobTap(job),
-                    borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-                    child: Padding(
-                      padding: const EdgeInsets.all(CSizes.md),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  job.title,
-                                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: isUrdu ? 18 : 16,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _getStatusColor(job.status).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: _getStatusColor(job.status)),
-                                ),
-                                child: Text(
-                                  _getStatusText(job.status),
-                                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                                    color: _getStatusColor(job.status),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: isUrdu ? 12 : 10,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: CSizes.sm),
-                          Text(
-                            job.description,
-                            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                              fontSize: isUrdu ? 16 : 14,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: CSizes.md),
-                          Row(
-                            children: [
-                              Icon(Icons.access_time, size: 16, color: CColors.darkGrey),
-                              const SizedBox(width: 4),
-                              Text(
-                                timeago.format(job.createdAt.toDate()),
-                                style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                                  fontSize: isUrdu ? 14 : 12,
-                                ),
-                              ),
-                              const Spacer(),
-                              // ✅ Bid count with proper loading/error states
-                              bidCountAsync.when(
-                                data: (count) => _buildBidCount(context, isUrdu, count.toString()),
-                                loading: () => _buildBidCount(context, isUrdu, '...'),
-                                error: (_, __) => _buildBidCount(context, isUrdu, '0'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+        return Stack(
+          children: [
+            ListView.builder(
+              controller: widget.scrollController,
+              padding: widget.padding ??
+                  const EdgeInsets.all(CSizes.defaultSpace),
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                final job = allJobs[index];
+                return Consumer(
+                  builder: (context, ref, _) {
+                    final bidCountAsync =
+                    ref.watch(bidCountProvider(job.id!));
+                    return _buildJobCard(
+                        context, isDark, isUrdu, job, bidCountAsync);
+                  },
                 );
               },
-            );
-          },
+            ),
+
+            // ── Map view FAB ────────────────────────────────────
+            if (widget.showMapButton && jobsWithLocation.isNotEmpty)
+              Positioned(
+                bottom: 16,
+                right:  16,
+                child: FloatingActionButton.extended(
+                  heroTag: 'jobs_list_map',
+                  onPressed: () => _openMapView(allJobs),
+                  backgroundColor: CColors.primary,
+                  icon: const Icon(Icons.map_rounded,
+                      color: Colors.white),
+                  label: const Text('Map View',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildBidCount(BuildContext context, bool isUrdu, String count) {
+  Widget _buildJobCard(
+      BuildContext context,
+      bool isDark,
+      bool isUrdu,
+      JobModel job,
+      AsyncValue<int> bidCountAsync,
+      ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: CSizes.md),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
+      elevation: 2,
+      child: InkWell(
+        onTap:        () => _handleJobTap(job),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        child: Padding(
+          padding: const EdgeInsets.all(CSizes.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Title + status badge ─────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      job.title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium!
+                          .copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 18 : 16,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(job.status)
+                          .withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: _getStatusColor(job.status)),
+                    ),
+                    child: Text(
+                      _getStatusText(job.status),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall!
+                          .copyWith(
+                        color: _getStatusColor(job.status),
+                        fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 12 : 10,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: CSizes.sm),
+
+              // ── Description ──────────────────────────────────
+              Text(
+                job.description,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  fontSize: isUrdu ? 16 : 14,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: CSizes.sm),
+
+              // ── Location row (shown only when job has location)
+              if (job.hasLocation)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: CSizes.sm),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_on_outlined,
+                          size: 14, color: CColors.darkGrey),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          job.displayLocation,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall!
+                              .copyWith(
+                            fontSize: isUrdu ? 13 : 11,
+                            color:    CColors.darkGrey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // ── Time + bid count ─────────────────────────────
+              Row(
+                children: [
+                  Icon(Icons.access_time,
+                      size: 16, color: CColors.darkGrey),
+                  const SizedBox(width: 4),
+                  Text(
+                    timeago.format(job.createdAt.toDate()),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall!
+                        .copyWith(fontSize: isUrdu ? 14 : 12),
+                  ),
+                  const Spacer(),
+                  bidCountAsync.when(
+                    data:    (count) =>
+                        _buildBidCount(context, isUrdu, count.toString()),
+                    loading: () =>
+                        _buildBidCount(context, isUrdu, '...'),
+                    error:   (_, __) =>
+                        _buildBidCount(context, isUrdu, '0'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBidCount(
+      BuildContext context, bool isUrdu, String count) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -292,9 +401,9 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
         Text(
           '${'bid.total_bids'.tr()}: $count',
           style: Theme.of(context).textTheme.labelMedium!.copyWith(
-            color: CColors.primary,
+            color:      CColors.primary,
             fontWeight: FontWeight.bold,
-            fontSize: isUrdu ? 14 : 12,
+            fontSize:   isUrdu ? 14 : 12,
           ),
         ),
       ],

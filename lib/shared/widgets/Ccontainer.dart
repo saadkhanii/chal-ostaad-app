@@ -44,7 +44,7 @@ class CustomShapeContainer extends StatelessWidget {
           Positioned.fill(
             child: Padding(
               padding: padding ?? EdgeInsets.zero,
-              child: Align(alignment: alignment, child: child),
+              child: child,
             ),
           ),
         ],

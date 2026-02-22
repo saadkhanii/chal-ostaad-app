@@ -17,53 +17,53 @@ class CommonHeader extends ConsumerWidget {
   const CommonHeader({
     super.key,
     required this.title,
-    this.showBackButton = true,
+    this.showBackButton  = true,
     this.onBackPressed,
     this.backgroundColor = CColors.primary,
-    this.textColor = CColors.secondary,
-    this.heightFactor = 0.25,
+    this.textColor       = CColors.secondary,
+    this.heightFactor    = 0.25,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeState = ref.watch(themeProvider);
-    final size = MediaQuery.of(context).size;
-    final textTheme = Theme.of(context).textTheme;
+    final size       = MediaQuery.of(context).size;
+    final textTheme  = Theme.of(context).textTheme;
 
     return CustomShapeContainer(
-      height: size.height * heightFactor,
-      color: backgroundColor,
-      padding: const EdgeInsets.only(top: 40),
+      height:  size.height * heightFactor,
+      color:   backgroundColor,
+      padding: const EdgeInsets.only(top: 45), // logo row down 5px
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Logo / nav row ──────────────────────────────────────
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: CSizes.sm),
             child: Row(
-              // Force LTR layout to keep positions fixed
-              textDirection: TextDirection.ltr,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              textDirection:      TextDirection.ltr,
+              mainAxisAlignment:  MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Back Button - Always on left, always pointing left
                 if (showBackButton)
                   IconButton(
                     icon: Transform(
-
                       transform: Matrix4.identity(),
                       alignment: Alignment.center,
-                      child: const Icon(Icons.arrow_back_ios, size: 24, textDirection: TextDirection.ltr,),
+                      child: const Icon(
+                        Icons.arrow_back_ios,
+                        size: 24,
+                        textDirection: TextDirection.ltr,
+                      ),
                     ),
-                    color: textColor,
+                    color:     textColor,
                     onPressed: onBackPressed ?? () {
-                      if (Navigator.canPop(context)) {
-                        Navigator.pop(context);
-                      }
+                      if (Navigator.canPop(context)) Navigator.pop(context);
                     },
                   )
                 else
                   const SizedBox(width: 48),
 
-                // Logo - Force LTR for the text
                 const Expanded(
                   child: Center(
                     child: Directionality(
@@ -73,28 +73,35 @@ class CommonHeader extends ConsumerWidget {
                   ),
                 ),
 
-                // Theme Switcher - Always on right
                 IconButton(
                   icon: Icon(
                     themeState.isDark ? Icons.light_mode : Icons.dark_mode,
                     size: 24,
                   ),
-                  color: textColor,
-                  onPressed: () => ref.read(themeProvider.notifier).toggleTheme(),
+                  color:     textColor,
+                  onPressed: () =>
+                      ref.read(themeProvider.notifier).toggleTheme(),
                 ),
               ],
             ),
           ),
+
+          // ── Title ───────────────────────────────────────────────
+          // Spacer pushes title toward bottom but not all the way —
+          // we use Expanded + bottom padding to control final position
           const Spacer(),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(CSizes.xl, CSizes.sm, CSizes.xl, 30),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(CSizes.xl, 0, CSizes.xl, 50),
             child: Text(
               title,
               textAlign: TextAlign.left,
+              maxLines:  2,
+              softWrap:  true,
+              overflow:  TextOverflow.ellipsis,
               style: textTheme.displayMedium?.copyWith(
-                color: themeState.isDark ? CColors.white : textColor,
-                fontSize: 26,
+                color:    themeState.isDark ? CColors.white : textColor,
+                fontSize: 22,
+                height:   1.25,
               ),
             ),
           ),
