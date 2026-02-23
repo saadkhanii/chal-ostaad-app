@@ -12,6 +12,7 @@ import '../../features/client/client_dashboard.dart';
 import '../../features/client/my_posted_jobs_screen.dart';
 import '../../features/client/post_job_screen.dart';
 import '../../features/maps/jobs_map_screen.dart';           // ← NEW
+import '../../features/profile/client_profile_screen.dart';
 import '../../features/worker/find_jobs_screen.dart';
 import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
@@ -66,6 +67,10 @@ class AppRouter {
       case AppRoutes.notificationSettings:
         return MaterialPageRoute(
             builder: (_) => const NotificationSettingsScreen());
+
+      case AppRoutes.clientProfile:
+        return MaterialPageRoute(
+            builder: (_) => const ClientProfileScreen());
 
     // ── Jobs Map ─────────────────────────────────────────────────
     // Pass arguments as a Map:

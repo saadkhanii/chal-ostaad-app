@@ -284,7 +284,7 @@ class MapService {
   }) async {
     final label = Uri.encodeComponent(destinationLabel ?? 'Job Location');
 
-    // Try Google Maps first, fall back to universal geo: URI
+    // Google Maps URL — works if Google Maps is installed
     final googleMapsUrl = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
           '&origin=${from.latitude},${from.longitude}'
@@ -292,18 +292,26 @@ class MapService {
           '&travelmode=driving',
     );
 
+    // geo: URI — universal fallback for any maps app
     final geoUri = Uri.parse(
       'geo:${to.latitude},${to.longitude}?q=${to.latitude},${to.longitude}($label)',
     );
 
-    if (await canLaunchUrl(googleMapsUrl)) {
+    // Skip canLaunchUrl — unreliable on many Android devices.
+    // Directly try launching, catch failure and try next option.
+    try {
       await launchUrl(googleMapsUrl,
           mode: LaunchMode.externalApplication);
-    } else if (await canLaunchUrl(geoUri)) {
+      return;
+    } catch (_) {
+      debugPrint('MapService: Google Maps failed, trying geo: URI');
+    }
+
+    try {
       await launchUrl(geoUri,
           mode: LaunchMode.externalApplication);
-    } else {
-      debugPrint('MapService: Could not launch maps app.');
+    } catch (e) {
+      debugPrint('MapService: Could not launch any maps app: \$e');
     }
   }
 

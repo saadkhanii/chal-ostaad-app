@@ -18,6 +18,7 @@ import '../../core/services/bid_service.dart';
 import '../../core/services/job_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
 import '../../shared/widgets/curved_nav_bar.dart';
+import '../profile/client_profile_screen.dart';
 import 'client_dashboard_header.dart';
 
 final clientLoadingProvider = StateProvider<bool>((ref) => true);
@@ -34,6 +35,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   String _userName = 'dashboard.client'.tr();
   String _clientId = '';
   String _clientEmail = '';
+  String _photoBase64 = '';
 
   final ScrollController _myPostedJobsScrollController = ScrollController();
   final ScrollController _postJobScrollController = ScrollController();
@@ -84,11 +86,27 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           debugPrint('Error fetching user data: $e');
         }
 
+        // Fetch profile photo (Base64) from clients collection
+        String photoBase64 = '';
+        try {
+          final clientDoc = await _firestore
+              .collection('clients')
+              .doc(userUid)
+              .get();
+          if (clientDoc.exists) {
+            final info = clientDoc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+            photoBase64 = info['photoBase64'] ?? '';
+          }
+        } catch (e) {
+          debugPrint('Error fetching photoBase64: $e');
+        }
+
         if (mounted) {
           setState(() {
-            _clientId = userUid;
-            _userName = userName ?? 'dashboard.client'.tr();
+            _clientId    = userUid;
+            _userName    = userName ?? 'dashboard.client'.tr();
             _clientEmail = userEmail ?? '';
+            _photoBase64 = photoBase64;
           });
           ref.read(clientLoadingProvider.notifier).state = false;
         }
@@ -501,8 +519,9 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       ),
       _buildHomePage(),
       NotificationsScreen(scrollController: _notificationsScrollController, showAppBar: false),
-      _buildProfilePlaceholder(controller: _profileScrollController),
-    ];
+      ClientProfileScreen(
+        showAppBar: false,
+      ),    ];
   }
 
   Widget _buildHomePage() {
@@ -518,7 +537,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                ClientDashboardHeader(userName: _userName),
+                ClientDashboardHeader(userName: _userName, photoUrl: _photoBase64),
                 Padding(
                   padding: const EdgeInsets.all(CSizes.defaultSpace),
                   child: _buildOpportunityCard(context),
@@ -549,26 +568,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     );
   }
 
-  Widget _buildProfilePlaceholder({ScrollController? controller}) {
-    return SingleChildScrollView(
-      controller: controller,
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.person_outline, size: 80, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text('common.coming_soon'.tr(), style: const TextStyle(fontSize: 18, color: Colors.grey)),
-              const SizedBox(height: 8),
-              const Text('Profile Page', style: TextStyle(fontSize: 16, color: Colors.grey)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

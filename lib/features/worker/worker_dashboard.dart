@@ -21,6 +21,7 @@ import '../../core/services/category_service.dart';
 import '../../core/services/worker_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
 import '../../shared/widgets/curved_nav_bar.dart';
+import '../profile/worker_profile_screen.dart';
 
 // State provider for worker loading
 final workerLoadingProvider = StateProvider<bool>((ref) => true);
@@ -38,6 +39,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   String _userName = 'dashboard.worker'.tr();
   String _workerId = '';
   String _workerCategory = '';
+  String _photoBase64 = '';
   int _selectedFilter = 0; // 0: All, 1: My Category
 
   // Create separate controllers for each scrollable page
@@ -92,6 +94,21 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
 
       if (userUid != null) {
         await _loadWorkerProfile();
+
+        // Fetch photo
+        try {
+          final workerDoc = await FirebaseFirestore.instance
+              .collection('workers')
+              .doc(userUid)
+              .get();
+          if (workerDoc.exists) {
+            final info = workerDoc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+            final photo = info['photoBase64'] as String? ?? '';
+            if (mounted) setState(() => _photoBase64 = photo);
+          }
+        } catch (e) {
+          debugPrint('Error fetching worker photo: $e');
+        }
       }
 
       if (mounted) {
@@ -238,7 +255,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
       ),
 
       // Index 4: Profile
-      _buildProfilePlaceholder(controller: _profileScrollController),
+      WorkerProfileScreen(showAppBar: false),
     ];
   }
 
@@ -258,7 +275,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                WorkerDashboardHeader(userName: _userName),
+                WorkerDashboardHeader(userName: _userName, photoUrl: _photoBase64),
                 Padding(
                   padding: const EdgeInsets.all(CSizes.defaultSpace),
                   child: Column(

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'dart:convert';
 import 'dart:ui' as ui;
 
 import '../../../core/constants/colors.dart';
@@ -10,8 +11,13 @@ import '../../../shared/widgets/Ccontainer.dart';
 
 class WorkerDashboardHeader extends ConsumerWidget {
   final String userName;
+  final String photoUrl;
 
-  const WorkerDashboardHeader({super.key, required this.userName});
+  const WorkerDashboardHeader({
+    super.key,
+    required this.userName,
+    this.photoUrl = '',
+  });
 
   String _getDisplayName(String fullName) {
     if (fullName.isEmpty) return 'dashboard.worker'.tr();
@@ -106,31 +112,44 @@ class WorkerDashboardHeader extends ConsumerWidget {
                       }
                     },
                     borderRadius: BorderRadius.circular(35),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                CColors.secondary,
-                                CColors.secondary.withOpacity(0.9),
-                              ],
-                            ),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.person,
-                            color: CColors.primary,
-                            size: 32,
-                          ),
+                    child: Builder(builder: (_) {
+                      ImageProvider? img;
+                      if (photoUrl.isNotEmpty) {
+                        try { img = MemoryImage(base64Decode(photoUrl)); } catch (_) {}
+                      }
+                      return Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: CColors.white, width: 2),
+                          gradient: img == null
+                              ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [CColors.secondary, CColors.secondary.withOpacity(0.9)],
+                          )
+                              : null,
+                          image: img != null
+                              ? DecorationImage(image: img, fit: BoxFit.cover)
+                              : null,
                         ),
-                      ],
-                    ),
+                        child: img == null
+                            ? Center(
+                          child: Text(
+                            userName.trim().isNotEmpty
+                                ? userName.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase()
+                                : 'W',
+                            style: const TextStyle(
+                              color: CColors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                            : null,
+                      );
+                    }),
                   ),
                 ],
               ),

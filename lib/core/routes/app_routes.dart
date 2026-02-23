@@ -15,6 +15,8 @@ class AppRoutes {
   static const String notificationSettings = '/notification-settings';
   static const String findJobs             = '/find-jobs';
   static const String jobsMap              = '/jobs-map'; // ← NEW
+  static const String clientProfile        = '/client-profile';
+  static const String workerProfile        = '/worker-profile';
 
   // Notification navigation routes
   static const String jobDetails = '/job-details';

@@ -1,7 +1,12 @@
 import 'package:chal_ostaad/core/providers/auth_provider.dart';
 import 'package:chal_ostaad/core/providers/theme_provider.dart';
 import 'package:chal_ostaad/core/routes/app_routes.dart';
+import 'package:chal_ostaad/features/client/client_dashboard.dart'
+    show clientPageIndexProvider;
+import 'package:chal_ostaad/features/worker/worker_dashboard.dart'
+    show workerPageIndexProvider;
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +31,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
     'email': '',
     'role': 'user',
   };
+  String _photoBase64 = '';
   bool _isLoading = true;
 
   @override
@@ -37,21 +43,41 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
   Future<void> _loadUserInfo() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final uid  = prefs.getString('user_uid') ?? '';
+      final role = prefs.getString('user_role') ?? 'user';
+
+      String photoBase64 = '';
+
+      if (uid.isNotEmpty) {
+        try {
+          final collection = role == 'worker' ? 'workers' : 'clients';
+          final doc = await FirebaseFirestore.instance
+              .collection(collection)
+              .doc(uid)
+              .get();
+          if (doc.exists) {
+            final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+            photoBase64 = info['photoBase64'] ?? '';
+          }
+        } catch (e) {
+          debugPrint('Error fetching photoBase64: $e');
+        }
+      }
+
       if (mounted) {
         setState(() {
           _userInfo = {
             'name': prefs.getString('user_name') ?? 'drawer.user'.tr(),
             'email': prefs.getString('user_email') ?? '',
-            'role': prefs.getString('user_role') ?? 'user',
+            'role': role,
           };
-          _isLoading = false;
+          _photoBase64 = photoBase64;
+          _isLoading   = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading user info: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -90,7 +116,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         child: Column(
           children: [
             // Header Section
-            _buildDrawerHeader(context, userName, userEmail, userRole, isUrdu),
+            _buildDrawerHeader(context, userName, userEmail, userRole, isUrdu, _photoBase64),
 
             // Navigation Items
             Expanded(
@@ -113,7 +139,15 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
       String userEmail,
       String userRole,
       bool isUrdu,
+      String photoBase64,
       ) {
+    final ImageProvider? avatarImage = photoBase64.isNotEmpty
+        ? MemoryImage(base64Decode(photoBase64))
+        : null;
+
+    final String initials = userName.trim().isNotEmpty
+        ? userName.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase()
+        : '?';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.defaultSpace),
@@ -142,7 +176,17 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
               child: CircleAvatar(
                 radius: 30,
                 backgroundColor: CColors.white,
-                child: Icon(Icons.person, color: CColors.primary, size: 32),
+                backgroundImage: avatarImage,
+                child: avatarImage == null
+                    ? Text(
+                  initials,
+                  style: TextStyle(
+                    color: CColors.primary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+                    : null,
               ),
             ),
 
@@ -217,12 +261,10 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            // Navigate to home tab (index 2)
             if (isWorker) {
-              // You'll need to access the provider - this is just a placeholder
-              // ref.read(workerPageIndexProvider.notifier).state = 2;
+              ref.read(workerPageIndexProvider.notifier).state = 2;
             } else if (isClient) {
-              // ref.read(clientPageIndexProvider.notifier).state = 2;
+              ref.read(clientPageIndexProvider.notifier).state = 2;
             }
           },
           isSelected: true,
@@ -237,11 +279,10 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            // Navigate to profile tab (index 4)
             if (isWorker) {
-              // ref.read(workerPageIndexProvider.notifier).state = 4;
+              ref.read(workerPageIndexProvider.notifier).state = 4;
             } else if (isClient) {
-              // ref.read(clientPageIndexProvider.notifier).state = 4;
+              ref.read(clientPageIndexProvider.notifier).state = 4;
             }
           },
         ),
@@ -548,45 +589,31 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
-          // Navigate to my bids tab (index 1 for worker)
-          // ref.read(workerPageIndexProvider.notifier).state = 1;
-          _showComingSoon(context, 'drawer.coming_soon_bids'.tr());
+          ref.read(workerPageIndexProvider.notifier).state = 1;
         },
       ),
 
       _buildDrawerItem(
         context,
-        icon: Icons.assignment_turned_in_outlined,
-        title: 'drawer.active_projects'.tr(),
+        icon: Icons.search_outlined,
+        title: 'drawer.find_jobs'.tr(),
         isDark: isDark,
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
-          _showComingSoon(context, 'drawer.coming_soon_projects'.tr());
+          ref.read(workerPageIndexProvider.notifier).state = 0;
         },
       ),
 
       _buildDrawerItem(
         context,
-        icon: Icons.history_outlined,
-        title: 'drawer.bid_history'.tr(),
+        icon: Icons.notifications_outlined,
+        title: 'notification.notifications'.tr(),
         isDark: isDark,
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
-          _showComingSoon(context, 'drawer.coming_soon_history'.tr());
-        },
-      ),
-
-      _buildDrawerItem(
-        context,
-        icon: Icons.analytics_outlined,
-        title: 'drawer.performance'.tr(),
-        isDark: isDark,
-        isUrdu: isUrdu,
-        onTap: () {
-          Navigator.pop(context);
-          _showComingSoon(context, 'drawer.coming_soon_performance'.tr());
+          ref.read(workerPageIndexProvider.notifier).state = 3;
         },
       ),
     ];
@@ -604,9 +631,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
-          // Navigate to post job tab (index 1 for client)
-          // ref.read(clientPageIndexProvider.notifier).state = 1;
-          _showComingSoon(context, 'drawer.coming_soon_post_job'.tr());
+          ref.read(clientPageIndexProvider.notifier).state = 1;
         },
       ),
 
@@ -618,33 +643,19 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
-          // Navigate to my jobs tab (index 0 for client)
-          // ref.read(clientPageIndexProvider.notifier).state = 0;
-          _showComingSoon(context, 'drawer.coming_soon_my_jobs'.tr());
+          ref.read(clientPageIndexProvider.notifier).state = 0;
         },
       ),
 
       _buildDrawerItem(
         context,
-        icon: Icons.gavel_outlined,
-        title: 'drawer.received_bids'.tr(),
+        icon: Icons.notifications_outlined,
+        title: 'notification.notifications'.tr(),
         isDark: isDark,
         isUrdu: isUrdu,
         onTap: () {
           Navigator.pop(context);
-          _showComingSoon(context, 'drawer.coming_soon_received_bids'.tr());
-        },
-      ),
-
-      _buildDrawerItem(
-        context,
-        icon: Icons.assignment_outlined,
-        title: 'drawer.active_contracts'.tr(),
-        isDark: isDark,
-        isUrdu: isUrdu,
-        onTap: () {
-          Navigator.pop(context);
-          _showComingSoon(context, 'drawer.coming_soon_contracts'.tr());
+          ref.read(clientPageIndexProvider.notifier).state = 3;
         },
       ),
     ];

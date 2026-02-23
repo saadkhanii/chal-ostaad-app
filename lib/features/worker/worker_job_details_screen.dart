@@ -189,7 +189,7 @@ class _WorkerJobDetailsScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CommonHeader(
-              title:          'job.job'.tr(),
+              title:          'dashboard.job_details'.tr(),
               showBackButton: true,
               onBackPressed:  () => Navigator.pop(context),
             ),

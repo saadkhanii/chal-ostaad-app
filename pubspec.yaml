@@ -31,12 +31,16 @@ dependencies:
   cloud_firestore: ^6.1.0
   firebase_auth: ^6.1.2
 
+
+
   # Utilities
   http: ^1.6.0
   dart_random_choice: ^0.2.0
   shared_preferences: ^2.5.0
   logger: ^2.6.2
   google_fonts: ^6.3.2
+  image_picker: ^1.1.2
+
 
   # Riverpod
   flutter_riverpod: ^2.4.9

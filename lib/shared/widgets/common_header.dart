@@ -13,6 +13,7 @@ class CommonHeader extends ConsumerWidget {
   final Color backgroundColor;
   final Color textColor;
   final double heightFactor;
+  final bool showThemeToggle;
 
   const CommonHeader({
     super.key,
@@ -21,7 +22,8 @@ class CommonHeader extends ConsumerWidget {
     this.onBackPressed,
     this.backgroundColor = CColors.primary,
     this.textColor       = CColors.secondary,
-    this.heightFactor    = 0.25,
+    this.heightFactor     = 0.25,
+    this.showThemeToggle  = true,
   });
 
   @override
@@ -73,15 +75,18 @@ class CommonHeader extends ConsumerWidget {
                   ),
                 ),
 
-                IconButton(
-                  icon: Icon(
-                    themeState.isDark ? Icons.light_mode : Icons.dark_mode,
-                    size: 24,
-                  ),
-                  color:     textColor,
-                  onPressed: () =>
-                      ref.read(themeProvider.notifier).toggleTheme(),
-                ),
+                if (showThemeToggle)
+                  IconButton(
+                    icon: Icon(
+                      themeState.isDark ? Icons.light_mode : Icons.dark_mode,
+                      size: 24,
+                    ),
+                    color:     textColor,
+                    onPressed: () =>
+                        ref.read(themeProvider.notifier).toggleTheme(),
+                  )
+                else
+                  const SizedBox(width: 48),
               ],
             ),
           ),
@@ -90,18 +95,21 @@ class CommonHeader extends ConsumerWidget {
           // Spacer pushes title toward bottom but not all the way —
           // we use Expanded + bottom padding to control final position
           const Spacer(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(CSizes.xl, 0, CSizes.xl, 50),
-            child: Text(
-              title,
-              textAlign: TextAlign.left,
-              maxLines:  2,
-              softWrap:  true,
-              overflow:  TextOverflow.ellipsis,
-              style: textTheme.displayMedium?.copyWith(
-                color:    themeState.isDark ? CColors.white : textColor,
-                fontSize: 22,
-                height:   1.25,
+          SizedBox(
+            width: size.width - (CSizes.xl * 2),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(CSizes.xl, 0, CSizes.xl, 50),
+              child: Text(
+                title,
+                textAlign: TextAlign.left,
+                maxLines:  2,
+                softWrap:  true,
+                overflow:  TextOverflow.ellipsis,
+                style: textTheme.displayMedium?.copyWith(
+                  color:    themeState.isDark ? CColors.white : textColor,
+                  fontSize: 22,
+                  height:   1.25,
+                ),
               ),
             ),
           ),

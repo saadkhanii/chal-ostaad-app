@@ -78,8 +78,9 @@ class _MyPostedJobsScreenState extends ConsumerState<MyPostedJobsScreen> {
       body: Column(
         children: [
           const CommonHeader(
-            title: 'My Posted Jobs',
+            title: 'Posted Jobs',
             showBackButton: false,
+            showThemeToggle: false,
           ),
           Expanded(
             child: JobsListWidget(
@@ -91,6 +92,7 @@ class _MyPostedJobsScreenState extends ConsumerState<MyPostedJobsScreen> {
           ),
         ],
       ),
+
       // ── Map FAB (bottom right, above list FAB) ─────────────────
       floatingActionButton: FloatingActionButton(
         heroTag: 'posted_jobs_map',

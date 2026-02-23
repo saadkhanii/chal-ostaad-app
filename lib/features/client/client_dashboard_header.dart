@@ -1,5 +1,6 @@
 // lib/features/client/client_dashboard_header.dart
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'dart:ui' as ui;  // Add this import
@@ -10,11 +11,13 @@ import '../../shared/widgets/Ccontainer.dart';
 
 class ClientDashboardHeader extends ConsumerStatefulWidget {
   final String userName;
+  final String photoUrl;
   final VoidCallback? onNotificationTap;
 
   const ClientDashboardHeader({
     super.key,
     required this.userName,
+    this.photoUrl = '',
     this.onNotificationTap,
   });
 
@@ -148,30 +151,53 @@ class _ClientDashboardHeaderState extends ConsumerState<ClientDashboardHeader> {
                     onTap: () {
                       final isUrdu = context.locale.languageCode == 'ur';
                       if (isUrdu) {
-                        Scaffold.of(context).openDrawer();  // Opens drawer (right in RTL)
+                        Scaffold.of(context).openDrawer();
                       } else {
-                        Scaffold.of(context).openEndDrawer();  // Opens endDrawer (right in LTR)
+                        Scaffold.of(context).openEndDrawer();
                       }
                     },
                     borderRadius: BorderRadius.circular(35),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [CColors.secondary, CColors.secondary.withOpacity(0.9)],
-                            ),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(Icons.person, color: CColors.primary, size: 32),
+                    child: Builder(builder: (_) {
+                      // Decode Base64 → MemoryImage if available
+                      ImageProvider? img;
+                      if (widget.photoUrl.isNotEmpty) {
+                        try {
+                          img = MemoryImage(base64Decode(widget.photoUrl));
+                        } catch (_) {}
+                      }
+                      return Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: CColors.primary, width: 2),
+                          gradient: img == null
+                              ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [CColors.secondary, CColors.secondary.withOpacity(0.9)],
+                          )
+                              : null,
+                          image: img != null
+                              ? DecorationImage(image: img, fit: BoxFit.cover)
+                              : null,
                         ),
-                      ],
-                    ),
+                        child: img == null
+                            ? Center(
+                          child: Text(
+                            widget.userName.trim().isNotEmpty
+                                ? widget.userName.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase()
+                                : 'C',
+                            style: const TextStyle(
+                              color: CColors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                            : null,
+                      );
+                    }),
                   ),
                 ],
               ),
