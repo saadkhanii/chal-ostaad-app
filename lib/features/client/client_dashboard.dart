@@ -3,6 +3,7 @@
 import 'package:chal_ostaad/features/client/client_job_details_screen.dart';
 import 'package:chal_ostaad/features/client/post_job_screen.dart';
 import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
+import 'package:chal_ostaad/features/chat/chat_inbox_screen.dart';
 import 'package:chal_ostaad/features/client/my_posted_jobs_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,7 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/models/job_model.dart';
+import '../../core/routes/app_routes.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/job_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
@@ -40,7 +42,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   final ScrollController _myPostedJobsScrollController = ScrollController();
   final ScrollController _postJobScrollController = ScrollController();
   final ScrollController _homeScrollController = ScrollController();
-  final ScrollController _notificationsScrollController = ScrollController();
+  final ScrollController _chatScrollController = ScrollController();       // Index 3
   final ScrollController _profileScrollController = ScrollController();
 
   final JobService _jobService = JobService();
@@ -58,7 +60,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     _myPostedJobsScrollController.dispose();
     _postJobScrollController.dispose();
     _homeScrollController.dispose();
-    _notificationsScrollController.dispose();
+    _chatScrollController.dispose();
     _profileScrollController.dispose();
     super.dispose();
   }
@@ -518,7 +520,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         },
       ),
       _buildHomePage(),
-      NotificationsScreen(scrollController: _notificationsScrollController, showAppBar: false),
+      ChatInboxScreen(scrollController: _chatScrollController, showAppBar: false),
       ClientProfileScreen(
         showAppBar: false,
       ),    ];
@@ -537,7 +539,12 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                ClientDashboardHeader(userName: _userName, photoUrl: _photoBase64),
+                ClientDashboardHeader(
+                  userName: _userName,
+                  photoUrl: _photoBase64,
+                  onNotificationTap: () => Navigator.pushNamed(
+                      context, AppRoutes.notifications),
+                ),
                 Padding(
                   padding: const EdgeInsets.all(CSizes.defaultSpace),
                   child: _buildOpportunityCard(context),
@@ -580,7 +587,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       case 0: activeController = _myPostedJobsScrollController; break;
       case 1: activeController = _postJobScrollController; break;
       case 2: activeController = _homeScrollController; break;
-      case 3: activeController = _notificationsScrollController; break;
+      case 3: activeController = _chatScrollController; break;
       case 4: activeController = _profileScrollController; break;
       default: activeController = _homeScrollController;
     }
@@ -599,7 +606,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
               case 0: if (_myPostedJobsScrollController.hasClients) _myPostedJobsScrollController.jumpTo(0); break;
               case 1: if (_postJobScrollController.hasClients) _postJobScrollController.jumpTo(0); break;
               case 2: if (_homeScrollController.hasClients) _homeScrollController.jumpTo(0); break;
-              case 3: if (_notificationsScrollController.hasClients) _notificationsScrollController.jumpTo(0); break;
+              case 3: if (_chatScrollController.hasClients) _chatScrollController.jumpTo(0); break;
               case 4: if (_profileScrollController.hasClients) _profileScrollController.jumpTo(0); break;
             }
           });

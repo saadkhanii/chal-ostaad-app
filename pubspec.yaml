@@ -40,6 +40,7 @@ dependencies:
   logger: ^2.6.2
   google_fonts: ^6.3.2
   image_picker: ^1.1.2
+  fl_chart: ^0.66.0
 
 
   # Riverpod

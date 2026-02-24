@@ -8,8 +8,6 @@ import '../../shared/widgets/Cbutton.dart';
 import '../../core/providers/role_provider.dart';
 import '../../core/services/localization_service.dart';
 import '../../shared/widgets/language_switch.dart';
-import '../auth/screens/otp_verification.dart';
-import '../auth/screens/set_password.dart'; // Add this import
 
 class RoleSelection extends ConsumerWidget {
   const RoleSelection({super.key});
@@ -34,18 +32,6 @@ class RoleSelection extends ConsumerWidget {
         ),
       );
     }
-  }
-
-  // Temporary method to navigate directly to OTP
-  void _goToOTP(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const OTPVerificationScreen(
-          email: 'test@example.com',
-        ),
-      ),
-    );
   }
 
   @override
@@ -90,13 +76,16 @@ class RoleSelection extends ConsumerWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  // Tagline
+                  // Tagline - Made bolder and bigger
                   Text(
                     'role.tagline'.tr(),
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: CColors.black,
-                      fontWeight: FontWeight.w800,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: CColors.secondary,
+                      fontWeight: FontWeight.w300, // Increased from w800 to w900
+                      fontSize: isUrdu ? 28 : 22, // Increased from default to 26
+                      height: 1.3,
+                      letterSpacing: -0.5,
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -128,17 +117,6 @@ class RoleSelection extends ConsumerWidget {
                       backgroundColor: CColors.secondary,
                       foregroundColor: CColors.white,
                     ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // TEMPORARY BUTTON - Remove after testing
-                  CButton(
-                    text: '🔧 TEST BUTTON 🔧',
-                    onPressed: () => _goToOTP(context),
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    width: double.infinity,
                   ),
                 ],
               ),

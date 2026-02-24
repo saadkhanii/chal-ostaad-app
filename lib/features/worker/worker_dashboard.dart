@@ -3,6 +3,7 @@
 import 'package:chal_ostaad/features/worker/worker_dashboard_header.dart';
 import 'package:chal_ostaad/features/worker/worker_job_details_screen.dart' as job_details;
 import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
+import 'package:chal_ostaad/features/chat/chat_inbox_screen.dart';
 import 'package:chal_ostaad/features/worker/find_jobs_screen.dart';
 import 'package:chal_ostaad/features/worker/my_bids_screen.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/models/job_model.dart';
 import '../../core/models/bid_model.dart';
+import '../../core/routes/app_routes.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/worker_service.dart';
@@ -46,7 +48,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
   final ScrollController _findJobsScrollController = ScrollController(); // Index 0
   final ScrollController _myBidsScrollController = ScrollController();    // Index 1
   final ScrollController _homeScrollController = ScrollController();      // Index 2
-  final ScrollController _notificationsScrollController = ScrollController(); // Index 3
+  final ScrollController _chatScrollController = ScrollController();       // Index 3: Chat
   final ScrollController _profileScrollController = ScrollController();   // Index 4
 
   final WorkerService _workerService = WorkerService();
@@ -70,7 +72,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
     _findJobsScrollController.dispose();
     _myBidsScrollController.dispose();
     _homeScrollController.dispose();
-    _notificationsScrollController.dispose();
+    _chatScrollController.dispose();
     _profileScrollController.dispose();
     super.dispose();
   }
@@ -248,9 +250,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
       // Index 2: Home Dashboard
       _buildHomePage(),
 
-      // Index 3: Notifications
-      NotificationsScreen(
-        scrollController: _notificationsScrollController,
+      // Index 3: Chat
+      ChatInboxScreen(
+        scrollController: _chatScrollController,
         showAppBar: false,
       ),
 
@@ -275,7 +277,12 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                WorkerDashboardHeader(userName: _userName, photoUrl: _photoBase64),
+                WorkerDashboardHeader(
+                  userName: _userName,
+                  photoUrl: _photoBase64,
+                  onNotificationTap: () => Navigator.pushNamed(
+                      context, AppRoutes.notifications),
+                ),
                 Padding(
                   padding: const EdgeInsets.all(CSizes.defaultSpace),
                   child: Column(
@@ -1018,8 +1025,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
       case 2: // Home Dashboard
         activeController = _homeScrollController;
         break;
-      case 3: // Notifications
-        activeController = _notificationsScrollController;
+      case 3: // Chat
+        activeController = _chatScrollController;
         break;
       case 4: // Profile
         activeController = _profileScrollController;
@@ -1061,8 +1068,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard> {
                 }
                 break;
               case 3:
-                if (_notificationsScrollController.hasClients) {
-                  _notificationsScrollController.jumpTo(0);
+                if (_chatScrollController.hasClients) {
+                  _chatScrollController.jumpTo(0);
                 }
                 break;
               case 4:
