@@ -19,10 +19,11 @@ class AppRoutes {
   static const String workerProfile        = '/worker-profile';
 
   // Notification navigation routes
-  static const String jobDetails = '/job-details';
-  static const String chat       = '/chat';
-  static const String wallet     = '/wallet';
-  static const String reviews    = '/reviews';
+  static const String jobDetails  = '/job-details';
+  static const String chat        = '/chat';
+  static const String chatInbox   = '/chat-inbox';
+  static const String wallet      = '/wallet';
+  static const String reviews     = '/reviews';
 
   @Deprecated('Use myPostedJobs instead')
   static const String myJobs = '/my-jobs';

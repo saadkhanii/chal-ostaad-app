@@ -8,11 +8,14 @@ import '../../features/auth/screens/client_signup.dart';
 import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
 import '../../features/auth/screens/worker_signup.dart';
+import '../../features/chat/chat_inbox_screen.dart';
+import '../../features/chat/chat_screen.dart';
 import '../../features/client/client_dashboard.dart';
 import '../../features/client/my_posted_jobs_screen.dart';
 import '../../features/client/post_job_screen.dart';
-import '../../features/maps/jobs_map_screen.dart';           // ← NEW
+import '../../features/maps/jobs_map_screen.dart';
 import '../../features/profile/client_profile_screen.dart';
+import '../../features/profile/worker_profile_screen.dart';
 import '../../features/worker/find_jobs_screen.dart';
 import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
@@ -72,7 +75,32 @@ class AppRouter {
         return MaterialPageRoute(
             builder: (_) => const ClientProfileScreen());
 
-    // ── Jobs Map ─────────────────────────────────────────────────
+      case AppRoutes.workerProfile:
+        return MaterialPageRoute(
+            builder: (_) => const WorkerProfileScreen());
+
+      case AppRoutes.chatInbox:
+        return MaterialPageRoute(
+            builder: (_) => const ChatInboxScreen());
+
+      case AppRoutes.chat:
+        final args        = settings.arguments as Map<String, dynamic>?;
+        final chatId      = args?['chatId']        as String? ?? '';
+        final jobTitle    = args?['jobTitle']       as String? ?? '';
+        final otherName   = args?['otherName']      as String? ?? '';
+        final currentUserId = args?['currentUserId'] as String? ?? '';
+        final otherUserId = args?['otherUserId']    as String? ?? '';
+        final otherRole   = args?['otherRole']      as String? ?? 'worker';
+        return MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId:        chatId,
+            jobTitle:      jobTitle,
+            otherName:     otherName,
+            currentUserId: currentUserId,
+            otherUserId:   otherUserId,
+            otherRole:     otherRole,
+          ),
+        );
     // Pass arguments as a Map:
     //
     // Worker view (shows radius + nearby jobs):
@@ -103,15 +131,6 @@ class AppRouter {
           builder: (_) => Scaffold(
             appBar: AppBar(title: const Text('Job Details')),
             body: Center(child: Text('Job ID: $jobId')),
-          ),
-        );
-
-      case AppRoutes.chat:
-        final chatId = settings.arguments as String?;
-        return MaterialPageRoute(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Chat')),
-            body: Center(child: Text('Chat ID: $chatId')),
           ),
         );
 

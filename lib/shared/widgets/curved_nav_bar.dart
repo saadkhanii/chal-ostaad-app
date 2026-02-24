@@ -11,6 +11,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/routes/app_routes.dart';
+import '../../core/services/chat_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Provider for nav bar visibility
 final navBarVisibilityProvider = StateProvider<bool>((ref) => true);
@@ -124,39 +126,67 @@ class CurvedNavBar extends HookConsumerWidget {
   List<Widget> _buildItems(BuildContext context, User? user) {
     if (userRole == 'client') {
       return [
-        // Index 0: My Posted Jobs (left)
-        _buildNavItem(Icons.work_outline, Icons.work, 0),
-
-        // Index 1: Post Job (left-center)
-        _buildNavItem(Icons.add_circle_outline, Icons.add_circle, 1),
-
-        // Index 2: HOME (center)
+        _buildNavItem(Icons.work_outline,         Icons.work,           0),
+        _buildNavItem(Icons.add_circle_outline,   Icons.add_circle,     1),
         _buildHomeButton(),
-
-        // Index 3: Notifications (right-center)
-        _buildNotificationIcon(context, user, 3),
-
-        // Index 4: Profile (right)
-        _buildNavItem(Icons.person_outline, Icons.person, 4),
+        _buildChatIcon(user, 3),
+        _buildNavItem(Icons.person_outline,       Icons.person,         4),
       ];
     } else {
       return [
-        // Index 0: Find Jobs (left)
-        _buildNavItem(Icons.search_outlined, Icons.search, 0),
-
-        // Index 1: My Bids (left-center)
-        _buildNavItem(Icons.gavel_outlined, Icons.gavel, 1),
-
-        // Index 2: HOME (center)
+        _buildNavItem(Icons.search_outlined,      Icons.search,         0),
+        _buildNavItem(Icons.gavel_outlined,       Icons.gavel,          1),
         _buildHomeButton(),
-
-        // Index 3: Notifications (right-center)
-        _buildNotificationIcon(context, user, 3),
-
-        // Index 4: Profile (right)
-        _buildNavItem(Icons.person_outline, Icons.person, 4),
+        _buildChatIcon(user, 3),
+        _buildNavItem(Icons.person_outline,       Icons.person,         4),
       ];
     }
+  }
+
+  Widget _buildChatIcon(User? user, int index) {
+    final isActive = currentIndex == index;
+    if (user == null) {
+      return Icon(
+        isActive ? Icons.chat : Icons.chat_outlined,
+        size: isActive ? 32 : 28, color: Colors.white,
+      );
+    }
+    return FutureBuilder<String>(
+      future: _getRole(),
+      builder: (context, roleSnap) {
+        final role = roleSnap.data ?? 'client';
+        return StreamBuilder<int>(
+          stream: ChatService().unreadCountStream(
+              userId: user.uid, role: role),
+          builder: (context, snap) {
+            final unread = snap.data ?? 0;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  isActive ? Icons.chat : Icons.chat_outlined,
+                  size: isActive ? 32 : 28, color: Colors.white,
+                ),
+                if (unread > 0)
+                  Positioned(
+                    right: -2, top: -2,
+                    child: Container(
+                      width: 10, height: 10,
+                      decoration: const BoxDecoration(
+                          color: CColors.error, shape: BoxShape.circle),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<String> _getRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_role') ?? 'client';
   }
 
   Widget _buildNavItem(IconData outlineIcon, IconData filledIcon, int index) {

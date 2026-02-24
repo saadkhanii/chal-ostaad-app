@@ -11,7 +11,9 @@ import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/models/bid_model.dart';
 import '../../../core/models/job_model.dart';
+import '../../../core/services/chat_service.dart';
 import '../../../shared/widgets/common_header.dart';
+import '../chat/chat_screen.dart';
 import 'worker_job_details_screen.dart';
 
 // Provider to get job details for a bid
@@ -325,6 +327,52 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                                   fontSize: isUrdu ? 14 : 12,
                                 ),
                               ),
+                              const Spacer(),
+                              // Chat button for accepted bids
+                              if (bid.status == 'accepted')
+                                GestureDetector(
+                                  onTap: () {
+                                    final chatService = ChatService();
+                                    final chatId = chatService.getChatId(bid.jobId, _workerId);
+                                    jobAsync.whenData((job) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => ChatScreen(
+                                            chatId:        chatId,
+                                            jobTitle:      job?.title ?? '',
+                                            otherName:     'Client',
+                                            currentUserId: _workerId,
+                                            otherUserId:   bid.clientId,
+                                            otherRole:     'client',
+                                          ),
+                                        ),
+                                      );
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color:        CColors.primary.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border:       Border.all(color: CColors.primary),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.chat_outlined,
+                                            size: 14, color: CColors.primary),
+                                        const SizedBox(width: 4),
+                                        Text('chat.chat'.tr(),
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: CColors.primary,
+                                                fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ],

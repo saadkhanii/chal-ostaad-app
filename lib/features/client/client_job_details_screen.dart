@@ -6,15 +6,18 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:easy_localization/easy_localization.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/models/bid_model.dart';
 import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
+import '../../core/services/chat_service.dart';
 import '../../core/services/job_service.dart';
 import '../../core/services/map_service.dart';
 import '../../shared/widgets/common_header.dart';
+import '../chat/chat_screen.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -28,20 +31,25 @@ class ClientJobDetailsScreen extends ConsumerStatefulWidget {
 
 class _ClientJobDetailsScreenState
     extends ConsumerState<ClientJobDetailsScreen> {
-  final _mapService = MapService();
-  final _bidService = BidService();
-  final _jobService = JobService();
+  final _mapService  = MapService();
+  final _bidService  = BidService();
+  final _jobService  = JobService();
+  final _chatService = ChatService();
 
-  // Track which bid is being accepted — shows spinner on that button only
   String? _acceptingBidId;
-
-  // Local copy of job status so UI updates instantly
   late String _jobStatus;
+  String _clientId = '';
 
   @override
   void initState() {
     super.initState();
     _jobStatus = widget.job.status;
+    _loadClientId();
+  }
+
+  Future<void> _loadClientId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _clientId = prefs.getString('user_uid') ?? '');
   }
 
   // ── Accept bid ────────────────────────────────────────────────────
@@ -89,6 +97,16 @@ class _ClientJobDetailsScreenState
 
       // 3. Mark job as in-progress
       await _jobService.updateJobStatus(widget.job.id!, 'in-progress');
+
+      // 4. Create chat between client and accepted worker
+      await _chatService.createOrGetChat(
+        jobId:      widget.job.id!,
+        jobTitle:   widget.job.title,
+        clientId:   bid.clientId,
+        workerId:   bid.workerId,
+        workerName: await _getWorkerName(bid.workerId),
+        clientName: await _getClientName(bid.clientId),
+      );
 
       if (mounted) {
         setState(() {
@@ -424,6 +442,28 @@ class _ClientJobDetailsScreenState
                   )),
             ],
 
+            // Chat button — only on accepted bids
+            if (isAccepted) ...[
+              const SizedBox(height: CSizes.md),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _openChat(bid),
+                  icon:  const Icon(Icons.chat_outlined, size: 18),
+                  label: Text('chat.open_chat'.tr(),
+                      style: TextStyle(fontSize: 14)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.secondary,
+                    foregroundColor: CColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                            CSizes.borderRadiusMd)),
+                  ),
+                ),
+              ),
+            ],
+
             // Accept button — only shown on open jobs for pending bids
             if (canAccept) ...[
               const SizedBox(height: CSizes.md),
@@ -459,6 +499,43 @@ class _ClientJobDetailsScreenState
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<String> _getWorkerName(String workerId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('workers').doc(workerId).get();
+      final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+      return info['name'] ?? info['fullName'] ?? 'Worker';
+    } catch (_) { return 'Worker'; }
+  }
+
+  Future<String> _getClientName(String clientId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('clients').doc(clientId).get();
+      final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+      return info['fullName'] ?? info['name'] ?? 'Client';
+    } catch (_) { return 'Client'; }
+  }
+
+  void _openChat(BidModel bid) async {
+    final chatId    = _chatService.getChatId(widget.job.id!, bid.workerId);
+    final workerName = await _getWorkerName(bid.workerId);
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          chatId:        chatId,
+          jobTitle:      widget.job.title,
+          otherName:     workerName,
+          currentUserId: _clientId,
+          otherUserId:   bid.workerId,
+          otherRole:     'worker',
         ),
       ),
     );
