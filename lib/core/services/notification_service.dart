@@ -339,7 +339,17 @@ class NotificationService {
     final type = data['type'] ?? '';
     final jobId = data['jobId'];
 
-    if ((type == 'new_job' || type == 'bid_accepted' || type == 'bid_rejected') && jobId != null) {
+    // job-related types all route to the job details screen
+    const jobTypes = {
+      'new_job',
+      'bid_accepted',
+      'bid_rejected',
+      'progress_request',    // ← worker sent completion request → client reviews
+      'progress_accepted',   // ← client approved → worker sees completed banner
+      'progress_rejected',   // ← client rejected → worker can try again
+    };
+
+    if (jobTypes.contains(type) && jobId != null) {
       navigator.pushNamed(AppRoutes.jobDetails, arguments: jobId);
     } else if (type == 'chat_message' && data['chatId'] != null) {
       navigator.pushNamed(AppRoutes.chat, arguments: data['chatId']);
@@ -509,5 +519,95 @@ class NotificationService {
   Future<void> setNotificationsEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notificationsEnabledKey, enabled);
+  }
+
+  // ============== PROGRESS REQUEST NOTIFICATIONS ==============
+
+  /// Worker -> Client: "I've finished, please approve completion."
+  Future<void> sendProgressRequestNotification({
+    required String jobId,
+    required String jobTitle,
+    required String clientId,
+    required String workerId,
+  }) async {
+    try {
+      const title = 'Job Completion Request';
+      final body  = 'Your worker has marked "$jobTitle" as done. '
+          'Tap to review and approve.';
+      const type  = 'progress_request';
+
+      await _firestore
+          .collection('users')
+          .doc(clientId)
+          .collection('notifications')
+          .add({
+        'title':     title,
+        'body':      body,
+        'type':      type,
+        'jobId':     jobId,
+        'isRead':    false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'data':      {'jobId': jobId, 'type': type},
+      });
+
+      final fcmToken = await _getUserFcmToken(clientId);
+      if (fcmToken != null) {
+        await _sendPushNotification(
+          fcmToken: fcmToken,
+          title:    title,
+          body:     body,
+          data:     {'type': type, 'jobId': jobId},
+        );
+      }
+
+      print("[NotificationService] Progress request sent to client $clientId");
+    } catch (e) {
+      print("[NotificationService] Error sending progress request notification: $e");
+    }
+  }
+
+  /// Client -> Worker: approval or rejection of completion request.
+  Future<void> sendProgressResponseNotification({
+    required String jobId,
+    required String jobTitle,
+    required String workerId,
+    required bool   accepted,
+  }) async {
+    try {
+      final title = accepted ? 'Job Completed!' : 'Completion Request Rejected';
+      final body  = accepted
+          ? 'The client has approved your work on "$jobTitle". Great job!'
+          : 'The client rejected your completion request for "$jobTitle". '
+          'Please continue working and try again.';
+      final type  = accepted ? 'progress_accepted' : 'progress_rejected';
+
+      await _firestore
+          .collection('users')
+          .doc(workerId)
+          .collection('notifications')
+          .add({
+        'title':     title,
+        'body':      body,
+        'type':      type,
+        'jobId':     jobId,
+        'isRead':    false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'data':      {'jobId': jobId, 'type': type},
+      });
+
+      final fcmToken = await _getUserFcmToken(workerId);
+      if (fcmToken != null) {
+        await _sendPushNotification(
+          fcmToken: fcmToken,
+          title:    title,
+          body:     body,
+          data:     {'type': type, 'jobId': jobId},
+        );
+      }
+
+      print("[NotificationService] Progress response ($type) sent to worker $workerId");
+    } catch (e) {
+      print("[NotificationService] Error sending progress response notification: $e");
+    }
   }
 }

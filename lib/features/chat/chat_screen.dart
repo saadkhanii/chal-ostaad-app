@@ -1,8 +1,13 @@
 // lib/features/chat/chat_screen.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -32,23 +37,45 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final ChatService _chatService  = ChatService();
-  final TextEditingController _msgCtrl = TextEditingController();
-  final ScrollController _scrollCtrl  = ScrollController();
-  bool _isSending = false;
+  final ChatService         _chatService  = ChatService();
+  final TextEditingController _msgCtrl    = TextEditingController();
+  final ScrollController    _scrollCtrl   = ScrollController();
+
+  bool    _isSending       = false;
   String? _otherPhotoBase64;
+
+  // ── Voice recording state ──────────────────────────────────────
+  final AudioRecorder _recorder = AudioRecorder();
+  bool    _isRecording         = false;
+  bool    _isSendingVoice      = false;
+  String? _recordingPath;
+  int     _recordingSeconds    = 0;
+  Timer?  _recordingTimer;
+
+  // ── Per-message audio players ──────────────────────────────────
+  // Key: message id → AudioPlayer
+  final Map<String, AudioPlayer> _players     = {};
+  final Map<String, bool>        _playingMap  = {};
+  final Map<String, Duration>    _progressMap = {};
+  final Map<String, Duration>    _durationMap = {};
 
   @override
   void initState() {
     super.initState();
     _markAsRead();
     _loadOtherPhoto();
+    _msgCtrl.addListener(() => setState(() {})); // rebuild to show/hide mic icon
   }
 
   @override
   void dispose() {
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
+    _recordingTimer?.cancel();
+    _recorder.dispose();
+    for (final p in _players.values) {
+      p.dispose();
+    }
     super.dispose();
   }
 
@@ -75,6 +102,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {}
   }
 
+  // ── Text send ─────────────────────────────────────────────────
   Future<void> _sendMessage() async {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty || _isSending) return;
@@ -95,11 +123,211 @@ class _ChatScreenState extends State<ChatScreen> {
           content:         Text('Failed to send: $e'),
           backgroundColor: CColors.error,
         ));
-        _msgCtrl.text = text; // restore text on failure
+        _msgCtrl.text = text;
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  // ── Voice recording ───────────────────────────────────────────
+  // Tap mic to START recording; the recording bar's send button or a second
+  // tap on the mic will STOP and send.
+  Future<void> _startRecording() async {
+    // If already recording, treat as stop+send
+    if (_isRecording) {
+      await _stopAndSendVoice();
+      return;
+    }
+
+    final hasPermission = await _recorder.hasPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:         Text('chat.microphone_permission'.tr()),
+            backgroundColor: CColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    final dir  = await getTemporaryDirectory();
+    final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+
+    // Verify it actually started before updating state
+    final started = await _recorder.isRecording();
+    if (!started) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:         Text('chat.microphone_permission'.tr()),
+            backgroundColor: CColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    _recordingSeconds = 0;
+    _recordingTimer   = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordingSeconds++);
+    });
+
+    if (mounted) {
+      setState(() {
+        _isRecording   = true;
+        _recordingPath = path;
+      });
+    }
+  }
+
+  Future<void> _stopAndSendVoice() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+
+    // Capture duration NOW before anything resets it
+    final capturedSeconds = _recordingSeconds;
+    final capturedPath    = _recordingPath;
+
+    // record v6: isRecording() can lag slightly after onLongPressEnd fires,
+    // so give it a short grace period before checking
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    final stillRecording = await _recorder.isRecording();
+    String? path;
+    if (stillRecording) {
+      path = await _recorder.stop();
+    } else if (capturedPath != null && await File(capturedPath).exists()) {
+      // Recording already stopped (e.g. button released very quickly) but
+      // the file was written — use it directly
+      path = capturedPath;
+    }
+
+    if (!mounted) return;
+
+    // If the recording was too short (< 1 second), silently discard
+    if (capturedSeconds < 1 || path == null) {
+      setState(() {
+        _isRecording      = false;
+        _isSendingVoice   = false;
+        _recordingPath    = null;
+        _recordingSeconds = 0;
+      });
+      return;
+    }
+
+    setState(() {
+      _isRecording    = false;
+      _isSendingVoice = true;
+    });
+
+    try {
+      final file  = File(path);
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) throw Exception('Audio file is empty');
+      final b64   = base64Encode(bytes);
+      final durMs = capturedSeconds * 1000; // use captured value, not reset one
+
+      await _chatService.sendVoiceMessage(
+        chatId:      widget.chatId,
+        senderId:    widget.currentUserId,
+        audioBase64: b64,
+        durationMs:  durMs,
+      );
+
+      await file.delete();
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:         Text('Failed to send voice: $e'),
+          backgroundColor: CColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSendingVoice   = false;
+          _recordingPath    = null;
+          _recordingSeconds = 0;
+        });
+      }
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    // record v6: guard stop() with isRecording() check
+    if (await _recorder.isRecording()) {
+      await _recorder.stop();
+    }
+    if (_recordingPath != null) {
+      try { await File(_recordingPath!).delete(); } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _isRecording      = false;
+        _recordingPath    = null;
+        _recordingSeconds = 0;
+      });
+    }
+  }
+
+  // ── Audio playback ────────────────────────────────────────────
+  Future<void> _togglePlayback(MessageModel msg) async {
+    final msgId = msg.id;
+
+    if (_playingMap[msgId] == true) {
+      await _players[msgId]?.pause();
+      if (mounted) setState(() => _playingMap[msgId] = false);
+      return;
+    }
+
+    // Pause any other playing message
+    for (final entry in _playingMap.entries) {
+      if (entry.value) {
+        await _players[entry.key]?.pause();
+        if (mounted) setState(() => _playingMap[entry.key] = false);
+      }
+    }
+
+    // Create player if needed
+    if (!_players.containsKey(msgId)) {
+      final player = AudioPlayer();
+      _players[msgId] = player;
+
+      // Write audio to temp file
+      final dir   = await getTemporaryDirectory();
+      final file  = File('${dir.path}/voice_play_$msgId.m4a');
+      await file.writeAsBytes(base64Decode(msg.audioBase64!));
+
+      await player.setFilePath(file.path);
+
+      player.positionStream.listen((pos) {
+        if (mounted) setState(() => _progressMap[msgId] = pos);
+      });
+      player.durationStream.listen((dur) {
+        if (dur != null && mounted) setState(() => _durationMap[msgId] = dur);
+      });
+      player.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed) {
+          if (mounted) {
+            setState(() {
+              _playingMap[msgId]  = false;
+              _progressMap[msgId] = Duration.zero;
+            });
+            _players[msgId]?.seek(Duration.zero);
+          }
+        }
+      });
+    }
+
+    await _players[msgId]?.play();
+    if (mounted) setState(() => _playingMap[msgId] = true);
   }
 
   void _scrollToBottom() {
@@ -112,6 +340,11 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  String _formatDuration(int ms) {
+    final s = (ms / 1000).round();
+    return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
   }
 
   @override
@@ -139,7 +372,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final initials = widget.otherName.trim().isNotEmpty
         ? widget.otherName.trim().split(' ')
-        .map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase()
+        .map((w) => w.isNotEmpty ? w[0] : '')
+        .take(2)
+        .join()
+        .toUpperCase()
         : '?';
 
     return Container(
@@ -161,13 +397,10 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: [
-          // Back button
           IconButton(
-            icon:  const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+            icon:      const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-
-          // Avatar
           CircleAvatar(
             radius:          22,
             backgroundColor: CColors.secondary,
@@ -182,8 +415,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 : null,
           ),
           const SizedBox(width: 12),
-
-          // Name + job title
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,8 +426,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     fontWeight: FontWeight.bold,
                     fontSize:   16,
                   ),
-                  maxLines:  1,
-                  overflow:  TextOverflow.ellipsis,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   widget.jobTitle,
@@ -220,7 +451,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _chatService.messagesStream(widget.chatId),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -237,7 +469,6 @@ class _ChatScreenState extends State<ChatScreen> {
             .map((doc) => MessageModel.fromSnapshot(doc))
             .toList();
 
-        // Auto scroll to bottom on new messages
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
         return ListView.builder(
@@ -246,19 +477,21 @@ class _ChatScreenState extends State<ChatScreen> {
               horizontal: CSizes.defaultSpace, vertical: CSizes.md),
           itemCount:  messages.length,
           itemBuilder: (context, index) {
-            final msg        = messages[index];
-            final isMine     = msg.senderId == widget.currentUserId;
-            final showTime   = index == messages.length - 1 ||
+            final msg      = messages[index];
+            final isMine   = msg.senderId == widget.currentUserId;
+            final showTime = index == messages.length - 1 ||
                 messages[index + 1].senderId != msg.senderId;
 
-            return _buildBubble(msg, isMine, showTime, isDark);
+            return msg.isVoice
+                ? _buildVoiceBubble(msg, isMine, showTime, isDark)
+                : _buildBubble(msg, isMine, showTime, isDark);
           },
         );
       },
     );
   }
 
-  // ── Message bubble ─────────────────────────────────────────────
+  // ── Text bubble ────────────────────────────────────────────────
   Widget _buildBubble(
       MessageModel msg, bool isMine, bool showTime, bool isDark) {
     final time = _formatTime(msg.timestamp.toDate());
@@ -274,13 +507,10 @@ class _ChatScreenState extends State<ChatScreen> {
             isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Other person avatar (only on their messages)
               if (!isMine) ...[
                 _buildSmallAvatar(),
                 const SizedBox(width: 6),
               ],
-
-              // Bubble
               Flexible(
                 child: Container(
                   constraints: BoxConstraints(
@@ -318,36 +548,187 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               ),
-
               if (isMine) const SizedBox(width: 4),
             ],
           ),
+          if (showTime) _buildTimestamp(time, isMine, msg.isRead),
+        ],
+      ),
+    );
+  }
 
-          // Timestamp + read receipt
-          if (showTime)
-            Padding(
-              padding: EdgeInsets.only(
-                  top: 2,
-                  left:  isMine ? 0 : 36,
-                  right: isMine ? 4 : 0),
-              child: Row(
-                mainAxisAlignment:
-                isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-                children: [
-                  Text(time,
-                      style: TextStyle(
-                          fontSize: 10, color: CColors.darkGrey)),
-                  if (isMine) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      msg.isRead ? Icons.done_all : Icons.done,
-                      size:  12,
-                      color: msg.isRead ? CColors.primary : CColors.darkGrey,
+  // ── Voice bubble ───────────────────────────────────────────────
+  Widget _buildVoiceBubble(
+      MessageModel msg, bool isMine, bool showTime, bool isDark) {
+    final time      = _formatTime(msg.timestamp.toDate());
+    final msgId     = msg.id;
+    final isPlaying = _playingMap[msgId] ?? false;
+    final progress  = _progressMap[msgId] ?? Duration.zero;
+    final totalDur  = _durationMap[msgId] ??
+        Duration(milliseconds: msg.audioDurationMs ?? 0);
+    final sliderVal = totalDur.inMilliseconds > 0
+        ? (progress.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+    final durLabel  = isPlaying
+        ? _formatDurationObj(totalDur - progress)
+        : _formatDuration(msg.audioDurationMs ?? 0);
+
+    final bubbleColor = isMine
+        ? CColors.primary
+        : (isDark ? CColors.darkContainer : Colors.white);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment:
+        isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment:
+            isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMine) ...[
+                _buildSmallAvatar(),
+                const SizedBox(width: 6),
+              ],
+              Flexible(
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.72,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: bubbleColor,
+                    borderRadius: BorderRadius.only(
+                      topLeft:     const Radius.circular(18),
+                      topRight:    const Radius.circular(18),
+                      bottomLeft:  Radius.circular(isMine ? 18 : 4),
+                      bottomRight: Radius.circular(isMine ? 4 : 18),
                     ),
-                  ],
-                ],
+                    boxShadow: [
+                      BoxShadow(
+                        color:      Colors.black.withOpacity(0.06),
+                        blurRadius: 4,
+                        offset:     const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Play / pause button
+                      GestureDetector(
+                        onTap: () => _togglePlayback(msg),
+                        child: Container(
+                          width:  36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color:  isMine
+                                ? Colors.white.withOpacity(0.2)
+                                : CColors.primary.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: isMine ? Colors.white : CColors.primary,
+                            size:  22,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+
+                      // Waveform slider + duration
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SliderTheme(
+                              data: SliderThemeData(
+                                trackHeight:          2.5,
+                                thumbShape:           const RoundSliderThumbShape(
+                                    enabledThumbRadius: 5),
+                                overlayShape:         const RoundSliderOverlayShape(
+                                    overlayRadius: 10),
+                                activeTrackColor:     isMine
+                                    ? Colors.white
+                                    : CColors.primary,
+                                inactiveTrackColor:   isMine
+                                    ? Colors.white.withOpacity(0.35)
+                                    : CColors.primary.withOpacity(0.2),
+                                thumbColor:           isMine
+                                    ? Colors.white
+                                    : CColors.primary,
+                                overlayColor:         isMine
+                                    ? Colors.white.withOpacity(0.15)
+                                    : CColors.primary.withOpacity(0.15),
+                              ),
+                              child: Slider(
+                                value:   sliderVal,
+                                onChanged: (v) {
+                                  if (_players[msgId] != null &&
+                                      totalDur.inMilliseconds > 0) {
+                                    final pos = Duration(
+                                        milliseconds:
+                                        (v * totalDur.inMilliseconds)
+                                            .round());
+                                    _players[msgId]!.seek(pos);
+                                  }
+                                },
+                              ),
+                            ),
+                            Padding(
+                              padding:
+                              const EdgeInsets.only(left: 4, bottom: 2),
+                              child: Text(
+                                durLabel,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isMine
+                                      ? Colors.white.withOpacity(0.8)
+                                      : CColors.darkGrey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
+              if (isMine) const SizedBox(width: 4),
+            ],
+          ),
+          if (showTime) _buildTimestamp(time, isMine, msg.isRead),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimestamp(String time, bool isMine, bool isRead) {
+    return Padding(
+      padding: EdgeInsets.only(
+          top:   2,
+          left:  isMine ? 0 : 36,
+          right: isMine ? 4 : 0),
+      child: Row(
+        mainAxisAlignment:
+        isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Text(time,
+              style: TextStyle(fontSize: 10, color: CColors.darkGrey)),
+          if (isMine) ...[
+            const SizedBox(width: 4),
+            Icon(
+              isRead ? Icons.done_all : Icons.done,
+              size:  12,
+              color: isRead ? CColors.primary : CColors.darkGrey,
             ),
+          ],
         ],
       ),
     );
@@ -376,6 +757,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Input bar ──────────────────────────────────────────────────
   Widget _buildInputBar(bool isDark) {
+    // While recording, show the recording strip instead
+    if (_isRecording) return _buildRecordingBar(isDark);
+
+    final hasText  = _msgCtrl.text.trim().isNotEmpty;
+    final showMic  = !hasText && !_isSendingVoice;
+
     return Container(
       padding: EdgeInsets.only(
         left:   CSizes.defaultSpace,
@@ -403,14 +790,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 borderRadius: BorderRadius.circular(24),
               ),
               child: TextField(
-                controller:  _msgCtrl,
-                maxLines:    4,
-                minLines:    1,
+                controller:         _msgCtrl,
+                maxLines:           4,
+                minLines:           1,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText:      'chat.type_message'.tr(),
-                  hintStyle:     TextStyle(color: CColors.darkGrey, fontSize: 14),
-                  border:        InputBorder.none,
+                  hintText:       'chat.type_message'.tr(),
+                  hintStyle:      TextStyle(color: CColors.darkGrey, fontSize: 14),
+                  border:         InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 10),
                 ),
@@ -420,11 +807,156 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 8),
 
-          // Send button
+          // Mic button (when no text) or Send button (when typing)
+          if (showMic)
+            GestureDetector(
+              onTap: _startRecording, // tap once to START recording
+              child: Tooltip(
+                message: 'chat.tap_to_record'.tr(),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width:  48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color:  CColors.primary,
+                    shape:  BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color:      CColors.primary.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset:     const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: _isSendingVoice
+                      ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2),
+                  )
+                      : const Icon(Icons.mic_rounded,
+                      color: Colors.white, size: 24),
+                ),
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: _sendMessage,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width:  48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color:  CColors.primary,
+                  shape:  BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color:      CColors.primary.withOpacity(0.4),
+                      blurRadius: 8,
+                      offset:     const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: _isSending
+                    ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2),
+                )
+                    : const Icon(Icons.send_rounded,
+                    color: Colors.white, size: 22),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Recording strip ────────────────────────────────────────────
+  Widget _buildRecordingBar(bool isDark) {
+    final mins = _recordingSeconds ~/ 60;
+    final secs = _recordingSeconds % 60;
+    final timeStr =
+        '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+
+    return Container(
+      padding: EdgeInsets.only(
+        left:   CSizes.defaultSpace,
+        right:  CSizes.sm,
+        top:    8,
+        bottom: MediaQuery.of(context).padding.bottom + 8,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? CColors.darkContainer : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color:      Colors.black.withOpacity(0.06),
+            blurRadius: 8,
+            offset:     const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Cancel
           GestureDetector(
-            onTap: _sendMessage,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+            onTap: _cancelRecording,
+            child: Container(
+              width:  40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: CColors.error.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.delete_outline_rounded,
+                  color: CColors.error, size: 22),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Animated waveform + timer
+          Expanded(
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color:        isDark ? CColors.dark : CColors.lightGrey,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  _buildPulsingDot(),
+                  const SizedBox(width: 8),
+                  Text(
+                    timeStr,
+                    style: TextStyle(
+                      color:      CColors.error,
+                      fontSize:   15,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'chat.recording'.tr(),
+                      style: TextStyle(
+                        color:    CColors.darkGrey,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Send voice
+          GestureDetector(
+            onTap: _stopAndSendVoice,
+            child: Container(
               width:  48,
               height: 48,
               decoration: BoxDecoration(
@@ -438,13 +970,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
               ),
-              child: _isSending
-                  ? const Padding(
-                padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2),
-              )
-                  : const Icon(Icons.send_rounded,
+              child: const Icon(Icons.send_rounded,
                   color: Colors.white, size: 22),
             ),
           ),
@@ -453,11 +979,42 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildPulsingDot() {
+    return TweenAnimationBuilder<double>(
+      tween:    Tween(begin: 0.4, end: 1.0),
+      duration: const Duration(milliseconds: 600),
+      curve:    Curves.easeInOut,
+      builder:  (context, value, child) => Opacity(
+        opacity: value,
+        child: Container(
+          width:  10,
+          height: 10,
+          decoration: const BoxDecoration(
+            color: CColors.error,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+      onEnd: () => setState(() {}), // re-trigger animation
+    );
+  }
+
   String _formatTime(DateTime dt) {
     final now = DateTime.now();
-    if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    if (dt.day == now.day &&
+        dt.month == now.month &&
+        dt.year == now.year) {
+      return '${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}';
     }
-    return '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return '${dt.day}/${dt.month} '
+        '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatDurationObj(Duration d) {
+    final s = d.inSeconds.clamp(0, 9999);
+    return '${(s ~/ 60).toString().padLeft(2, '0')}:'
+        '${(s % 60).toString().padLeft(2, '0')}';
   }
 }

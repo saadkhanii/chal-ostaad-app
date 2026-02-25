@@ -3,7 +3,7 @@
 import 'package:chal_ostaad/features/worker/worker_dashboard_header.dart';
 import 'package:chal_ostaad/features/worker/worker_job_details_screen.dart' as job_details;
 import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
-import 'package:chal_ostaad/features/chat/chat_inbox_screen.dart';
+import 'package:chal_ostaad/features/chat/worker_chat_inbox_screen.dart';
 import 'package:chal_ostaad/features/worker/find_jobs_screen.dart';
 import 'package:chal_ostaad/features/worker/my_bids_screen.dart';
 import 'package:flutter/material.dart';
@@ -306,7 +306,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       FindJobsScreen(scrollController: _findJobsScrollController, showAppBar: false),
       MyBidsScreen(scrollController: _myBidsScrollController, showAppBar: false),
       _buildHomePage(),
-      ChatInboxScreen(scrollController: _chatScrollController, showAppBar: false),
+      WorkerChatInboxScreen(scrollController: _chatScrollController, showAppBar: false, workerId: _workerId),
       WorkerProfileScreen(showAppBar: false),
     ];
   }

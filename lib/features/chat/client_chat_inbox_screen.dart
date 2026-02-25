@@ -17,11 +17,15 @@ import 'chat_screen.dart';
 class ChatInboxScreen extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final bool showAppBar;
+  /// If provided, skips SharedPreferences lookup entirely.
+  /// Pass this from the client dashboard which already knows the clientId.
+  final String? userId;
 
   const ChatInboxScreen({
     super.key,
     this.scrollController,
     this.showAppBar = true,
+    this.userId,
   });
 
   @override
@@ -30,9 +34,16 @@ class ChatInboxScreen extends ConsumerStatefulWidget {
 
 class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   String _userId = '';
-  String _role   = '';
-  String _userName = '';
+  // Role is always 'client' — workers use WorkerChatInboxScreen instead.
+  static const String _role = 'client';
   final ChatService _chatService = ChatService();
+
+  // ── Avatar cache: avoids re-fetching on every stream rebuild ──
+  // Key: other user's Firestore doc id → base64 string or empty string
+  final Map<String, String> _avatarCache = {};
+
+  // Track which IDs are currently being fetched to avoid duplicate calls
+  final Set<String> _fetchingIds = {};
 
   @override
   void initState() {
@@ -41,13 +52,42 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   }
 
   Future<void> _loadUserInfo() async {
+    // Use passed-in userId directly if available — no prefs hit needed.
+    if (widget.userId != null && widget.userId!.isNotEmpty) {
+      if (mounted) setState(() => _userId = widget.userId!);
+      return;
+    }
+    // Fallback: read from SharedPreferences (set during login).
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
-      setState(() {
-        _userId   = prefs.getString('user_uid')   ?? '';
-        _role     = prefs.getString('user_role')  ?? 'client';
-        _userName = prefs.getString('user_name')  ?? '';
-      });
+      setState(() => _userId = prefs.getString('user_uid') ?? '');
+    }
+  }
+
+  /// Fetches a worker's photoBase64 once and stores it in [_avatarCache].
+  /// Always looks in the 'workers' collection — clients chat with workers.
+  Future<void> _prefetchAvatar(String workerId) async {
+    if (_avatarCache.containsKey(workerId) || _fetchingIds.contains(workerId)) {
+      return;
+    }
+    _fetchingIds.add(workerId);
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('workers')
+          .doc(workerId)
+          .get();
+      String photo = '';
+      if (doc.exists) {
+        final info = (doc.data()?['personalInfo']) as Map<String, dynamic>? ?? {};
+        photo = (info['photoBase64'] as String?) ?? '';
+      }
+      _avatarCache[workerId] = photo;
+      if (mounted) setState(() {});
+    } catch (_) {
+      _avatarCache[workerId] = '';
+      if (mounted) setState(() {});
+    } finally {
+      _fetchingIds.remove(workerId);
     }
   }
 
@@ -76,41 +116,62 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     );
   }
 
+  // Holds the last known good list so we never flash empty on a re-subscription
+  List<ChatModel> _cachedChats = [];
+
   Widget _buildChatList(bool isDark) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      // FIX: ValueKey forces the StreamBuilder to tear down and resubscribe
+      // whenever _userId changes (e.g. after _loadUserInfo() completes async).
+      // Without this, the stream was permanently bound to the empty-string
+      // query from the very first build, so workers never saw their chats.
+      key: ValueKey(_userId),
       stream: _chatService.chatsStream(userId: _userId, role: _role),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // Only show spinner on the very first load
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            _cachedChats.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildEmpty(isDark);
+        // Update cache whenever we get real data
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          _cachedChats = snapshot.data!.docs
+              .map((doc) => ChatModel.fromSnapshot(doc))
+              .toList();
+
+          // Prefetch worker avatars AFTER the current build frame
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            for (final chat in _cachedChats) {
+              _prefetchAvatar(chat.workerId);
+            }
+          });
         }
 
-        final chats = snapshot.data!.docs
-            .map((doc) => ChatModel.fromSnapshot(doc))
-            .toList();
+        // Use cached list — never drops to empty while cache has data
+        if (_cachedChats.isEmpty) return _buildEmpty(isDark);
 
         return ListView.separated(
           controller: widget.scrollController,
-          padding: const EdgeInsets.symmetric(vertical: CSizes.sm),
-          itemCount: chats.length,
+          padding:    const EdgeInsets.symmetric(vertical: CSizes.sm),
+          itemCount:  _cachedChats.length,
           separatorBuilder: (_, __) => Divider(
             height: 1,
             indent: 80,
-            color: isDark ? CColors.darkGrey : CColors.borderPrimary,
+            color:  isDark ? CColors.darkGrey : CColors.borderPrimary,
           ),
           itemBuilder: (context, index) =>
-              _buildChatTile(chats[index], isDark),
+              _buildChatTile(_cachedChats[index], isDark),
         );
       },
     );
   }
 
   Widget _buildChatTile(ChatModel chat, bool isDark) {
-    final isUnread = !chat.isRead && chat.lastSenderId != _userId;
-    final otherName = chat.otherPersonName(_userId);
+    final isUnread  = !chat.isRead && chat.lastSenderId != _userId;
+    // Client always talks to the worker — other person is always the worker
+    final otherName = chat.workerName;
+    final otherId   = chat.workerId;
 
     return InkWell(
       onTap: () {
@@ -118,14 +179,12 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => ChatScreen(
-              chatId:      chat.id,
-              jobTitle:    chat.jobTitle,
-              otherName:   otherName,
+              chatId:        chat.id,
+              jobTitle:      chat.jobTitle,
+              otherName:     otherName,
               currentUserId: _userId,
-              otherUserId:   _userId == chat.clientId
-                  ? chat.workerId
-                  : chat.clientId,
-              otherRole: _role == 'client' ? 'worker' : 'client',
+              otherUserId:   otherId,
+              otherRole:     'worker', // client always chats with a worker
             ),
           ),
         );
@@ -138,8 +197,8 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
             horizontal: CSizes.defaultSpace, vertical: 12),
         child: Row(
           children: [
-            // Avatar
-            _buildAvatar(otherName, chat, isDark),
+            // Avatar — built from cache, no FutureBuilder inside list
+            _buildAvatar(otherName, otherId, isDark),
             const SizedBox(width: CSizes.md),
 
             // Chat info
@@ -184,8 +243,8 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
                   Text(
                     chat.jobTitle,
                     style: TextStyle(
-                      fontSize: 11,
-                      color:    CColors.primary,
+                      fontSize:   11,
+                      color:      CColors.primary,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
@@ -198,7 +257,7 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
                         Padding(
                           padding: const EdgeInsets.only(right: 4),
                           child: Icon(Icons.done_all,
-                              size: 14,
+                              size:  14,
                               color: chat.isRead
                                   ? CColors.primary
                                   : CColors.darkGrey),
@@ -211,7 +270,9 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             color: isUnread
-                                ? (isDark ? CColors.white : CColors.textPrimary)
+                                ? (isDark
+                                ? CColors.white
+                                : CColors.textPrimary)
                                 : CColors.darkGrey,
                             fontWeight: isUnread
                                 ? FontWeight.w600
@@ -230,11 +291,12 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
             // Unread dot
             if (isUnread)
               Container(
-                width: 10, height: 10,
+                width:  10,
+                height: 10,
                 margin: const EdgeInsets.only(left: 8),
                 decoration: const BoxDecoration(
-                  color:  CColors.primary,
-                  shape:  BoxShape.circle,
+                  color: CColors.primary,
+                  shape: BoxShape.circle,
                 ),
               ),
           ],
@@ -243,49 +305,38 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     );
   }
 
-  Widget _buildAvatar(String name, ChatModel chat, bool isDark) {
-    // Try to load photo from Firestore for the other person
-    final otherId = _userId == chat.clientId ? chat.workerId : chat.clientId;
-    final otherCollection = _role == 'client' ? 'workers' : 'clients';
+  /// Builds avatar from [_avatarCache] — no async call, no FutureBuilder.
+  /// Shows initials placeholder while the photo is still loading.
+  Widget _buildAvatar(String name, String otherId, bool isDark) {
+    final cached = _avatarCache[otherId]; // null = still loading, '' = no photo
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
-          .collection(otherCollection)
-          .doc(otherId)
-          .get(),
-      builder: (context, snap) {
-        String? photoBase64;
-        if (snap.hasData && snap.data!.exists) {
-          final info = (snap.data!.data()
-          as Map<String, dynamic>?)?['personalInfo']
-          as Map<String, dynamic>? ?? {};
-          photoBase64 = info['photoBase64'] as String?;
-        }
+    ImageProvider? img;
+    if (cached != null && cached.isNotEmpty) {
+      try { img = MemoryImage(base64Decode(cached)); } catch (_) {}
+    }
 
-        ImageProvider? img;
-        if (photoBase64 != null && photoBase64.isNotEmpty) {
-          try { img = MemoryImage(base64Decode(photoBase64)); } catch (_) {}
-        }
+    final initials = name.trim().isNotEmpty
+        ? name.trim().split(' ')
+        .map((w) => w.isNotEmpty ? w[0] : '')
+        .take(2)
+        .join()
+        .toUpperCase()
+        : '?';
 
-        final initials = name.trim().isNotEmpty
-            ? name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '')
-            .take(2).join().toUpperCase()
-            : '?';
-
-        return CircleAvatar(
-          radius:          26,
-          backgroundColor: CColors.secondary,
-          backgroundImage: img,
-          child: img == null
-              ? Text(initials,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ))
-              : null,
-        );
-      },
+    return CircleAvatar(
+      radius:          26,
+      backgroundColor: CColors.secondary,
+      backgroundImage: img,
+      child: img == null
+          ? Text(
+        initials,
+        style: const TextStyle(
+          color:      Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize:   16,
+        ),
+      )
+          : null,
     );
   }
 
@@ -294,21 +345,20 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline,
-              size: 72, color: CColors.grey),
+          Icon(Icons.chat_bubble_outline, size: 72, color: CColors.grey),
           const SizedBox(height: CSizes.md),
           Text(
             'chat.no_chats'.tr(),
             style: TextStyle(
-              fontSize: 16,
-              color:    CColors.darkGrey,
+              fontSize:   16,
+              color:      CColors.darkGrey,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: CSizes.sm),
           Text(
             'chat.chats_appear_after_bid'.tr(),
-            style: TextStyle(fontSize: 13, color: CColors.grey),
+            style:     TextStyle(fontSize: 13, color: CColors.grey),
             textAlign: TextAlign.center,
           ),
         ],

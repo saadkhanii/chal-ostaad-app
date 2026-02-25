@@ -295,9 +295,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         ),
                       ],
                     ),
-                    onTap: () {
-                      _markAsRead(user.uid, notifId);
-                      _navigateToNotification(context, notif);
+                    onTap: () async {
+                      await _markAsRead(user.uid, notifId);
+                      if (context.mounted) {
+                        _navigateToNotification(context, notif);
+                      }
                     },
                   ),
                 ),
@@ -515,22 +517,33 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   void _navigateToNotification(BuildContext context, Map<String, dynamic> notif) {
-    final type = notif['type'];
-    final jobId = notif['jobId'];
-    final chatId = notif['chatId'];
+    final type   = notif['type']   as String?;
+    final jobId  = notif['jobId']  as String?;
+    final chatId = notif['chatId'] as String?;
 
     switch (type) {
+    // All job-related types → JobDetailsRouterScreen (resolves role internally)
       case 'new_job':
+      case 'bid_received':
       case 'bid_accepted':
       case 'bid_rejected':
       case 'job_started':
       case 'job_completed':
-        if (jobId != null) {
-          Navigator.pushNamed(context, AppRoutes.jobDetails, arguments: jobId);
+        if (jobId != null && jobId.isNotEmpty) {
+          Navigator.pushNamed(
+            context,
+            AppRoutes.jobDetails,
+            arguments: jobId,
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:  Text('notification.job_not_found'.tr()),
+            behavior: SnackBarBehavior.floating,
+          ));
         }
         break;
       case 'chat_message':
-        if (chatId != null) {
+        if (chatId != null && chatId.isNotEmpty) {
           Navigator.pushNamed(context, AppRoutes.chat, arguments: chatId);
         }
         break;

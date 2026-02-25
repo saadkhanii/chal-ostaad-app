@@ -67,12 +67,18 @@ class ChatModel {
       currentUserId == clientId ? workerName : clientName;
 }
 
+// ── Message type enum ──────────────────────────────────────────────
+enum MessageType { text, voice }
+
 class MessageModel {
   final String id;
   final String senderId;
   final String text;
   final Timestamp timestamp;
   final bool isRead;
+  final MessageType type;       // text or voice
+  final String? audioBase64;    // base64-encoded audio for voice messages
+  final int? audioDurationMs;   // duration in milliseconds
 
   MessageModel({
     required this.id,
@@ -80,23 +86,35 @@ class MessageModel {
     required this.text,
     required this.timestamp,
     required this.isRead,
+    this.type = MessageType.text,
+    this.audioBase64,
+    this.audioDurationMs,
   });
+
+  bool get isVoice => type == MessageType.voice;
 
   factory MessageModel.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
+    final typeStr = data['type'] as String? ?? 'text';
     return MessageModel(
-      id:        doc.id,
-      senderId:  data['senderId']  ?? '',
-      text:      data['text']      ?? '',
-      timestamp: data['timestamp'] ?? Timestamp.now(),
-      isRead:    data['isRead']    ?? false,
+      id:             doc.id,
+      senderId:       data['senderId']       ?? '',
+      text:           data['text']           ?? '',
+      timestamp:      data['timestamp']      ?? Timestamp.now(),
+      isRead:         data['isRead']         ?? false,
+      type:           typeStr == 'voice' ? MessageType.voice : MessageType.text,
+      audioBase64:    data['audioBase64']    as String?,
+      audioDurationMs: data['audioDurationMs'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'senderId':  senderId,
-    'text':      text,
-    'timestamp': timestamp,
-    'isRead':    isRead,
+    'senderId':        senderId,
+    'text':            text,
+    'timestamp':       timestamp,
+    'isRead':          isRead,
+    'type':            type == MessageType.voice ? 'voice' : 'text',
+    if (audioBase64 != null)    'audioBase64':    audioBase64,
+    if (audioDurationMs != null) 'audioDurationMs': audioDurationMs,
   };
 }

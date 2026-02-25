@@ -3,7 +3,7 @@
 import 'package:chal_ostaad/features/client/client_job_details_screen.dart';
 import 'package:chal_ostaad/features/client/post_job_screen.dart';
 import 'package:chal_ostaad/features/notifications/notifications_screen.dart';
-import 'package:chal_ostaad/features/chat/chat_inbox_screen.dart';
+import 'package:chal_ostaad/features/chat/client_chat_inbox_screen.dart';
 import 'package:chal_ostaad/features/client/my_posted_jobs_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

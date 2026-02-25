@@ -8,7 +8,8 @@ import '../../features/auth/screens/client_signup.dart';
 import '../../features/auth/screens/forgot_password.dart';
 import '../../features/auth/screens/otp_verification.dart';
 import '../../features/auth/screens/worker_signup.dart';
-import '../../features/chat/chat_inbox_screen.dart';
+import '../../features/chat/client_chat_inbox_screen.dart';
+import '../../features/chat/worker_chat_inbox_screen.dart';
 import '../../features/chat/chat_screen.dart';
 import '../../features/client/client_dashboard.dart';
 import '../../features/client/my_posted_jobs_screen.dart';
@@ -21,8 +22,8 @@ import '../../features/worker/my_bids_screen.dart';
 import '../../features/worker/worker_dashboard.dart';
 import '../../features/notifications/notification_settings_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
-
 import 'app_routes.dart';
+import 'job_details_router_screen.dart';
 
 class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -80,8 +81,17 @@ class AppRouter {
             builder: (_) => const WorkerProfileScreen());
 
       case AppRoutes.chatInbox:
+      // Client inbox — uses ChatInboxScreen with role='client'
         return MaterialPageRoute(
             builder: (_) => const ChatInboxScreen());
+
+      case AppRoutes.workerChatInbox:
+      // Worker inbox — dedicated screen, always queries workerId field
+        final args     = settings.arguments as Map<String, dynamic>?;
+        final workerId = args?['workerId'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => WorkerChatInboxScreen(workerId: workerId.isNotEmpty ? workerId : null),
+        );
 
       case AppRoutes.chat:
         final args        = settings.arguments as Map<String, dynamic>?;
@@ -126,12 +136,9 @@ class AppRouter {
     // ─────────────────────────────────────────────────────────────
 
       case AppRoutes.jobDetails:
-        final jobId = settings.arguments as String?;
+        final jobId = settings.arguments as String? ?? '';
         return MaterialPageRoute(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Job Details')),
-            body: Center(child: Text('Job ID: $jobId')),
-          ),
+          builder: (_) => JobDetailsRouterScreen(jobId: jobId),
         );
 
       case AppRoutes.otpVerification:

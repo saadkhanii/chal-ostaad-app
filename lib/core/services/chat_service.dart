@@ -40,7 +40,7 @@ class ChatService {
     return chatId;
   }
 
-  // ── Send a message ─────────────────────────────────────────────
+  // ── Send a text message ────────────────────────────────────────
   Future<void> sendMessage({
     required String chatId,
     required String senderId,
@@ -49,7 +49,6 @@ class ChatService {
     final batch = _firestore.batch();
     final now   = Timestamp.now();
 
-    // Add message to subcollection
     final msgRef = _firestore
         .collection('chats')
         .doc(chatId)
@@ -61,12 +60,49 @@ class ChatService {
       'text':      text.trim(),
       'timestamp': now,
       'isRead':    false,
+      'type':      'text',
     });
 
-    // Update chat metadata
     final chatRef = _firestore.collection('chats').doc(chatId);
     batch.update(chatRef, {
       'lastMessage':     text.trim(),
+      'lastMessageTime': now,
+      'lastSenderId':    senderId,
+      'isRead':          false,
+    });
+
+    await batch.commit();
+  }
+
+  // ── Send a voice message (base64 audio stored in Firestore) ────
+  Future<void> sendVoiceMessage({
+    required String chatId,
+    required String senderId,
+    required String audioBase64,
+    required int durationMs,
+  }) async {
+    final batch = _firestore.batch();
+    final now   = Timestamp.now();
+
+    final msgRef = _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .doc();
+
+    batch.set(msgRef, {
+      'senderId':        senderId,
+      'text':            '🎤 Voice message',
+      'timestamp':       now,
+      'isRead':          false,
+      'type':            'voice',
+      'audioBase64':     audioBase64,
+      'audioDurationMs': durationMs,
+    });
+
+    final chatRef = _firestore.collection('chats').doc(chatId);
+    batch.update(chatRef, {
+      'lastMessage':     '🎤 Voice message',
       'lastMessageTime': now,
       'lastSenderId':    senderId,
       'isRead':          false,
@@ -80,7 +116,6 @@ class ChatService {
     required String chatId,
     required String currentUserId,
   }) async {
-    // Mark unread messages from the other person as read
     final unread = await _firestore
         .collection('chats')
         .doc(chatId)
@@ -94,7 +129,6 @@ class ChatService {
       batch.update(doc.reference, {'isRead': true});
     }
 
-    // Mark chat as read
     batch.update(
       _firestore.collection('chats').doc(chatId),
       {'isRead': true},

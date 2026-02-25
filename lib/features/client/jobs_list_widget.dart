@@ -29,7 +29,7 @@ class JobsListWidget extends ConsumerStatefulWidget {
   final String clientId;
   final ScrollController? scrollController;
   final bool showFilters;
-  final bool showMapButton;   // ← NEW: toggle map FAB
+  final bool showMapButton;
   final int? limit;
   final Function(JobModel)? onJobTap;
   final EdgeInsetsGeometry? padding;
@@ -39,7 +39,7 @@ class JobsListWidget extends ConsumerStatefulWidget {
     required this.clientId,
     this.scrollController,
     this.showFilters   = true,
-    this.showMapButton = true,  // ← on by default
+    this.showMapButton = true,
     this.limit,
     this.onJobTap,
     this.padding,
@@ -52,23 +52,26 @@ class JobsListWidget extends ConsumerStatefulWidget {
 class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
   String _selectedFilter = 'all';
 
+  // Track which job IDs are currently being deleted to show a spinner
+  final Set<String> _deletingIds = {};
+
   Color _getStatusColor(String status) {
-    switch (status) {
-      case 'open':         return CColors.success;
-      case 'in-progress':  return CColors.warning;
-      case 'completed':    return CColors.info;
-      case 'cancelled':    return CColors.error;
-      default:             return CColors.grey;
+    switch (status.trim().toLowerCase()) {
+      case 'open':        return CColors.success;
+      case 'in-progress': return CColors.warning;
+      case 'completed':   return CColors.info;
+      case 'cancelled':   return CColors.error;
+      default:            return CColors.grey;
     }
   }
 
   String _getStatusText(String status) {
-    switch (status) {
-      case 'open':         return 'job.status_open'.tr();
-      case 'in-progress':  return 'job.status_in_progress'.tr();
-      case 'completed':    return 'job.status_completed'.tr();
-      case 'cancelled':    return 'job.status_cancelled'.tr();
-      default:             return status;
+    switch (status.trim().toLowerCase()) {
+      case 'open':        return 'job.status_open'.tr();
+      case 'in-progress': return 'job.status_in_progress'.tr();
+      case 'completed':   return 'job.status_completed'.tr();
+      case 'cancelled':   return 'job.status_cancelled'.tr();
+      default:            return status;
     }
   }
 
@@ -88,10 +91,56 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     Navigator.pushNamed(
       context,
       AppRoutes.jobsMap,
-      arguments: {
-        'jobs': jobs, // client view — no worker passed
-      },
+      arguments: {'jobs': jobs},
     );
+  }
+
+  /// Deletes a job directly from Firestore.
+  /// Only open jobs can be deleted — confirmed via dialog.
+  Future<void> _deleteJob(JobModel job) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('job.delete_job'.tr()),
+        content: Text('job.delete_job_confirm'.tr()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('common.cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.error),
+            child: Text(
+              'common.delete'.tr(),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingIds.add(job.id!));
+    try {
+      await FirebaseFirestore.instance
+          .collection('jobs')
+          .doc(job.id)
+          .delete();
+      // Stream auto-removes the card — no manual setState needed.
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:         Text('Failed to delete job: $e'),
+          backgroundColor: CColors.error,
+          behavior:        SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _deletingIds.remove(job.id!));
+    }
   }
 
   @override
@@ -142,13 +191,13 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                           ? Colors.white
                           : CColors.textPrimary),
                     )),
-                selected: isSelected,
+                selected:        isSelected,
                 onSelected: (selected) {
                   if (selected) {
                     setState(() => _selectedFilter = filterKey);
                   }
                 },
-                selectedColor: CColors.primary,
+                selectedColor:   CColors.primary,
                 backgroundColor: isDark
                     ? CColors.darkContainer
                     : CColors.lightContainer,
@@ -242,8 +291,8 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                 bottom: 16,
                 right:  16,
                 child: FloatingActionButton.extended(
-                  heroTag: 'jobs_list_map',
-                  onPressed: () => _openMapView(allJobs),
+                  heroTag:         'jobs_list_map',
+                  onPressed:       () => _openMapView(allJobs),
                   backgroundColor: CColors.primary,
                   icon: const Icon(Icons.map_rounded,
                       color: Colors.white),
@@ -264,6 +313,10 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
       JobModel job,
       AsyncValue<int> bidCountAsync,
       ) {
+    final statusNorm = job.status.trim().toLowerCase();
+    final isOpen     = statusNorm == 'open' || statusNorm == 'cancelled';
+    final isDeleting = _deletingIds.contains(job.id);
+
     return Card(
       margin: const EdgeInsets.only(bottom: CSizes.md),
       shape: RoundedRectangleBorder(
@@ -277,7 +330,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Title + status badge ─────────────────────────
+              // ── Title + status badge + delete button ─────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -289,19 +342,19 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                           .titleMedium!
                           .copyWith(
                         fontWeight: FontWeight.bold,
-                        fontSize: isUrdu ? 18 : 16,
+                        fontSize:   isUrdu ? 18 : 16,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Status badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(job.status)
-                          .withOpacity(0.1),
+                      color: _getStatusColor(job.status).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                           color: _getStatusColor(job.status)),
@@ -312,12 +365,38 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                           .textTheme
                           .labelSmall!
                           .copyWith(
-                        color: _getStatusColor(job.status),
+                        color:      _getStatusColor(job.status),
                         fontWeight: FontWeight.bold,
-                        fontSize: isUrdu ? 12 : 10,
+                        fontSize:   isUrdu ? 12 : 10,
                       ),
                     ),
                   ),
+                  // ── Delete button (only for open jobs) ────────
+                  if (isOpen) ...[
+                    const SizedBox(width: 4),
+                    SizedBox(
+                      width:  32,
+                      height: 32,
+                      child: isDeleting
+                          ? const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: CColors.error,
+                        ),
+                      )
+                          : IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: CColors.error,
+                          size: 20,
+                        ),
+                        tooltip: 'job.delete_job'.tr(),
+                        onPressed: () => _deleteJob(job),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: CSizes.sm),
@@ -325,7 +404,8 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
               // ── Description ──────────────────────────────────
               Text(
                 job.description,
-                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                style:
+                Theme.of(context).textTheme.bodyMedium!.copyWith(
                   fontSize: isUrdu ? 16 : 14,
                 ),
                 maxLines: 2,
@@ -333,7 +413,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
               ),
               const SizedBox(height: CSizes.sm),
 
-              // ── Location row (shown only when job has location)
+              // ── Location row ─────────────────────────────────
               if (job.hasLocation)
                 Padding(
                   padding: const EdgeInsets.only(bottom: CSizes.sm),

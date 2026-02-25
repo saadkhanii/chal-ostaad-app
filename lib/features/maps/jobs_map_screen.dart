@@ -14,6 +14,7 @@ import '../../../core/models/job_model.dart';
 import '../../../core/models/worker_model.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/map_service.dart';
+import '../../../core/routes/app_routes.dart';
 
 class JobsMapScreen extends StatefulWidget {
   /// Pass a worker to show their location + radius circle + nearby jobs.
@@ -87,11 +88,14 @@ class _JobsMapScreenState extends State<JobsMapScreen> {
       context,
       job,
       onViewDetails: () {
-        Navigator.of(context).pop(); // close sheet
-        // TODO: Navigate to job detail screen
-        // Navigator.of(context).push(MaterialPageRoute(
-        //   builder: (_) => JobDetailScreen(jobId: job.id!),
-        // ));
+        Navigator.of(context).pop(); // close bottom sheet
+        if (job.id != null && job.id!.isNotEmpty) {
+          Navigator.pushNamed(
+            context,
+            AppRoutes.jobDetails,
+            arguments: job.id,
+          );
+        }
       },
       onGetDirections: _workerLatLng == null || job.location == null
           ? null
