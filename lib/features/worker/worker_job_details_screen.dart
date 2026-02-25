@@ -15,6 +15,8 @@ import '../../../core/services/bid_service.dart';
 import '../../../core/services/location_service.dart';   // ← NEW
 import '../../../core/services/map_service.dart';        // ← NEW
 import '../../../shared/widgets/common_header.dart';
+import '../../../core/services/chat_service.dart';
+import '../chat/chat_screen.dart';
 
 class WorkerJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -40,27 +42,50 @@ class _WorkerJobDetailsScreenState
   final _amountController  = TextEditingController();
   final _messageController = TextEditingController();
   final _bidService        = BidService();
-  final _mapService        = MapService();               // ← NEW
-  final _locationService   = LocationService();          // ← NEW
+  final _chatService       = ChatService();
+  final _mapService        = MapService();
+  final _locationService   = LocationService();
 
-  bool   _isLoading       = false;
-  bool   _hasExistingBid  = false;
-  String _clientName      = 'common.loading'.tr();
-  String? _distanceLabel;                               // ← NEW
+  bool      _isLoading       = false;
+  bool      _hasExistingBid  = false;
+  BidModel? _acceptedBid;     // non-null when THIS worker's bid was accepted
+  String    _clientName      = 'common.loading'.tr();
+  String?   _distanceLabel;
 
   @override
   void initState() {
     super.initState();
     _checkExistingBid();
     _loadClientName();
-    _loadDistanceToJob();   // ← NEW
+    _loadDistanceToJob();
   }
 
   Future<void> _checkExistingBid() async {
     try {
+      // Check if this worker has any bid on this job
       final hasBid = await _bidService.hasWorkerBidOnJob(
           widget.workerId, widget.job.id!);
       if (mounted) setState(() => _hasExistingBid = hasBid);
+
+      if (hasBid) {
+        // Also check if that bid was specifically accepted
+        final snapshot = await FirebaseFirestore.instance
+            .collection('bids')
+            .where('jobId', isEqualTo: widget.job.id)
+            .where('workerId', isEqualTo: widget.workerId)
+            .where('status', isEqualTo: 'accepted')
+            .limit(1)
+            .get();
+
+        if (snapshot.docs.isNotEmpty && mounted) {
+          setState(() {
+            _acceptedBid = BidModel.fromSnapshot(
+              snapshot.docs.first
+              as DocumentSnapshot<Map<String, dynamic>>,
+            );
+          });
+        }
+      }
     } catch (e) {
       debugPrint('Error checking existing bid: $e');
     }
@@ -462,8 +487,14 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Bid form (unchanged from your original) ───────────────────────
+  // ── Bid form / status panel ───────────────────────────────────────
   Widget _buildBidForm(BuildContext context, bool isDark, bool isUrdu) {
+    // ── 1. ACCEPTED: worker won this job → show congrats + chat CTA ──
+    if (_acceptedBid != null) {
+      return _buildAcceptedPanel(context, isDark, isUrdu);
+    }
+
+    // ── 2. Already bid but not yet accepted/rejected ──────────────────
     if (_hasExistingBid) {
       return Container(
         width:   double.infinity,
@@ -502,6 +533,7 @@ class _WorkerJobDetailsScreenState
       );
     }
 
+    // ── 3. Job not open → locked (but not because worker won) ─────────
     if (widget.job.status != 'open') {
       return Container(
         width:   double.infinity,
@@ -539,6 +571,7 @@ class _WorkerJobDetailsScreenState
       );
     }
 
+    // ── 4. Open job, no bid yet → show bid form ───────────────────────
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -643,6 +676,134 @@ class _WorkerJobDetailsScreenState
           ),
         ),
       ],
+    );
+  }
+
+  // ── Accepted panel: congrats card + open chat button ─────────────
+  Widget _buildAcceptedPanel(BuildContext context, bool isDark, bool isUrdu) {
+    return Container(
+      width:   double.infinity,
+      padding: const EdgeInsets.all(CSizes.lg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end:   Alignment.bottomRight,
+          colors: [
+            CColors.success.withOpacity(0.12),
+            CColors.primary.withOpacity(0.08),
+          ],
+        ),
+        border: Border.all(color: CColors.success.withOpacity(0.4)),
+      ),
+      child: Column(
+        children: [
+          // Trophy icon
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color:  CColors.success.withOpacity(0.15),
+              shape:  BoxShape.circle,
+            ),
+            child: const Icon(Icons.emoji_events_rounded,
+                size: 40, color: CColors.success),
+          ),
+          const SizedBox(height: 16),
+
+          // Headline
+          Text(
+            'bid.bid_accepted_congrats'.tr(),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge!.copyWith(
+              fontWeight: FontWeight.w800,
+              color:      CColors.success,
+              fontSize:   isUrdu ? 22 : 20,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Subtext
+          Text(
+            'bid.bid_accepted_message'.tr(),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+              color:    isDark
+                  ? CColors.textWhite.withOpacity(0.75)
+                  : CColors.darkerGrey,
+              fontSize: isUrdu ? 15 : 13,
+              height:   1.5,
+            ),
+          ),
+
+          // Bid amount pill
+          if (_acceptedBid != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color:        CColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border:       Border.all(color: CColors.primary.withOpacity(0.3)),
+              ),
+              child: Text(
+                'Rs. ${_acceptedBid!.amount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  color:      CColors.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize:   isUrdu ? 16 : 14,
+                ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
+          // Open Chat button — the main CTA
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openChat,
+              icon:  const Icon(Icons.chat_rounded, size: 20),
+              label: Text(
+                'chat.open_chat'.tr(),
+                style: TextStyle(
+                  fontSize:   isUrdu ? 17 : 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                ),
+                elevation: 3,
+                shadowColor: CColors.primary.withOpacity(0.4),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Navigate to chat ──────────────────────────────────────────────
+  void _openChat() {
+    if (_acceptedBid == null) return;
+    final chatId = _chatService.getChatId(widget.job.id!, widget.workerId);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          chatId:        chatId,
+          jobTitle:      widget.job.title,
+          otherName:     _clientName,
+          currentUserId: widget.workerId,
+          otherUserId:   _acceptedBid!.clientId,
+          otherRole:     'client',
+        ),
+      ),
     );
   }
 

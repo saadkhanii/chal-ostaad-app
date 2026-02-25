@@ -31,7 +31,11 @@ dependencies:
   cloud_firestore: ^6.1.0
   firebase_auth: ^6.1.2
 
-
+  #Chatting
+  record: ^5.0.5           # For voice recording
+  audio_waveforms: ^1.0.0  # For nice waveform display
+  path_provider: ^2.1.1    # For temporary file storage
+  permission_handler: ^11.0.1 # For microphone permissions
 
   # Utilities
   http: ^1.6.0

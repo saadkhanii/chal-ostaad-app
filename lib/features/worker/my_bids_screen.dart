@@ -331,9 +331,20 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                               // Chat button for accepted bids
                               if (bid.status == 'accepted')
                                 GestureDetector(
-                                  onTap: () {
+                                  onTap: () async {
                                     final chatService = ChatService();
                                     final chatId = chatService.getChatId(bid.jobId, _workerId);
+                                    // Fetch the real client name before opening chat
+                                    String clientName = 'Client';
+                                    try {
+                                      final doc = await FirebaseFirestore.instance
+                                          .collection('clients')
+                                          .doc(bid.clientId)
+                                          .get();
+                                      final info = doc.data()?['personalInfo']
+                                      as Map<String, dynamic>? ?? {};
+                                      clientName = info['fullName'] ?? info['name'] ?? 'Client';
+                                    } catch (_) {}
                                     jobAsync.whenData((job) {
                                       Navigator.push(
                                         context,
@@ -341,7 +352,7 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                                           builder: (_) => ChatScreen(
                                             chatId:        chatId,
                                             jobTitle:      job?.title ?? '',
-                                            otherName:     'Client',
+                                            otherName:     clientName,
                                             currentUserId: _workerId,
                                             otherUserId:   bid.clientId,
                                             otherRole:     'client',
