@@ -19,6 +19,9 @@ import '../../core/services/job_service.dart';
 import '../../core/services/map_service.dart';
 import '../../shared/widgets/common_header.dart';
 import '../chat/chat_screen.dart';
+import '../../core/services/review_service.dart';
+import '../review/submit_review_dialog.dart';
+import '../review/worker_bid_profile_screen.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -50,6 +53,10 @@ class _ClientJobDetailsScreenState
   // The worker ID whose bid was accepted (needed for progress flow)
   String? _acceptedWorkerId;
 
+  // Review state
+  bool          _reviewSubmitted = false;
+  final ReviewService _reviewService = ReviewService();
+
   // Live Firestore subscription — updates _jobStatus and _pendingProgressRequest
   // in real-time so every widget that reads them (including the header) is current.
   StreamSubscription<DocumentSnapshot>? _jobSub;
@@ -74,11 +81,13 @@ class _ClientJobDetailsScreenState
       if (!mounted || !snap.exists) return;
       final data    = snap.data() as Map<String, dynamic>;
       // FIX: normalize to lowercase to guard against casing mismatches in Firestore.
-      final status  = (data['status'] as String?)?.trim().toLowerCase() ?? _jobStatus;
-      final request = data['progressRequest'] as Map<String, dynamic>?;
+      final status   = (data['status'] as String?)?.trim().toLowerCase() ?? _jobStatus;
+      final request  = data['progressRequest'] as Map<String, dynamic>?;
+      final reviewed = data['reviewSubmitted'] as bool? ?? false;
       setState(() {
         _jobStatus              = status;
         _pendingProgressRequest = request;
+        _reviewSubmitted        = reviewed;
       });
     });
   }
@@ -747,56 +756,107 @@ class _ClientJobDetailsScreenState
       );
     }
 
-    // ── COMPLETED → Reopen ────────────────────────────────────────
+    // ── COMPLETED → Review button + Reopen ─────────────────────
     if (_jobStatus == 'completed') {
-      return SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: () async {
-            final ok = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Reopen Job?'),
-                content: const Text(
-                    'This will set the job back to In Progress.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: Text('common.cancel'.tr())),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: CColors.warning),
-                    child: const Text('Reopen',
-                        style: TextStyle(color: Colors.white)),
+      return Column(
+        children: [
+          // Leave Review button — only shown if not yet reviewed
+          SizedBox(
+            width: double.infinity,
+            child: _reviewSubmitted
+                ? Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color:        CColors.success.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                border:       Border.all(color: CColors.success.withOpacity(0.4)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle_rounded,
+                      color: CColors.success, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Review Submitted',
+                    style: TextStyle(
+                      color:      CColors.success,
+                      fontWeight: FontWeight.w600,
+                      fontSize:   isUrdu ? 16 : 14,
+                    ),
                   ),
                 ],
               ),
-            );
-            if (ok == true) {
-              setState(() => _isAlteringProgress = true);
-              try {
-                await _jobService.alterJobProgress(
-                    jobId: widget.job.id!, newStatus: 'in-progress');
-              } finally {
-                if (mounted) setState(() => _isAlteringProgress = false);
-              }
-            }
-          },
-          icon:  const Icon(Icons.refresh_rounded,
-              color: CColors.warning, size: 20),
-          label: const Text('Reopen Job',
-              style: TextStyle(
-                  color:      CColors.warning,
-                  fontWeight: FontWeight.w600)),
-          style: OutlinedButton.styleFrom(
-            side:    const BorderSide(color: CColors.warning),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape:   RoundedRectangleBorder(
-                borderRadius:
-                BorderRadius.circular(CSizes.borderRadiusLg)),
+            )
+                : ElevatedButton.icon(
+              onPressed: () => _openReviewDialog(),
+              icon:  const Icon(Icons.star_rounded, size: 18),
+              label: Text(
+                'Leave a Review',
+                style: TextStyle(fontSize: isUrdu ? 16 : 14),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(CSizes.borderRadiusLg)),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: CSizes.sm),
+          // Reopen button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Reopen Job?'),
+                    content: const Text(
+                        'This will set the job back to In Progress.'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: Text('common.cancel'.tr())),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: CColors.warning),
+                        child: const Text('Reopen',
+                            style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  setState(() => _isAlteringProgress = true);
+                  try {
+                    await _jobService.alterJobProgress(
+                        jobId: widget.job.id!, newStatus: 'in-progress');
+                  } finally {
+                    if (mounted) setState(() => _isAlteringProgress = false);
+                  }
+                }
+              },
+              icon:  const Icon(Icons.refresh_rounded,
+                  color: CColors.warning, size: 20),
+              label: const Text('Reopen Job',
+                  style: TextStyle(
+                      color:      CColors.warning,
+                      fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                side:    const BorderSide(color: CColors.warning),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape:   RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(CSizes.borderRadiusLg)),
+              ),
+            ),
+          ),
+        ],
       );
     }
 
@@ -1012,7 +1072,7 @@ class _ClientJobDetailsScreenState
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
-            child: Text('bid.no_bids_yet'.tr(),
+            child: Text('bid.no_bids'.tr(),
                 style: TextStyle(fontSize: isUrdu ? 16 : 14)),
           );
         }
@@ -1080,6 +1140,49 @@ class _ClientJobDetailsScreenState
                 ),
                 _buildBidStatusBadge(bid.status, isUrdu),
               ],
+            ),
+
+            // ── View worker profile button ────────────────────
+            const SizedBox(height: CSizes.sm),
+            InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      WorkerBidProfileScreen(workerId: bid.workerId),
+                ),
+              ),
+              borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color:        CColors.primary.withOpacity(0.06),
+                  borderRadius:
+                  BorderRadius.circular(CSizes.borderRadiusMd),
+                  border: Border.all(
+                      color: CColors.primary.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.person_outline_rounded,
+                        color: CColors.primary, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'View Worker Profile',
+                      style: TextStyle(
+                        color:      CColors.primary,
+                        fontSize:   isUrdu ? 13 : 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_ios_rounded,
+                        color: CColors.primary, size: 12),
+                  ],
+                ),
+              ),
             ),
 
             if (bid.message != null && bid.message!.isNotEmpty) ...[
@@ -1151,6 +1254,46 @@ class _ClientJobDetailsScreenState
           ],
         ),
       ),
+    );
+  }
+
+  // ── Open review dialog ──────────────────────────────────────────
+  Future<void> _openReviewDialog() async {
+    if (_acceptedWorkerId == null) return;
+    final workerName = await _getWorkerName(_acceptedWorkerId!);
+    if (!mounted) return;
+
+    await SubmitReviewDialog.show(
+      context,
+      workerName: workerName,
+      onSubmit: (rating, comment) async {
+        try {
+          await _reviewService.submitReview(
+            jobId:      widget.job.id!,
+            clientId:   _clientId,
+            clientName: await _getClientName(_clientId),
+            workerId:   _acceptedWorkerId!,
+            rating:     rating,
+            comment:    comment,
+          );
+          if (mounted) {
+            setState(() => _reviewSubmitted = true);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:         Text('Review submitted! Thank you.'),
+              backgroundColor: CColors.success,
+              behavior:        SnackBarBehavior.floating,
+            ));
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content:         Text('Failed to submit review: $e'),
+              backgroundColor: CColors.error,
+              behavior:        SnackBarBehavior.floating,
+            ));
+          }
+        }
+      },
     );
   }
 

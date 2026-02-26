@@ -31,7 +31,8 @@
     "update_failed": "Failed to update: {0}",
     "delete_failed": "Failed to delete: {0}",
     "jobs_load_failed": "Error loading jobs",
-    "not_available": "N/A"
+    "not_available": "N/A",
+    "go_back": "Go Back"
   },
   "auth": {
     "login": "Login",
@@ -282,7 +283,15 @@
     "joined": "Joined",
     "account_type": "Account Type",
     "client": "Client",
-    "worker": "Worker"
+    "worker": "Worker",
+    "work_info": "Work Information",
+    "office_info": "Office Information",
+    "my_reviews": "My Reviews",
+    "reset_password": "Reset Password",
+    "contact_admin": "Contact admin to update your info",
+    "verified": "Verified",
+    "rejected": "Rejected",
+    "pending": "Pending"
   },
   "notification": {
     "notifications": "Notifications",
@@ -308,7 +317,8 @@
     "unread_other": "You have {count} unread notifications.",
     "mark_all_read": "Mark all as read",
     "confirm_delete": "Are you sure you want to delete this notification?",
-    "deleted": "Notification deleted."
+    "deleted": "Notification deleted.",
+    "job_not_found": "Job not found"
   },
   "settings": {
     "settings": "Settings",
@@ -428,5 +438,38 @@
     "no_messages": "No messages",
     "open_chat": "Open Chat",
     "chat": "Chat"
+  },
+  "nav": {
+    "notifications": "Notifications"
+  },
+  "review": {
+    "reviews": "Reviews",
+    "no_reviews": "No reviews yet",
+    "top_rated": "🌟 Top Rated Worker",
+    "highly_recommended": "👍 Highly Recommended",
+    "rated_by_clients": "⭐ Rated by clients",
+    "no_ratings": "No ratings yet",
+    "review": "review",
+    "reviews_plural": "reviews",
+    "rate_experience": "Rate your experience",
+    "how_was": "How was working with {0}?",
+    "tap_to_rate": "Tap a star to rate",
+    "poor": "😞  Poor",
+    "fair": "😕  Fair",
+    "good": "😐  Good",
+    "very_good": "😊  Very Good",
+    "excellent": "🌟  Excellent!",
+    "add_comment": "Add a comment (optional)",
+    "submit_review": "Submit Review",
+    "worker_profile": "Worker Profile",
+    "experience": "Experience",
+    "skills": "Skills",
+    "see_all": "See all {0}",
+    "view_all_reviews": "View all {0} reviews →",
+    "bids_placed": "Bids Placed",
+    "jobs_won": "Jobs Won",
+    "rating": "Rating",
+    "not_assigned": "Not assigned",
+    "added_by": "Added By"
   }
 }

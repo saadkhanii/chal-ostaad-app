@@ -52,7 +52,7 @@ class _MyPostedJobsScreenState extends ConsumerState<MyPostedJobsScreen> {
 
       final jobs = snapshot.docs
           .map((doc) =>
-              JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
 
       if (mounted) {
@@ -87,7 +87,7 @@ class _MyPostedJobsScreenState extends ConsumerState<MyPostedJobsScreen> {
               clientId: _clientId,
               scrollController: widget.scrollController,
               showFilters: true,
-              showMapButton: true, // FAB from JobsListWidget handles map
+              showMapButton: false,
             ),
           ),
         ],

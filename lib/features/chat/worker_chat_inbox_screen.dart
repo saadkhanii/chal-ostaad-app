@@ -95,6 +95,10 @@ class _WorkerChatInboxScreenState
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Always use Scaffold — even when embedded in the dashboard.
+    // The key fix for nav bar disappearing is NotificationListener below,
+    // which re-shows the nav bar whenever the user scrolls UP or when
+    // the list is too short to scroll (overscroll at top).
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(

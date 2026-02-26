@@ -1,4 +1,4 @@
-// lib/features/chat/chat_inbox_screen.dart
+// lib/features/chat/client_chat_inbox_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -95,24 +95,37 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      body: Column(
-        children: [
-          CommonHeader(
-            title:          'chat.inbox'.tr(),
-            showBackButton: widget.showAppBar,
-            onBackPressed:  widget.showAppBar
-                ? () => Navigator.pop(context)
-                : null,
-          ),
-          Expanded(
-            child: _userId.isEmpty
-                ? _buildEmpty(isDark)
-                : _buildChatList(isDark),
-          ),
-        ],
-      ),
+    // When embedded inside the dashboard IndexedStack (showAppBar == false),
+    // do NOT wrap in a Scaffold — the dashboard already provides one.
+    // A nested Scaffold intercepts scroll notifications and prevents
+    // CurvedNavBar from reappearing after hiding on scroll.
+    final content = Column(
+      children: [
+        CommonHeader(
+          title:          'chat.inbox'.tr(),
+          showBackButton: widget.showAppBar,
+          onBackPressed:  widget.showAppBar
+              ? () => Navigator.pop(context)
+              : null,
+        ),
+        Expanded(
+          child: _userId.isEmpty
+              ? _buildEmpty(isDark)
+              : _buildChatList(isDark),
+        ),
+      ],
+    );
+
+    if (widget.showAppBar) {
+      return Scaffold(
+        backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
+        body: content,
+      );
+    }
+
+    return ColoredBox(
+      color: isDark ? CColors.dark : CColors.lightGrey,
+      child: content,
     );
   }
 

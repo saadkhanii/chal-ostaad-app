@@ -1465,6 +1465,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         currentIndex: currentPageIndex,
         onTap: (index) {
           ref.read(workerPageIndexProvider.notifier).state = index;
+          // Always force nav bar visible when switching tabs.
+          // The chat inbox may have too few items to scroll, so the
+          // scrollController never fires a scroll event to re-show the bar.
+          ref.read(navBarVisibilityProvider.notifier).state = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             switch (index) {
               case 0: if (_findJobsScrollController.hasClients) _findJobsScrollController.jumpTo(0); break;

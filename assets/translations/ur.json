@@ -31,7 +31,8 @@
     "update_failed": "اپ ڈیٹ ناکام: {0}",
     "delete_failed": "حذف کرنا ناکام: {0}",
     "jobs_load_failed": "ملازمتیں لوڈ کرنے میں خرابی",
-    "not_available": "دستیاب نہیں"
+    "not_available": "دستیاب نہیں",
+    "go_back": "واپس جائیں"
   },
   "auth": {
     "login": "لاگ ان",
@@ -282,7 +283,15 @@
     "joined": "شامل ہوئے",
     "account_type": "اکاؤنٹ کی قسم",
     "client": "کلائنٹ",
-    "worker": "ورکر"
+    "worker": "ورکر",
+    "work_info": "کام کی معلومات",
+    "office_info": "دفتر کی معلومات",
+    "my_reviews": "میرے جائزے",
+    "reset_password": "پاس ورڈ ری سیٹ کریں",
+    "contact_admin": "اپنی معلومات اپ ڈیٹ کرنے کے لیے ایڈمن سے رابطہ کریں",
+    "verified": "تصدیق شدہ",
+    "rejected": "مسترد",
+    "pending": "زیر التواء"
   },
   "notification": {
     "notifications": "اطلاعات",
@@ -308,7 +317,8 @@
     "unread_other": "آپ کے پاس {count} نہ پڑھی ہوئی اطلاعات ہیں۔",
     "mark_all_read": "سب کو پڑھا ہوا نشان زد کریں",
     "confirm_delete": "کیا آپ واقعی اس اطلاع کو حذف کرنا چاہتے ہیں؟",
-    "deleted": "اطلاع حذف کر دی گئی۔"
+    "deleted": "اطلاع حذف کر دی گئی۔",
+    "job_not_found": "کام نہیں ملا"
   },
   "settings": {
     "settings": "ترتیبات",
@@ -428,5 +438,38 @@
     "no_messages": "کوئی پیغام نہیں",
     "open_chat": "چیٹ کھولیں",
     "chat": "چیٹ"
+  },
+  "nav": {
+    "notifications": "اطلاعات"
+  },
+  "review": {
+    "reviews": "جائزے",
+    "no_reviews": "ابھی کوئی جائزہ نہیں",
+    "top_rated": "🌟 سب سے زیادہ درجہ یافتہ",
+    "highly_recommended": "👍 انتہائی تجویز کردہ",
+    "rated_by_clients": "⭐ کلائنٹس کی طرف سے درجہ بند",
+    "no_ratings": "ابھی کوئی درجہ بندی نہیں",
+    "review": "جائزہ",
+    "reviews_plural": "جائزے",
+    "rate_experience": "اپنا تجربہ درج کریں",
+    "how_was": "{0} کے ساتھ کام کیسا رہا؟",
+    "tap_to_rate": "درجہ بندی کے لیے ستارہ دبائیں",
+    "poor": "😞  کمزور",
+    "fair": "😕  ٹھیک",
+    "good": "😐  اچھا",
+    "very_good": "😊  بہت اچھا",
+    "excellent": "🌟  بہترین!",
+    "add_comment": "تبصرہ شامل کریں (اختیاری)",
+    "submit_review": "جائزہ جمع کروائیں",
+    "worker_profile": "ورکر پروفائل",
+    "experience": "تجربہ",
+    "skills": "مہارتیں",
+    "see_all": "سب دیکھیں {0}",
+    "view_all_reviews": "تمام {0} جائزے دیکھیں ←",
+    "bids_placed": "لگائی گئی بولیاں",
+    "jobs_won": "جیتے گئے کام",
+    "rating": "درجہ بندی",
+    "not_assigned": "تفویض نہیں",
+    "added_by": "شامل کیا گیا"
   }
 }

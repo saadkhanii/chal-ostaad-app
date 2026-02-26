@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/routes/app_routes.dart';
+import '../review/worker_reviews_screen.dart';
 import '../../shared/widgets/common_header.dart';
 
 class WorkerProfileScreen extends ConsumerStatefulWidget {
@@ -48,6 +49,8 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
   int    _bidsPlaced  = 0;
   int    _jobsWon     = 0;
   String _rating      = 'N/A';
+  double _avgRating    = 0.0;
+  int    _totalReviews = 0;
 
   // ── Photo ──────────────────────────────────────────────────────
   File?  _pickedImage;
@@ -141,6 +144,8 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
           _bidsPlaced         = bidsPlaced;
           _jobsWon            = jobsWon;
           _rating             = ratingText;
+          _avgRating          = avgRating?.toDouble() ?? 0.0;
+          _totalReviews       = totalReviews;
           _isLoading          = false;
         });
       }
@@ -434,6 +439,22 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
                           title:  'nav.notifications'.tr(),
                           onTap:  () => Navigator.pushNamed(
                               context, AppRoutes.notificationSettings),
+                          isDark: isDark,
+                        ),
+                        _buildOptionTile(
+                          icon:   Icons.star_rounded,
+                          title:  'My Reviews',
+                          onTap:  () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => WorkerReviewsScreen(
+                                workerId:      _workerId,
+                                workerName:    _fullName,
+                                averageRating: _avgRating,
+                                totalReviews:  _totalReviews,
+                              ),
+                            ),
+                          ),
                           isDark: isDark,
                         ),
                       ],

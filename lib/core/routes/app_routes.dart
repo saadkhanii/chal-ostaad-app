@@ -24,7 +24,9 @@ class AppRoutes {
   static const String chatInbox       = '/chat-inbox';        // client inbox
   static const String workerChatInbox = '/worker-chat-inbox'; // worker inbox
   static const String wallet          = '/wallet';
-  static const String reviews         = '/reviews';
+  static const String reviews             = '/reviews';
+  static const String workerBidProfile    = '/worker-bid-profile';
+  static const String workerReviews       = '/worker-reviews';
 
   @Deprecated('Use myPostedJobs instead')
   static const String myJobs = '/my-jobs';

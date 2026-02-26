@@ -24,6 +24,8 @@ import '../../features/notifications/notification_settings_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 import 'app_routes.dart';
 import 'job_details_router_screen.dart';
+import '../../features/review/worker_bid_profile_screen.dart';
+import '../../features/review/worker_reviews_screen.dart';
 
 class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -139,6 +141,27 @@ class AppRouter {
         final jobId = settings.arguments as String? ?? '';
         return MaterialPageRoute(
           builder: (_) => JobDetailsRouterScreen(jobId: jobId),
+        );
+
+      case AppRoutes.workerBidProfile:
+        final workerId = settings.arguments as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => WorkerBidProfileScreen(workerId: workerId),
+        );
+
+      case AppRoutes.workerReviews:
+        final args          = settings.arguments as Map<String, dynamic>?;
+        final workerId      = args?['workerId']      as String? ?? '';
+        final workerName    = args?['workerName']    as String? ?? '';
+        final averageRating = (args?['averageRating'] as num?)?.toDouble() ?? 0.0;
+        final totalReviews  = args?['totalReviews']  as int? ?? 0;
+        return MaterialPageRoute(
+          builder: (_) => WorkerReviewsScreen(
+            workerId:      workerId,
+            workerName:    workerName,
+            averageRating: averageRating,
+            totalReviews:  totalReviews,
+          ),
         );
 
       case AppRoutes.otpVerification:
