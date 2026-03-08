@@ -22,6 +22,8 @@ import '../chat/chat_screen.dart';
 import '../../core/services/review_service.dart';
 import '../review/submit_review_dialog.dart';
 import '../review/worker_bid_profile_screen.dart';
+import '../dispute/raise_dispute_dialog.dart';
+import '../dispute/dispute_status_banner.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -56,6 +58,9 @@ class _ClientJobDetailsScreenState
   // Review state
   bool          _reviewSubmitted = false;
   final ReviewService _reviewService = ReviewService();
+
+  // Dispute state
+  String _workerName = '';
 
   // Live Firestore subscription — updates _jobStatus and _pendingProgressRequest
   // in real-time so every widget that reads them (including the header) is current.
@@ -115,8 +120,12 @@ class _ClientJobDetailsScreenState
           .get();
 
       if (snapshot.docs.isNotEmpty && mounted) {
-        setState(() =>
-        _acceptedWorkerId = snapshot.docs.first.data()['workerId'] as String?);
+        final wId = snapshot.docs.first.data()['workerId'] as String?;
+        setState(() => _acceptedWorkerId = wId);
+        if (wId != null) {
+          final name = await _getWorkerName(wId);
+          if (mounted) setState(() => _workerName = name);
+        }
       }
     } catch (_) {}
   }
@@ -405,6 +414,21 @@ class _ClientJobDetailsScreenState
                   // ── Action buttons — always visible, no hunting required ──
                   const SizedBox(height: CSizes.spaceBtwItems),
                   _buildActionButtons(context, isDark, isUrdu),
+
+                  // ── Dispute banner (live stream) ──────────────
+                  const SizedBox(height: CSizes.spaceBtwItems),
+                  DisputeStatusBanner(
+                    jobId:           widget.job.id!,
+                    currentUserId:   _clientId,
+                    currentUserRole: 'client',
+                  ),
+
+                  // ── Raise dispute button ──────────────────────
+                  // Shown when job is in-progress or completed
+                  if (_jobStatus == 'in-progress' || _jobStatus == 'completed') ...[
+                    _buildRaiseDisputeButton(context, isDark, isUrdu),
+                    const SizedBox(height: CSizes.spaceBtwItems),
+                  ],
 
                   if (widget.job.hasLocation) ...[
                     const SizedBox(height: CSizes.spaceBtwItems),
@@ -874,6 +898,45 @@ class _ClientJobDetailsScreenState
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape:   RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+        ),
+      ),
+    );
+  }
+
+  // ── Raise dispute button ──────────────────────────────────────────
+  Widget _buildRaiseDisputeButton(
+      BuildContext context, bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => RaiseDisputeDialog.show(
+          context,
+          jobId:           widget.job.id!,
+          jobTitle:        widget.job.title,
+          clientId:        _clientId,
+          clientName:      'Client',
+          workerId:        _acceptedWorkerId ?? '',
+          workerName:      _workerName,
+          currentUserId:   _clientId,
+          currentUserRole: 'client',
+          onDisputeRaised: () => setState(() {}),
+        ),
+        icon:  const Icon(Icons.flag_outlined,
+            color: CColors.error, size: 18),
+        label: Text(
+          'Raise a Dispute',
+          style: TextStyle(
+            color:      CColors.error,
+            fontWeight: FontWeight.w600,
+            fontSize:   isUrdu ? 15 : 13,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side:    const BorderSide(color: CColors.error),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape:   RoundedRectangleBorder(
+              borderRadius:
+              BorderRadius.circular(CSizes.borderRadiusLg)),
         ),
       ),
     );

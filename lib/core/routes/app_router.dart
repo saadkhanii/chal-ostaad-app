@@ -164,6 +164,21 @@ class AppRouter {
           ),
         );
 
+    // disputes route — navigates to job details which contains the banner
+    // Accepts a jobId string to deep-link directly to a disputed job
+      case AppRoutes.disputes:
+        final jobId = settings.arguments as String? ?? '';
+        if (jobId.isNotEmpty) {
+          return MaterialPageRoute(
+            builder: (_) => JobDetailsRouterScreen(jobId: jobId),
+          );
+        }
+        return MaterialPageRoute(
+          builder: (_) => const Scaffold(
+            body: Center(child: Text('No dispute job ID provided')),
+          ),
+        );
+
       case AppRoutes.otpVerification:
         if (settings.arguments is Map<String, dynamic>) {
           final args  = settings.arguments as Map<String, dynamic>;

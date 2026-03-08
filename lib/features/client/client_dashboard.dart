@@ -23,6 +23,9 @@ import '../../shared/widgets/dashboard_drawer.dart';
 import '../../shared/widgets/curved_nav_bar.dart';
 import '../profile/client_profile_screen.dart';
 import 'client_dashboard_header.dart';
+import '../dispute/dispute_status_banner.dart';
+import '../../core/models/dispute_model.dart';
+import '../../core/services/dispute_service.dart';
 
 final clientLoadingProvider = StateProvider<bool>((ref) => true);
 final clientPageIndexProvider = StateProvider<int>((ref) => 2);
@@ -1213,11 +1216,147 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> with TickerPr
                 ),
                 const SizedBox(height: CSizes.spaceBtwItems),
                 _buildJobFeed(limit: 3),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildDisputesSection(context),
                 const SizedBox(height: CSizes.spaceBtwSections * 2),
               ]),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Disputes section ──────────────────────────────────────────────────────
+  Widget _buildDisputesSection(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
+
+    return StreamBuilder<List<DisputeModel>>(
+      stream: DisputeService().userDisputesStream(
+        userId: _clientId,
+        role:   'client',
+      ),
+      builder: (context, snap) {
+        if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
+
+        final disputes = snap.data!
+            .where((d) => d.status != 'closed')
+            .toList();
+
+        if (disputes.isEmpty) return const SizedBox.shrink();
+
+        final openCount = disputes.where((d) => d.isActive).length;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _buildSectionHeader(context, 'My Disputes', showAction: false),
+                if (openCount > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color:        CColors.error,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$openCount',
+                      style: const TextStyle(
+                        color:      Colors.white,
+                        fontSize:   11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: CSizes.spaceBtwItems),
+            ...disputes.take(3).map((d) => _buildDisputeCard(context, d, isDark, isUrdu)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDisputeCard(BuildContext context, DisputeModel dispute, bool isDark, bool isUrdu) {
+    Color statusColor;
+    IconData statusIcon;
+    switch (dispute.status) {
+      case 'reviewing': statusColor = CColors.warning; statusIcon = Icons.manage_search_rounded; break;
+      case 'resolved':  statusColor = CColors.success; statusIcon = Icons.gavel_rounded;          break;
+      default:          statusColor = CColors.error;   statusIcon = Icons.flag_rounded;
+    }
+
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(
+          context, AppRoutes.disputes, arguments: dispute.jobId),
+      child: Container(
+        width:   double.infinity,
+        margin:  const EdgeInsets.only(bottom: CSizes.sm),
+        padding: const EdgeInsets.all(CSizes.md),
+        decoration: BoxDecoration(
+          color: isDark ? CColors.darkContainer : CColors.white,
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          border: Border.all(color: statusColor.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color:        statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(statusIcon, color: statusColor, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dispute.jobTitle,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize:   isUrdu ? 14 : 13,
+                      color: isDark ? CColors.textWhite : CColors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    dispute.reason,
+                    style: TextStyle(fontSize: isUrdu ? 12 : 11, color: CColors.darkGrey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color:        statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                dispute.status.toUpperCase(),
+                style: TextStyle(
+                  color:      statusColor,
+                  fontSize:   isUrdu ? 10 : 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: CColors.darkGrey, size: 16),
+          ],
+        ),
       ),
     );
   }

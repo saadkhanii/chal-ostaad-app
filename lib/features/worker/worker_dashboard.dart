@@ -24,6 +24,9 @@ import '../../core/services/worker_service.dart';
 import '../../shared/widgets/dashboard_drawer.dart';
 import '../../shared/widgets/curved_nav_bar.dart';
 import '../profile/worker_profile_screen.dart';
+import '../dispute/dispute_status_banner.dart';
+import '../../core/models/dispute_model.dart';
+import '../../core/services/dispute_service.dart';
 
 // State providers
 final workerLoadingProvider = StateProvider<bool>((ref) => true);
@@ -383,6 +386,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                 ),
                 const SizedBox(height: CSizes.spaceBtwItems),
                 _buildMyBidsList(limit: 3),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildDisputesSection(context),
                 const SizedBox(height: CSizes.spaceBtwSections * 2),
               ]),
             ),
@@ -403,12 +408,12 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+          colors: [CColors.primary, CColors.primary.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color: CColors.primary.withOpacity(0.3),
+            color: CColors.primary.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -423,7 +428,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                 Text(
                   '${_getGreeting()},',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: CColors.white.withOpacity(0.9),
+                    color: CColors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -439,13 +444,13 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: CColors.white.withOpacity(0.2),
+                    color: CColors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.format_quote, size: 14, color: CColors.white.withOpacity(0.8)),
+                      Icon(Icons.format_quote, size: 14, color: CColors.white.withValues(alpha: 0.8)),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -469,7 +474,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: CColors.white.withOpacity(0.2),
+              color: CColors.white.withValues(alpha: 0.2),
               border: Border.all(color: CColors.white, width: 2),
             ),
             child: const Icon(Icons.handyman_rounded, color: CColors.white, size: 40),
@@ -544,7 +549,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 4)),
             ],
@@ -554,7 +559,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                    color: color.withOpacity(0.1), shape: BoxShape.circle),
+                    color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
                 child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(height: 8),
@@ -581,12 +586,12 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [CColors.primary.withOpacity(0.95), CColors.secondary.withOpacity(0.95)],
+          colors: [CColors.primary.withValues(alpha: 0.95), CColors.secondary.withValues(alpha: 0.95)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
-          BoxShadow(color: CColors.primary.withOpacity(0.4), blurRadius: 25, offset: const Offset(0, 10)),
-          BoxShadow(color: CColors.secondary.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 4)),
+          BoxShadow(color: CColors.primary.withValues(alpha: 0.4), blurRadius: 25, offset: const Offset(0, 10)),
+          BoxShadow(color: CColors.secondary.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -595,9 +600,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: CColors.white.withOpacity(0.25),
+              color: CColors.white.withValues(alpha: 0.25),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: CColors.white.withOpacity(0.3)),
+              border: Border.all(color: CColors.white.withValues(alpha: 0.3)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -630,7 +635,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           Text(
             'dashboard.bidding_description'.tr(),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-              color: CColors.white.withOpacity(0.95),
+              color: CColors.white.withValues(alpha: 0.95),
               height: 1.6,
               fontSize: isUrdu ? 16 : 15,
             ),
@@ -650,6 +655,101 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                 style: TextStyle(fontSize: isUrdu ? 16 : 14)),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Disputes section ──────────────────────────────────────────────────────
+  Widget _buildDisputesSection(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
+
+    return StreamBuilder<List<DisputeModel>>(
+      stream: DisputeService().userDisputesStream(
+        userId: _workerId,
+        role:   'worker',
+      ),
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink();
+        final disputes = snap.data!.where((d) => d.status != 'closed').toList();
+        if (disputes.isEmpty) return const SizedBox.shrink();
+        final openCount = disputes.where((d) => d.isActive).length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _buildSectionHeader(context, 'My Disputes', showAction: false),
+                if (openCount > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: CColors.error, borderRadius: BorderRadius.circular(20)),
+                    child: Text('$openCount', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: CSizes.spaceBtwItems),
+            ...disputes.take(3).map((d) => _buildDisputeCard(context, d, isDark, isUrdu)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDisputeCard(BuildContext context, DisputeModel dispute, bool isDark, bool isUrdu) {
+    Color statusColor;
+    IconData statusIcon;
+    switch (dispute.status) {
+      case 'reviewing': statusColor = CColors.warning; statusIcon = Icons.manage_search_rounded; break;
+      case 'resolved':  statusColor = CColors.success; statusIcon = Icons.gavel_rounded; break;
+      default:          statusColor = CColors.error;   statusIcon = Icons.flag_rounded;
+    }
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, AppRoutes.disputes, arguments: dispute.jobId),
+      child: Container(
+        width:   double.infinity,
+        margin:  const EdgeInsets.only(bottom: CSizes.sm),
+        padding: const EdgeInsets.all(CSizes.md),
+        decoration: BoxDecoration(
+          color:        isDark ? CColors.darkContainer : CColors.white,
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          border:       Border.all(color: statusColor.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+              child: Icon(statusIcon, color: statusColor, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dispute.jobTitle,
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: isUrdu ? 14 : 13,
+                          color: isDark ? CColors.textWhite : CColors.textPrimary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text(dispute.reason,
+                      style: TextStyle(fontSize: isUrdu ? 12 : 11, color: CColors.darkGrey),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+              child: Text(dispute.status.toUpperCase(),
+                  style: TextStyle(color: statusColor, fontSize: isUrdu ? 10 : 9, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: CColors.darkGrey, size: 16),
+          ],
+        ),
       ),
     );
   }
@@ -772,7 +872,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset: const Offset(0, 2)),
         ],
@@ -782,7 +882,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: color, size: 22),
@@ -809,7 +909,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                         decoration: BoxDecoration(
-                          color: CColors.success.withOpacity(0.12),
+                          color: CColors.success.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
@@ -868,7 +968,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 8,
                   offset: const Offset(0, 2)),
             ],
@@ -889,7 +989,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.12),
+                      color: statusColor.withValues(alpha: 0.12),
                       shape: BoxShape.circle),
                   child: Icon(_getBidStatusIcon(bid.status),
                       color: statusColor, size: 20),
@@ -966,7 +1066,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2)),
         ],
@@ -1019,7 +1119,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, color: color, size: 20),
             ),
@@ -1164,7 +1264,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: CColors.info.withOpacity(0.1),
+                      color: CColors.info.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: CColors.info),
                     ),
@@ -1303,7 +1403,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
+                    color: statusColor.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(_getBidStatusIcon(bid.status),
@@ -1330,10 +1430,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
+                              color: statusColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                  color: statusColor.withOpacity(0.4)),
+                                  color: statusColor.withValues(alpha: 0.4)),
                             ),
                             child: Text(
                               _getBidStatusText(bid.status),

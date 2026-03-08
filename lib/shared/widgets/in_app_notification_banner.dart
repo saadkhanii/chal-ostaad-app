@@ -110,7 +110,7 @@ class _InAppNotificationBannerState extends State<InAppNotificationBanner>
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 20,
                       offset: const Offset(0, 4),
                     ),
@@ -122,7 +122,7 @@ class _InAppNotificationBannerState extends State<InAppNotificationBanner>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(

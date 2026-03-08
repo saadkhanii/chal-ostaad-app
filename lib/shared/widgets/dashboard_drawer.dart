@@ -210,7 +210,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             Text(
               userEmail,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: CColors.white.withOpacity(0.9),
+                color: CColors.white.withValues(alpha:  0.9),
                 fontSize: isUrdu ? 14 : 12,
               ),
               maxLines: 1,
@@ -223,9 +223,9 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: CColors.white.withOpacity(0.2),
+                color: CColors.white.withValues(alpha:  0.2),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: CColors.white.withOpacity(0.3)),
+                border: Border.all(color: CColors.white.withValues(alpha:  0.3)),
               ),
               child: Text(
                 _getRoleDisplay(userRole).toUpperCase(),
@@ -492,7 +492,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
         ),
         selected: isSelected,
-        selectedTileColor: CColors.primary.withOpacity(0.1),
+        selectedTileColor: CColors.primary.withValues(alpha:  0.1),
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: CSizes.md),
         visualDensity: const VisualDensity(vertical: -1),
@@ -690,7 +690,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             child: ElevatedButton.icon(
               onPressed: () => _showLogoutDialog(context, isDark, isUrdu),
               style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.error.withOpacity(0.1),
+                backgroundColor: CColors.error.withValues(alpha:  0.1),
                 foregroundColor: CColors.error,
                 elevation: 0,
                 shape: RoundedRectangleBorder(

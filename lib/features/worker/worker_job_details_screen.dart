@@ -19,6 +19,8 @@ import '../../../core/services/map_service.dart';
 import '../../../shared/widgets/common_header.dart';
 import '../../../core/services/chat_service.dart';
 import '../chat/chat_screen.dart';
+import '../dispute/raise_dispute_dialog.dart';
+import '../dispute/dispute_status_banner.dart';
 
 class WorkerJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -61,6 +63,9 @@ class _WorkerJobDetailsScreenState
   bool _isRequestingProgress = false;
 
   StreamSubscription<DocumentSnapshot>? _jobSub;
+
+  // Dispute state
+  String _clientFullName = '';
 
   @override
   void initState() {
@@ -367,10 +372,67 @@ class _WorkerJobDetailsScreenState
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildCompletedBanner(context, isDark, isUrdu),
                   ],
+
+                  // ── Dispute banner (live stream) ──────────────
+                  if (_acceptedBid != null) ...[
+                    const SizedBox(height: CSizes.spaceBtwSections),
+                    DisputeStatusBanner(
+                      jobId:           widget.job.id!,
+                      currentUserId:   widget.workerId,
+                      currentUserRole: 'worker',
+                    ),
+                  ],
+
+                  // ── Raise dispute button ──────────────────────
+                  if (_acceptedBid != null &&
+                      (_liveJobStatus == 'in-progress' ||
+                          _liveJobStatus == 'completed')) ...[
+                    const SizedBox(height: CSizes.spaceBtwItems),
+                    _buildRaiseDisputeButton(context, isDark, isUrdu),
+                  ],
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── Raise dispute button ──────────────────────────────────────────
+  Widget _buildRaiseDisputeButton(
+      BuildContext context, bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => RaiseDisputeDialog.show(
+          context,
+          jobId:           widget.job.id!,
+          jobTitle:        widget.job.title,
+          clientId:        widget.job.clientId,
+          clientName:      _clientFullName,
+          workerId:        widget.workerId,
+          workerName:      widget.workerCategory,
+          currentUserId:   widget.workerId,
+          currentUserRole: 'worker',
+          onDisputeRaised: () => setState(() {}),
+        ),
+        icon:  const Icon(Icons.flag_outlined,
+            color: CColors.error, size: 18),
+        label: Text(
+          'Raise a Dispute',
+          style: TextStyle(
+            color:      CColors.error,
+            fontWeight: FontWeight.w600,
+            fontSize:   isUrdu ? 15 : 13,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side:    const BorderSide(color: CColors.error),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape:   RoundedRectangleBorder(
+              borderRadius:
+              BorderRadius.circular(CSizes.borderRadiusLg)),
         ),
       ),
     );
@@ -399,7 +461,7 @@ class _WorkerJobDetailsScreenState
                     horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: _getStatusColor(_liveJobStatus)
-                      .withOpacity(0.15),
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -417,7 +479,7 @@ class _WorkerJobDetailsScreenState
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: CColors.primary.withOpacity(0.1),
+                    color: CColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -456,7 +518,7 @@ class _WorkerJobDetailsScreenState
             widget.job.description,
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color:    isDark
-                  ? CColors.textWhite.withOpacity(0.8)
+                  ? CColors.textWhite.withValues(alpha: 0.8)
                   : CColors.darkerGrey,
               height:   1.5,
               fontSize: isUrdu ? 16 : 14,
@@ -631,8 +693,8 @@ class _WorkerJobDetailsScreenState
         padding: const EdgeInsets.all(CSizes.lg),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          color:  CColors.success.withOpacity(0.1),
-          border: Border.all(color: CColors.success.withOpacity(0.3)),
+          color:  CColors.success.withValues(alpha: 0.1),
+          border: Border.all(color: CColors.success.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -653,7 +715,7 @@ class _WorkerJobDetailsScreenState
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color:    isDark
-                    ? CColors.textWhite.withOpacity(0.8)
+                    ? CColors.textWhite.withValues(alpha: 0.8)
                     : CColors.darkerGrey,
                 fontSize: isUrdu ? 16 : 14,
               ),
@@ -670,8 +732,8 @@ class _WorkerJobDetailsScreenState
         padding: const EdgeInsets.all(CSizes.lg),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          color:  CColors.warning.withOpacity(0.1),
-          border: Border.all(color: CColors.warning.withOpacity(0.3)),
+          color:  CColors.warning.withValues(alpha: 0.1),
+          border: Border.all(color: CColors.warning.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -692,7 +754,7 @@ class _WorkerJobDetailsScreenState
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color:    isDark
-                    ? CColors.textWhite.withOpacity(0.8)
+                    ? CColors.textWhite.withValues(alpha: 0.8)
                     : CColors.darkerGrey,
                 fontSize: isUrdu ? 16 : 14,
               ),
@@ -825,8 +887,8 @@ class _WorkerJobDetailsScreenState
         padding: const EdgeInsets.all(CSizes.lg),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          color:  CColors.info.withOpacity(0.08),
-          border: Border.all(color: CColors.info.withOpacity(0.3)),
+          color:  CColors.info.withValues(alpha: 0.08),
+          border: Border.all(color: CColors.info.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -851,7 +913,7 @@ class _WorkerJobDetailsScreenState
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 color:    isDark
-                    ? CColors.textWhite.withOpacity(0.75)
+                    ? CColors.textWhite.withValues(alpha: 0.75)
                     : CColors.darkerGrey,
                 fontSize: isUrdu ? 15 : 13,
               ),
@@ -888,7 +950,7 @@ class _WorkerJobDetailsScreenState
                 'request to mark this job as complete.',
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color:    isDark
-                  ? CColors.textWhite.withOpacity(0.75)
+                  ? CColors.textWhite.withValues(alpha: 0.75)
                   : CColors.darkerGrey,
               fontSize: isUrdu ? 15 : 13,
             ),
@@ -944,18 +1006,18 @@ class _WorkerJobDetailsScreenState
           begin: Alignment.topLeft,
           end:   Alignment.bottomRight,
           colors: [
-            CColors.info.withOpacity(0.12),
-            CColors.success.withOpacity(0.08),
+            CColors.info.withValues(alpha: 0.12),
+            CColors.success.withValues(alpha: 0.08),
           ],
         ),
-        border: Border.all(color: CColors.info.withOpacity(0.4)),
+        border: Border.all(color: CColors.info.withValues(alpha: 0.4)),
       ),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color:  CColors.info.withOpacity(0.15),
+              color:  CColors.info.withValues(alpha: 0.15),
               shape:  BoxShape.circle,
             ),
             child: const Icon(Icons.verified_rounded,
@@ -976,7 +1038,7 @@ class _WorkerJobDetailsScreenState
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color:    isDark
-                  ? CColors.textWhite.withOpacity(0.75)
+                  ? CColors.textWhite.withValues(alpha: 0.75)
                   : CColors.darkerGrey,
               fontSize: isUrdu ? 15 : 13,
             ),
@@ -998,18 +1060,18 @@ class _WorkerJobDetailsScreenState
           begin: Alignment.topLeft,
           end:   Alignment.bottomRight,
           colors: [
-            CColors.success.withOpacity(0.12),
-            CColors.primary.withOpacity(0.08),
+            CColors.success.withValues(alpha: 0.12),
+            CColors.primary.withValues(alpha: 0.08),
           ],
         ),
-        border: Border.all(color: CColors.success.withOpacity(0.4)),
+        border: Border.all(color: CColors.success.withValues(alpha: 0.4)),
       ),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color:  CColors.success.withOpacity(0.15),
+              color:  CColors.success.withValues(alpha: 0.15),
               shape:  BoxShape.circle,
             ),
             child: const Icon(Icons.emoji_events_rounded,
@@ -1033,7 +1095,7 @@ class _WorkerJobDetailsScreenState
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color:    isDark
-                  ? CColors.textWhite.withOpacity(0.75)
+                  ? CColors.textWhite.withValues(alpha: 0.75)
                   : CColors.darkerGrey,
               fontSize: isUrdu ? 15 : 13,
               height:   1.5,
@@ -1046,10 +1108,10 @@ class _WorkerJobDetailsScreenState
               padding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
-                color:        CColors.primary.withOpacity(0.1),
+                color:        CColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                    color: CColors.primary.withOpacity(0.3)),
+                    color: CColors.primary.withValues(alpha: 0.3)),
               ),
               child: Text(
                 'Rs. ${_acceptedBid!.amount.toStringAsFixed(0)}',
@@ -1086,7 +1148,7 @@ class _WorkerJobDetailsScreenState
                       CSizes.borderRadiusLg),
                 ),
                 elevation:   3,
-                shadowColor: CColors.primary.withOpacity(0.4),
+                shadowColor: CColors.primary.withValues(alpha: 0.4),
               ),
             ),
           ),
