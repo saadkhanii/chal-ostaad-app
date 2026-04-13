@@ -8,6 +8,7 @@ import 'package:chal_ostaad/core/providers/theme_provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:chal_ostaad/core/services/localization_service.dart';
 import 'package:chal_ostaad/core/services/notification_service.dart';
+import 'package:flutter_stripe/flutter_stripe.dart'; // ← NEW
 import 'dart:ui' as ui;
 
 import 'core/providers/shared_prefs_provider.dart';
@@ -21,8 +22,13 @@ void main() async {
   final sharedPreferences = await SharedPreferences.getInstance();
   await EasyLocalization.ensureInitialized();
 
+  // ── Stripe initialization ──────────────────────────────────────
+  // Replace with your pk_test_... key from Stripe Dashboard
+  Stripe.publishableKey = 'pk_test_51TL0cNEG9MF45xRu6N8VhAnYucGsa743kRTx7phMD2tgGBo9R78vhNSAxVFhckSYxutp9v6nZj1OUndnwwVDTokY003qAgPuW5';
+  await Stripe.instance.applySettings();
+  // ──────────────────────────────────────────────────────────────
+
   try {
-    // 🔥 ALWAYS use the default app
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );

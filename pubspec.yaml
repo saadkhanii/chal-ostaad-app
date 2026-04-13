@@ -57,6 +57,7 @@ dependencies:
   geolocator: ^13.0.2              # Device GPS + permissions
   # Geocoding uses existing 'http' package via Nominatim REST API — no extra dep
   url_launcher: ^6.3.1             # Open directions in Google/Apple Maps app
+  flutter_stripe: ^12.6.0
   # ─────────────────────────────────────────────────────────────────
 
 dev_dependencies:

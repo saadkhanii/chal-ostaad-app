@@ -26,6 +26,8 @@ import 'app_routes.dart';
 import 'job_details_router_screen.dart';
 import '../../features/review/worker_bid_profile_screen.dart';
 import '../../features/review/worker_reviews_screen.dart';
+import '../../features/payment/payment_screen.dart';
+import '../../features/payment/wallet_screen.dart';
 
 class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -178,6 +180,28 @@ class AppRouter {
             body: Center(child: Text('No dispute job ID provided')),
           ),
         );
+
+    // ── Payment routes ─────────────────────────────────────────
+      case AppRoutes.payment:
+        final args     = settings.arguments as Map<String, dynamic>?;
+        final jobId    = args?['jobId']    as String? ?? '';
+        final jobTitle = args?['jobTitle'] as String? ?? '';
+        final clientId = args?['clientId'] as String? ?? '';
+        final workerId = args?['workerId'] as String? ?? '';
+        final amount   = (args?['amount']  as num?)?.toDouble() ?? 0.0;
+        return MaterialPageRoute(
+          builder: (_) => PaymentScreen(
+            jobId:    jobId,
+            jobTitle: jobTitle,
+            clientId: clientId,
+            workerId: workerId,
+            amount:   amount,
+          ),
+        );
+
+      case AppRoutes.wallet:
+        return MaterialPageRoute(builder: (_) => const WalletScreen());
+    // ──────────────────────────────────────────────────────────
 
       case AppRoutes.otpVerification:
         if (settings.arguments is Map<String, dynamic>) {

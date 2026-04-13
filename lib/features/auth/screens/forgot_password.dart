@@ -2,7 +2,6 @@
 
 import 'package:chal_ostaad/core/providers/auth_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,10 +50,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final email = _emailController.text.trim();
 
     try {
-      final secondaryApp = Firebase.app(_userRole!);
-      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
-
-      await secondaryAuth.sendPasswordResetEmail(email: email);
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
 
       if (mounted) {
         _showSuccessMessage('auth.reset_link_sent'.tr());

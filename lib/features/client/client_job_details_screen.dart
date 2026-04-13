@@ -24,6 +24,8 @@ import '../review/submit_review_dialog.dart';
 import '../review/worker_bid_profile_screen.dart';
 import '../dispute/raise_dispute_dialog.dart';
 import '../dispute/dispute_status_banner.dart';
+import '../payment/payment_screen.dart';
+import '../../core/services/payment_service.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -37,10 +39,14 @@ class ClientJobDetailsScreen extends ConsumerStatefulWidget {
 
 class _ClientJobDetailsScreenState
     extends ConsumerState<ClientJobDetailsScreen> {
-  final _mapService  = MapService();
-  final _bidService  = BidService();
-  final _jobService  = JobService();
-  final _chatService = ChatService();
+  final _mapService     = MapService();
+  final _bidService     = BidService();
+  final _jobService     = JobService();
+  final _chatService    = ChatService();
+  final _paymentService = PaymentService();
+
+  // Payment state
+  bool _jobPaid = false;
 
   String? _acceptingBidId;
   late String _jobStatus;
@@ -75,6 +81,13 @@ class _ClientJobDetailsScreenState
     _loadClientId();
     _loadAcceptedWorkerId();
     _subscribeToJob();
+    _checkPaymentStatus();
+  }
+
+  Future<void> _checkPaymentStatus() async {
+    if (widget.job.id == null) return;
+    final paid = await _paymentService.isJobPaid(widget.job.id!);
+    if (mounted) setState(() => _jobPaid = paid);
   }
 
   void _subscribeToJob() {
@@ -1279,6 +1292,51 @@ class _ClientJobDetailsScreenState
                   ),
                 ),
               ),
+              const SizedBox(height: CSizes.sm),
+              // ── Pay Now button ──────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                child: _jobPaid
+                    ? Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color:        CColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    border:       Border.all(color: CColors.success.withOpacity(0.4)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_rounded,
+                          color: CColors.success, size: 18),
+                      SizedBox(width: 8),
+                      Text('Payment Completed',
+                          style: TextStyle(
+                              color:      CColors.success,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                )
+                    : ElevatedButton.icon(
+                  onPressed: () => _openPaymentScreen(bid),
+                  icon:  const Icon(
+                      Icons.account_balance_wallet_rounded,
+                      size: 18),
+                  label: Text(
+                    'Pay Rs. ${bid.amount.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                            CSizes.borderRadiusMd)),
+                  ),
+                ),
+              ),
             ],
 
             if (canAccept) ...[
@@ -1382,6 +1440,22 @@ class _ClientJobDetailsScreenState
     } catch (_) {
       return 'Client';
     }
+  }
+
+  // ── Open payment screen ──────────────────────────────────────────
+  void _openPaymentScreen(BidModel bid) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(
+          jobId:    widget.job.id!,
+          jobTitle: widget.job.title,
+          clientId: _clientId,
+          workerId: bid.workerId,
+          amount:   bid.amount,
+        ),
+      ),
+    ).then((_) => _checkPaymentStatus());
   }
 
   void _openChat(BidModel bid) async {

@@ -21,9 +21,14 @@ class AppRoutes {
   // Notification navigation routes
   static const String jobDetails      = '/job-details';
   static const String chat            = '/chat';
-  static const String chatInbox       = '/chat-inbox';        // client inbox
-  static const String workerChatInbox = '/worker-chat-inbox'; // worker inbox
-  static const String wallet          = '/wallet';
+  static const String chatInbox       = '/chat-inbox';
+  static const String workerChatInbox = '/worker-chat-inbox';
+
+  // ── Payment routes ───────────────────────────────────────────────
+  static const String payment        = '/payment';
+  static const String paymentSuccess = '/payment-success';
+  static const String wallet         = '/wallet';
+  // ─────────────────────────────────────────────────────────────────
   static const String reviews             = '/reviews';
   static const String workerBidProfile    = '/worker-bid-profile';
   static const String workerReviews       = '/worker-reviews';
