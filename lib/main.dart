@@ -24,7 +24,7 @@ void main() async {
 
   // ── Stripe initialization ──────────────────────────────────────
   // Replace with your pk_test_... key from Stripe Dashboard
-  Stripe.publishableKey = 'pk_test_51TL0cNEG9MF45xRu6N8VhAnYucGsa743kRTx7phMD2tgGBo9R78vhNSAxVFhckSYxutp9v6nZj1OUndnwwVDTokY003qAgPuW5';
+  Stripe.publishableKey = 'pk_test_51TL059EPXDW1tLaOAy4nboK4u9SDxSLqrYdGNmReGUn3eXgnYD4IUChzwoqlNvciEbigWy6u957AXXcdK5tD7DRI00PM5S2PyL';
   await Stripe.instance.applySettings();
   // ──────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ void main() async {
     );
 
     final notificationService = NotificationService();
-    await notificationService.initialize();
+    notificationService.initialize(); // Initialize in background
   } catch (e) {
     print('Firebase initialization error: $e');
   }

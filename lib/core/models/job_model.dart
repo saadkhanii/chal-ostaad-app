@@ -1,6 +1,10 @@
 // lib/core/models/job_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Job status lifecycle:
+///   open  →  in-progress  →  completed
+///                          ↘  cancelled  (either party)
+///   open  →  deleted        (client only, no bids accepted yet)
 class JobModel {
   final String? id;
   final String title;
@@ -8,13 +12,22 @@ class JobModel {
   final String category;
   final String clientId;
   final Timestamp createdAt;
-  final String status;
+  final String status; // 'open' | 'in-progress' | 'completed' | 'cancelled' | 'deleted'
+
+  // ── Payment ──────────────────────────────────────────────────────
+  final String? paymentStatus; // 'unpaid' | 'paid'
+  final String? paymentMethod; // 'stripe' | 'cash'
+  final String? paymentId;
+
+  // ── Extra charges ────────────────────────────────────────────────
+  // List of charge maps: { id, amount, description, requestedBy,
+  //                        status('pending'|'approved'|'rejected'), createdAt }
+  final List<Map<String, dynamic>> extraCharges;
 
   // ── Location fields ──────────────────────────────────────────────
-  final GeoPoint? location;        // lat/lng stored as Firestore GeoPoint
-  final String? locationAddress;   // human-readable address shown in UI
-  final String? city;              // for city-level filtering / display
-  // ─────────────────────────────────────────────────────────────────
+  final GeoPoint? location;
+  final String? locationAddress;
+  final String? city;
 
   JobModel({
     this.id,
@@ -24,13 +37,15 @@ class JobModel {
     required this.clientId,
     required this.createdAt,
     this.status = 'open',
-    // location (all optional so old jobs without coords still work)
+    this.paymentStatus,
+    this.paymentMethod,
+    this.paymentId,
+    this.extraCharges = const [],
     this.location,
     this.locationAddress,
     this.city,
   });
 
-  // ── fromSnapshot ─────────────────────────────────────────────────
   factory JobModel.fromSnapshot(
       DocumentSnapshot<Map<String, dynamic>> document) {
     final data = document.data()!;
@@ -42,14 +57,16 @@ class JobModel {
       clientId: data['clientId'] ?? '',
       createdAt: data['createdAt'] ?? Timestamp.now(),
       status: data['status'] ?? 'open',
-      // location
+      paymentStatus: data['paymentStatus'] as String?,
+      paymentMethod: data['paymentMethod'] as String?,
+      paymentId: data['paymentId'] as String?,
+      extraCharges: _parseExtraCharges(data['extraCharges']),
       location: data['location'] as GeoPoint?,
       locationAddress: data['locationAddress'] as String?,
       city: data['city'] as String?,
     );
   }
 
-  // ── fromMap ──────────────────────────────────────────────────────
   factory JobModel.fromMap(Map<String, dynamic> data, String id) {
     return JobModel(
       id: id,
@@ -59,14 +76,24 @@ class JobModel {
       clientId: data['clientId'] ?? '',
       createdAt: data['createdAt'] ?? Timestamp.now(),
       status: data['status'] ?? 'open',
-      // location
+      paymentStatus: data['paymentStatus'] as String?,
+      paymentMethod: data['paymentMethod'] as String?,
+      paymentId: data['paymentId'] as String?,
+      extraCharges: _parseExtraCharges(data['extraCharges']),
       location: data['location'] as GeoPoint?,
       locationAddress: data['locationAddress'] as String?,
       city: data['city'] as String?,
     );
   }
 
-  // ── toJson ───────────────────────────────────────────────────────
+  static List<Map<String, dynamic>> _parseExtraCharges(dynamic raw) {
+    if (raw == null) return [];
+    if (raw is List) {
+      return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'title': title,
@@ -75,7 +102,10 @@ class JobModel {
       'clientId': clientId,
       'createdAt': createdAt,
       'status': status,
-      // only write location fields when they have values
+      if (paymentStatus != null) 'paymentStatus': paymentStatus,
+      if (paymentMethod != null) 'paymentMethod': paymentMethod,
+      if (paymentId != null) 'paymentId': paymentId,
+      if (extraCharges.isNotEmpty) 'extraCharges': extraCharges,
       if (location != null) 'location': location,
       if (locationAddress != null) 'locationAddress': locationAddress,
       if (city != null) 'city': city,
@@ -83,19 +113,35 @@ class JobModel {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
-
-  /// Returns true if this job has a pinned location
   bool get hasLocation => location != null;
-
-  /// Convenience getters for lat/lng
   double? get latitude => location?.latitude;
   double? get longitude => location?.longitude;
-
-  /// Display-friendly location string
   String get displayLocation =>
       locationAddress ?? city ?? 'Location not specified';
 
-  // ── copyWith (useful for local state updates) ────────────────────
+  bool get isPaid => paymentStatus == 'paid';
+  bool get isCash => paymentMethod == 'cash';
+  bool get isDeleted => status == 'deleted';
+  bool get isCancelled => status == 'cancelled';
+
+  /// Sum of base bid + all APPROVED extra charges
+  double totalWithExtras(double baseAmount) {
+    final approved = extraCharges
+        .where((c) => c['status'] == 'approved')
+        .fold<double>(0, (sum, c) {
+      final amt = c['amount'];
+      if (amt is num) return sum + amt.toDouble();
+      return sum;
+    });
+    return baseAmount + approved;
+  }
+
+  /// Pending extra charges (not yet approved/rejected)
+  List<Map<String, dynamic>> get pendingExtraCharges =>
+      extraCharges.where((c) => c['status'] == 'pending').toList();
+
+  bool get hasPendingExtraCharges => pendingExtraCharges.isNotEmpty;
+
   JobModel copyWith({
     String? id,
     String? title,
@@ -104,6 +150,10 @@ class JobModel {
     String? clientId,
     Timestamp? createdAt,
     String? status,
+    String? paymentStatus,
+    String? paymentMethod,
+    String? paymentId,
+    List<Map<String, dynamic>>? extraCharges,
     GeoPoint? location,
     String? locationAddress,
     String? city,
@@ -116,6 +166,10 @@ class JobModel {
       clientId: clientId ?? this.clientId,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentId: paymentId ?? this.paymentId,
+      extraCharges: extraCharges ?? this.extraCharges,
       location: location ?? this.location,
       locationAddress: locationAddress ?? this.locationAddress,
       city: city ?? this.city,

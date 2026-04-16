@@ -6,7 +6,8 @@ import '../../core/routes/app_routes.dart';
 import '../../shared/logo/logo.dart';
 
 final splashScreenProvider = FutureProvider<void>((ref) async {
-  await Future.delayed(const Duration(seconds: 2));
+
+  await Future.delayed(const Duration(milliseconds: 500));
 });
 
 class SplashScreen extends ConsumerWidget {

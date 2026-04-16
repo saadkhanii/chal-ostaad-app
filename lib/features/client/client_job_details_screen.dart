@@ -25,11 +25,11 @@ import '../review/worker_bid_profile_screen.dart';
 import '../dispute/raise_dispute_dialog.dart';
 import '../dispute/dispute_status_banner.dart';
 import '../payment/payment_screen.dart';
+import '../payment/extra_charges_sheet.dart';
 import '../../core/services/payment_service.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
-
   const ClientJobDetailsScreen({super.key, required this.job});
 
   @override
@@ -45,38 +45,29 @@ class _ClientJobDetailsScreenState
   final _chatService    = ChatService();
   final _paymentService = PaymentService();
 
-  // Payment state
-  bool _jobPaid = false;
-
+  bool    _jobPaid         = false;
   String? _acceptingBidId;
   late String _jobStatus;
-  String _clientId   = '';
-  bool   _isDeleting = false;
+  String _clientId         = '';
+  bool   _isDeleting       = false;
+  bool   _isCancelling     = false;
 
-  // Progress request state — kept in sync via StreamSubscription
   Map<String, dynamic>? _pendingProgressRequest;
   bool _isRespondingToProgress = false;
-  bool _isAlteringProgress     = false;
 
-  // The worker ID whose bid was accepted (needed for progress flow)
   String? _acceptedWorkerId;
-
-  // Review state
-  bool          _reviewSubmitted = false;
+  bool    _reviewSubmitted  = false;
   final ReviewService _reviewService = ReviewService();
-
-  // Dispute state
   String _workerName = '';
 
-  // Live Firestore subscription — updates _jobStatus and _pendingProgressRequest
-  // in real-time so every widget that reads them (including the header) is current.
+  // Extra charges notification
+  bool _hasPendingExtras = false;
+
   StreamSubscription<DocumentSnapshot>? _jobSub;
 
   @override
   void initState() {
     super.initState();
-    // Seed from widget first so buttons render immediately on first frame.
-    // FIX: normalize to lowercase so 'Open', 'OPEN', 'open' all match consistently.
     _jobStatus = widget.job.status.trim().toLowerCase();
     _loadClientId();
     _loadAcceptedWorkerId();
@@ -97,15 +88,19 @@ class _ClientJobDetailsScreenState
         .snapshots()
         .listen((snap) {
       if (!mounted || !snap.exists) return;
-      final data    = snap.data() as Map<String, dynamic>;
-      // FIX: normalize to lowercase to guard against casing mismatches in Firestore.
+      final data     = snap.data() as Map<String, dynamic>;
       final status   = (data['status'] as String?)?.trim().toLowerCase() ?? _jobStatus;
       final request  = data['progressRequest'] as Map<String, dynamic>?;
-      final reviewed = data['reviewSubmitted'] as bool? ?? false;
+      final reviewed = data['reviewSubmitted']  as bool? ?? false;
+      final rawExtras = data['extraCharges']    as List<dynamic>? ?? [];
+      final hasPending = rawExtras
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .any((c) => c['status'] == 'pending' && c['requestedBy'] != 'client');
       setState(() {
         _jobStatus              = status;
         _pendingProgressRequest = request;
         _reviewSubmitted        = reviewed;
+        _hasPendingExtras       = hasPending;
       });
     });
   }
@@ -121,8 +116,6 @@ class _ClientJobDetailsScreenState
     if (mounted) setState(() => _clientId = prefs.getString('user_uid') ?? '');
   }
 
-  /// Find the accepted worker for this job so we know who to notify
-  /// when the client responds to a progress request.
   Future<void> _loadAcceptedWorkerId() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -131,7 +124,6 @@ class _ClientJobDetailsScreenState
           .where('status', isEqualTo: 'accepted')
           .limit(1)
           .get();
-
       if (snapshot.docs.isNotEmpty && mounted) {
         final wId = snapshot.docs.first.data()['workerId'] as String?;
         setState(() => _acceptedWorkerId = wId);
@@ -143,7 +135,7 @@ class _ClientJobDetailsScreenState
     } catch (_) {}
   }
 
-  // ── Accept bid ────────────────────────────────────────────────────
+  // ── Accept bid — status auto-moves to in-progress ─────────────────
   Future<void> _acceptBid(BidModel bid) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -151,39 +143,27 @@ class _ClientJobDetailsScreenState
         title: const Text('Accept Bid?'),
         content: Text(
           'Accept this bid for Rs. ${bid.amount.toStringAsFixed(0)}?\n'
-              'All other bids will be rejected.',
+              'All other bids will be rejected and the job moves to In Progress.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('common.cancel'.tr()),
-          ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('common.cancel'.tr())),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.primary),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.primary),
             child: Text('bid.accept'.tr(),
                 style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
-
     if (confirmed != true) return;
-
     setState(() => _acceptingBidId = bid.id);
-
     try {
-      await _bidService.updateBidStatus(bid.id!, 'accepted');
-
-      final allBids = await _bidService.getBidsByJob(widget.job.id!);
-      for (final other in allBids) {
-        if (other.id != bid.id && other.status == 'pending') {
-          await _bidService.updateBidStatus(other.id!, 'rejected');
-        }
-      }
-
-      await _jobService.updateJobStatus(widget.job.id!, 'in-progress');
+      // acceptBid() in BidService handles: bid accepted, others rejected,
+      // job → in-progress, chat creation, notification — all in one call.
+      await _bidService.acceptBid(bid.id!);
 
       await _chatService.createOrGetChat(
         jobId:      widget.job.id!,
@@ -200,8 +180,8 @@ class _ClientJobDetailsScreenState
           _acceptedWorkerId = bid.workerId;
           _acceptingBidId   = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:         const Text('Bid accepted! Job is now in progress.'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:         Text('Bid accepted! Job is now In Progress.'),
           backgroundColor: CColors.success,
           behavior:        SnackBarBehavior.floating,
         ));
@@ -218,7 +198,75 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Delete job ───────────────────────────────────────────────────
+  // ── Cancel job (either party — client side) ───────────────────────
+  Future<void> _cancelJob() async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Job?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+                'Are you sure you want to cancel this job? '
+                    'This action cannot be undone.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                  labelText: 'Reason (optional)',
+                  border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('common.cancel'.tr())),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
+            child: const Text('Cancel Job',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isCancelling = true);
+    try {
+      await _bidService.cancelJob(
+        jobId:       widget.job.id!,
+        cancelledBy: 'client',
+        reason:      reasonController.text.trim().isEmpty
+            ? null
+            : reasonController.text.trim(),
+      );
+      if (mounted) {
+        setState(() {
+          _jobStatus    = 'cancelled';
+          _isCancelling = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:         Text('Job cancelled.'),
+          backgroundColor: CColors.warning,
+          behavior:        SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCancelling = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:         Text('Failed to cancel: $e'),
+          backgroundColor: CColors.error,
+          behavior:        SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  // ── Delete job (client only, only when open) ──────────────────────
   Future<void> _deleteJob() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -227,9 +275,8 @@ class _ClientJobDetailsScreenState
         content: Text('job.delete_job_confirm'.tr()),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('common.cancel'.tr()),
-          ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('common.cancel'.tr())),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
@@ -239,9 +286,7 @@ class _ClientJobDetailsScreenState
         ],
       ),
     );
-
     if (confirmed != true || !mounted) return;
-
     setState(() => _isDeleting = true);
     try {
       await _jobService.deleteJob(widget.job.id!);
@@ -258,10 +303,9 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Respond to worker's progress request ────────────────────────
+  // ── Respond to worker's progress/completion request ───────────────
   Future<void> _respondToProgressRequest(bool accepted) async {
     if (_acceptedWorkerId == null) return;
-
     setState(() => _isRespondingToProgress = true);
     try {
       await _jobService.respondToProgressRequest(
@@ -270,19 +314,18 @@ class _ClientJobDetailsScreenState
         workerId: _acceptedWorkerId!,
         accepted: accepted,
       );
-
       if (mounted) {
         setState(() {
-          _jobStatus               = accepted ? 'completed' : 'in-progress';
-          _pendingProgressRequest  = null;
-          _isRespondingToProgress  = false;
+          _jobStatus              = accepted ? 'completed' : 'in-progress';
+          _pendingProgressRequest = null;
+          _isRespondingToProgress = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(accepted
               ? 'Job marked as completed!'
               : 'Progress request rejected. Job stays in progress.'),
           backgroundColor: accepted ? CColors.success : CColors.warning,
-          behavior: SnackBarBehavior.floating,
+          behavior:        SnackBarBehavior.floating,
         ));
       }
     } catch (e) {
@@ -297,107 +340,7 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Alter job progress (client-initiated status change) ──────────
-  Future<void> _alterJobProgress() async {
-    // Show options: back to in-progress, or cancel job
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Alter Job Progress'),
-        content: const Text(
-            'Choose what you would like to do with this job:'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('common.cancel'.tr()),
-          ),
-          if (_jobStatus == 'completed')
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'in-progress'),
-              child: const Text('Reopen (set In Progress)',
-                  style: TextStyle(color: CColors.warning)),
-            ),
-          if (_jobStatus == 'in-progress')
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'cancelled'),
-              child: const Text('Cancel Job',
-                  style: TextStyle(color: CColors.error)),
-            ),
-          if (_jobStatus == 'in-progress')
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, 'completed'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: CColors.success),
-              child: const Text('Mark Complete',
-                  style: TextStyle(color: Colors.white)),
-            ),
-        ],
-      ),
-    );
-
-    if (choice == null || !mounted) return;
-
-    // Extra confirmation for irreversible actions
-    if (choice == 'cancelled' || choice == 'completed') {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(choice == 'cancelled'
-              ? 'Cancel Job?'
-              : 'Mark Job as Complete?'),
-          content: Text(choice == 'cancelled'
-              ? 'This will cancel the job. The worker will be notified.'
-              : 'This will mark the job as completed.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('common.cancel'.tr()),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                choice == 'cancelled' ? CColors.error : CColors.success,
-              ),
-              child: Text('Confirm',
-                  style: const TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-    }
-
-    setState(() => _isAlteringProgress = true);
-    try {
-      await _jobService.alterJobProgress(
-        jobId:     widget.job.id!,
-        newStatus: choice,
-      );
-      if (mounted) {
-        setState(() {
-          _jobStatus              = choice;
-          _pendingProgressRequest = null;
-          _isAlteringProgress     = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:         Text('Job status updated to "$choice".'),
-          backgroundColor: CColors.success,
-          behavior:        SnackBarBehavior.floating,
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isAlteringProgress = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:         Text('Error: $e'),
-          backgroundColor: CColors.error,
-          behavior:        SnackBarBehavior.floating,
-        ));
-      }
-    }
-  }
-
+  // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -405,737 +348,413 @@ class _ClientJobDetailsScreenState
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      body: Column(
-        children: [
-          // ── Header + action button ──────────────────────────────
-          // _jobStatus is kept live by _subscribeToJob(), so the correct
-          // button (delete / alter-progress) is always shown immediately.
-          CommonHeader(
-            title:          'job.job_details'.tr(),
-            showBackButton: true,
-            onBackPressed:  () => Navigator.pop(context),
-          ),
-          // ── Scrollable body ─────────────────────────────────────
-          Expanded(
-            child: SingleChildScrollView(
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CommonHeader(
+              title:          'job.job_details'.tr(),
+              showBackButton: true,
+              onBackPressed:  () => Navigator.pop(context),
+            ),
+            Padding(
               padding: const EdgeInsets.all(CSizes.defaultSpace),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildJobDetails(context, isDark, isUrdu),
+                  // ── Job info card ──────────────────────────────
+                  _buildJobInfoCard(isDark, isUrdu),
 
-                  // ── Action buttons — always visible, no hunting required ──
+                  // ── Status lifecycle banner ────────────────────
                   const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildActionButtons(context, isDark, isUrdu),
+                  _buildStatusBanner(isDark, isUrdu),
 
-                  // ── Dispute banner (live stream) ──────────────
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  DisputeStatusBanner(
-                    jobId:           widget.job.id!,
-                    currentUserId:   _clientId,
-                    currentUserRole: 'client',
-                  ),
-
-                  // ── Raise dispute button ──────────────────────
-                  // Shown when job is in-progress or completed
-                  if (_jobStatus == 'in-progress' || _jobStatus == 'completed') ...[
-                    _buildRaiseDisputeButton(context, isDark, isUrdu),
+                  // ── Pending progress request ───────────────────
+                  if (_pendingProgressRequest != null &&
+                      _pendingProgressRequest!['status'] == 'pending') ...[
                     const SizedBox(height: CSizes.spaceBtwItems),
+                    _buildProgressRequestBanner(isDark, isUrdu),
                   ],
 
+                  // ── Extra charges ──────────────────────────────
+                  if (_jobStatus == 'in-progress' ||
+                      _jobStatus == 'completed') ...[
+                    const SizedBox(height: CSizes.spaceBtwItems),
+                    _buildExtraChargesCard(isDark, isUrdu),
+                  ],
+
+                  // ── Map ────────────────────────────────────────
                   if (widget.job.hasLocation) ...[
                     const SizedBox(height: CSizes.spaceBtwItems),
                     _buildMiniMap(isDark),
                   ],
 
-                  // ── Pending progress-request banner ──────────────
-                  if (_pendingProgressRequest != null &&
-                      _pendingProgressRequest!['status'] == 'pending') ...[
-                    const SizedBox(height: CSizes.spaceBtwSections),
-                    _buildProgressRequestBanner(context, isDark, isUrdu),
-                  ],
-
+                  // ── Bids ───────────────────────────────────────
                   const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildBidsList(context, isDark, isUrdu),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+                  _buildBidsList(isDark, isUrdu),
 
-  // ── Progress request banner ──────────────────────────────────────
-  Widget _buildProgressRequestBanner(
-      BuildContext context, bool isDark, bool isUrdu) {
-    final note =
-    _pendingProgressRequest!['note'] as String?;
-
-    return Container(
-      width:   double.infinity,
-      padding: const EdgeInsets.all(CSizes.lg),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
-          colors: [
-            CColors.warning.withOpacity(0.15),
-            CColors.primary.withOpacity(0.08),
-          ],
-        ),
-        border: Border.all(color: CColors.warning.withOpacity(0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color:        CColors.warning.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.update_rounded,
-                    color: CColors.warning, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Progress Update Requested',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize:   isUrdu ? 16 : 14,
-                        color:      isDark
-                            ? CColors.textWhite
-                            : CColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      'The worker has requested to mark this job as complete.',
-                      style: TextStyle(
-                        fontSize: isUrdu ? 13 : 11,
-                        color:    CColors.darkGrey,
-                      ),
+                  // ── Dispute banner ─────────────────────────────
+                  if (_acceptedWorkerId != null) ...[
+                    const SizedBox(height: CSizes.spaceBtwSections),
+                    DisputeStatusBanner(
+                      jobId:           widget.job.id!,
+                      currentUserId:   _clientId,
+                      currentUserRole: 'client',
                     ),
                   ],
-                ),
-              ),
-            ],
-          ),
 
-          if (note != null && note.isNotEmpty) ...[
-            const SizedBox(height: CSizes.md),
-            Container(
-              width:   double.infinity,
-              padding: const EdgeInsets.all(CSizes.md),
-              decoration: BoxDecoration(
-                color:        isDark
-                    ? CColors.darkContainer
-                    : CColors.white.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-              ),
-              child: Text(
-                '"$note"',
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  fontSize:  isUrdu ? 15 : 13,
-                  color:     isDark
-                      ? CColors.textWhite.withOpacity(0.8)
-                      : CColors.darkerGrey,
-                ),
+                  // ── Raise dispute ──────────────────────────────
+                  if (_acceptedWorkerId != null &&
+                      (_jobStatus == 'in-progress' ||
+                          _jobStatus == 'completed')) ...[
+                    const SizedBox(height: CSizes.spaceBtwItems),
+                    _buildRaiseDisputeButton(isDark, isUrdu),
+                  ],
+
+                  // ── Action buttons row ─────────────────────────
+                  const SizedBox(height: CSizes.spaceBtwSections),
+                  _buildActionButtons(isDark, isUrdu),
+
+                  const SizedBox(height: CSizes.spaceBtwSections * 2),
+                ],
               ),
             ),
           ],
-
-          const SizedBox(height: CSizes.md),
-
-          Row(
-            children: [
-              // Reject button
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _isRespondingToProgress
-                      ? null
-                      : () => _respondToProgressRequest(false),
-                  icon:  const Icon(Icons.close_rounded,
-                      size: 18, color: CColors.error),
-                  label: Text(
-                    _isRespondingToProgress ? 'common.loading'.tr() : 'Decline',
-                    style: TextStyle(
-                        color:    CColors.error,
-                        fontSize: isUrdu ? 15 : 13),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side:    const BorderSide(color: CColors.error),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape:   RoundedRectangleBorder(
-                        borderRadius:
-                        BorderRadius.circular(CSizes.borderRadiusMd)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: CSizes.md),
-              // Accept button
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isRespondingToProgress
-                      ? null
-                      : () => _respondToProgressRequest(true),
-                  icon: _isRespondingToProgress
-                      ? const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.check_rounded, size: 18),
-                  label: Text(
-                    _isRespondingToProgress
-                        ? 'common.loading'.tr()
-                        : 'Accept & Complete',
-                    style: TextStyle(fontSize: isUrdu ? 16 : 14),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CColors.success,
-                    foregroundColor: Colors.white,
-                    padding:
-                    const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            CSizes.borderRadiusMd)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Action buttons ──────────────────────────────────────────────
-  // Prominent buttons shown right below the job card.
-  // Client can delete (open jobs), mark complete / cancel (in-progress),
-  // or reopen (completed).  No need to hunt for a tiny header icon.
-  Widget _buildActionButtons(
-      BuildContext context, bool isDark, bool isUrdu) {
-    debugPrint('[ClientJobDetails] _buildActionButtons: _jobStatus="$_jobStatus"');
-
-    if (_isDeleting || _isAlteringProgress) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    // ── OPEN (or empty/unknown) → Delete button ──────────────────
-    // FIX: status is now always lowercase so this comparison is reliable.
-    // Treat empty string same as 'open' — if status failed to parse,
-    // the safest action is still to allow deletion.
-    if (_jobStatus == 'open' || _jobStatus.isEmpty) {
-      return SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: _deleteJob,
-          icon:  const Icon(Icons.delete_outline_rounded,
-              color: CColors.error),
-          label: Text('job.delete_job'.tr(),
-              style: const TextStyle(
-                  color: CColors.error, fontWeight: FontWeight.w600)),
-          style: OutlinedButton.styleFrom(
-            side:    const BorderSide(color: CColors.error),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape:   RoundedRectangleBorder(
-                borderRadius:
-                BorderRadius.circular(CSizes.borderRadiusLg)),
-          ),
-        ),
-      );
-    }
-
-    // ── CANCELLED → show delete button so client can clean it up ──
-    if (_jobStatus == 'cancelled') {
-      return SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: _deleteJob,
-          icon:  const Icon(Icons.delete_outline_rounded,
-              color: CColors.error),
-          label: Text('job.delete_job'.tr(),
-              style: const TextStyle(
-                  color: CColors.error, fontWeight: FontWeight.w600)),
-          style: OutlinedButton.styleFrom(
-            side:    const BorderSide(color: CColors.error),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape:   RoundedRectangleBorder(
-                borderRadius:
-                BorderRadius.circular(CSizes.borderRadiusLg)),
-          ),
-        ),
-      );
-    }
-
-    // ── IN-PROGRESS → Mark Complete + Cancel ─────────────────────
-    if (_jobStatus == 'in-progress') {
-      return Column(
-        children: [
-          // Mark Complete
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Mark Job as Complete?'),
-                    content: const Text(
-                        'This will mark the job as completed.'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: Text('common.cancel'.tr())),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: CColors.success),
-                        child: const Text('Confirm',
-                            style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  setState(() => _isAlteringProgress = true);
-                  try {
-                    await _jobService.alterJobProgress(
-                        jobId: widget.job.id!, newStatus: 'completed');
-                  } finally {
-                    if (mounted) setState(() => _isAlteringProgress = false);
-                  }
-                }
-              },
-              icon:  const Icon(Icons.check_circle_outline_rounded,
-                  size: 20),
-              label: Text('Mark as Complete',
-                  style: TextStyle(
-                      fontSize:   isUrdu ? 16 : 14,
-                      fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.success,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(CSizes.borderRadiusLg)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Cancel Job
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Cancel Job?'),
-                    content: const Text(
-                        'This will cancel the job. '
-                            'The worker will be notified.'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: Text('common.cancel'.tr())),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: CColors.error),
-                        child: const Text('Confirm',
-                            style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  setState(() => _isAlteringProgress = true);
-                  try {
-                    await _jobService.alterJobProgress(
-                        jobId: widget.job.id!, newStatus: 'cancelled');
-                  } finally {
-                    if (mounted) setState(() => _isAlteringProgress = false);
-                  }
-                }
-              },
-              icon:  const Icon(Icons.cancel_outlined,
-                  color: CColors.error, size: 20),
-              label: Text('Cancel Job',
-                  style: const TextStyle(
-                      color:      CColors.error,
-                      fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                side:    const BorderSide(color: CColors.error),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape:   RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(CSizes.borderRadiusLg)),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // ── COMPLETED → Review button + Reopen ─────────────────────
-    if (_jobStatus == 'completed') {
-      return Column(
-        children: [
-          // Leave Review button — only shown if not yet reviewed
-          SizedBox(
-            width: double.infinity,
-            child: _reviewSubmitted
-                ? Container(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              decoration: BoxDecoration(
-                color:        CColors.success.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-                border:       Border.all(color: CColors.success.withOpacity(0.4)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle_rounded,
-                      color: CColors.success, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Review Submitted',
-                    style: TextStyle(
-                      color:      CColors.success,
-                      fontWeight: FontWeight.w600,
-                      fontSize:   isUrdu ? 16 : 14,
-                    ),
-                  ),
-                ],
-              ),
-            )
-                : ElevatedButton.icon(
-              onPressed: () => _openReviewDialog(),
-              icon:  const Icon(Icons.star_rounded, size: 18),
-              label: Text(
-                'Leave a Review',
-                style: TextStyle(fontSize: isUrdu ? 16 : 14),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(CSizes.borderRadiusLg)),
-              ),
-            ),
-          ),
-          const SizedBox(height: CSizes.sm),
-          // Reopen button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Reopen Job?'),
-                    content: const Text(
-                        'This will set the job back to In Progress.'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: Text('common.cancel'.tr())),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: CColors.warning),
-                        child: const Text('Reopen',
-                            style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  setState(() => _isAlteringProgress = true);
-                  try {
-                    await _jobService.alterJobProgress(
-                        jobId: widget.job.id!, newStatus: 'in-progress');
-                  } finally {
-                    if (mounted) setState(() => _isAlteringProgress = false);
-                  }
-                }
-              },
-              icon:  const Icon(Icons.refresh_rounded,
-                  color: CColors.warning, size: 20),
-              label: const Text('Reopen Job',
-                  style: TextStyle(
-                      color:      CColors.warning,
-                      fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                side:    const BorderSide(color: CColors.warning),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape:   RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius.circular(CSizes.borderRadiusLg)),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Unknown status — show delete as a safe fallback
-    // This should never be reached but prevents invisible screens.
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _deleteJob,
-        icon:  const Icon(Icons.delete_outline_rounded, color: CColors.error),
-        label: Text('job.delete_job'.tr(),
-            style: const TextStyle(color: CColors.error, fontWeight: FontWeight.w600)),
-        style: OutlinedButton.styleFrom(
-          side:    const BorderSide(color: CColors.error),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:   RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
-        ),
-      ),
-    );
-  }
-
-  // ── Raise dispute button ──────────────────────────────────────────
-  Widget _buildRaiseDisputeButton(
-      BuildContext context, bool isDark, bool isUrdu) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => RaiseDisputeDialog.show(
-          context,
-          jobId:           widget.job.id!,
-          jobTitle:        widget.job.title,
-          clientId:        _clientId,
-          clientName:      'Client',
-          workerId:        _acceptedWorkerId ?? '',
-          workerName:      _workerName,
-          currentUserId:   _clientId,
-          currentUserRole: 'client',
-          onDisputeRaised: () => setState(() {}),
-        ),
-        icon:  const Icon(Icons.flag_outlined,
-            color: CColors.error, size: 18),
-        label: Text(
-          'Raise a Dispute',
-          style: TextStyle(
-            color:      CColors.error,
-            fontWeight: FontWeight.w600,
-            fontSize:   isUrdu ? 15 : 13,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          side:    const BorderSide(color: CColors.error),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape:   RoundedRectangleBorder(
-              borderRadius:
-              BorderRadius.circular(CSizes.borderRadiusLg)),
         ),
       ),
     );
   }
 
   // ── Job info card ─────────────────────────────────────────────────
-  Widget _buildJobDetails(
-      BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildJobInfoCard(bool isDark, bool isUrdu) {
+    final statusColor = _statusColor(_jobStatus);
+    final statusText  = _statusText(_jobStatus);
+
     return Container(
+      width:   double.infinity,
       padding: const EdgeInsets.all(CSizes.lg),
       decoration: BoxDecoration(
         color:        isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        border: Border.all(
+            color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.job.title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall!
-                      .copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize:   isUrdu ? 24 : 22),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _buildStatusChip(_jobStatus, isUrdu),
-            ],
-          ),
-          const SizedBox(height: CSizes.sm),
+          // Status + payment badges
+          Wrap(spacing: 8, children: [
+            _badge(statusText, statusColor),
+            if (_jobPaid)
+              _badge('Paid', CColors.success,
+                  icon: Icons.check_circle_outline, small: true),
+            if (_hasPendingExtras)
+              _badge('Extra Charges Pending', CColors.warning,
+                  icon: Icons.warning_amber_rounded, small: true),
+          ]),
+          const SizedBox(height: 16),
+          Text(widget.job.title,
+              style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize:   isUrdu ? 24 : 22)),
+          const SizedBox(height: 8),
           Text(widget.job.description,
-              style: Theme.of(context).textTheme.bodyLarge!.copyWith(
-                  fontSize: isUrdu ? 18 : 16)),
-          const SizedBox(height: CSizes.md),
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  color:  isDark
+                      ? CColors.textWhite.withOpacity(0.8)
+                      : CColors.darkerGrey,
+                  height: 1.5,
+                  fontSize: isUrdu ? 16 : 14)),
+          const SizedBox(height: 16),
           Row(children: [
-            Icon(Icons.category, size: 20, color: CColors.primary),
-            const SizedBox(width: 8),
-            Text(widget.job.category,
-                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                    fontSize: isUrdu ? 16 : 14)),
-          ]),
-          const SizedBox(height: CSizes.sm),
-          Row(children: [
-            Icon(Icons.access_time, size: 20, color: CColors.primary),
-            const SizedBox(width: 8),
+            Icon(Icons.access_time_outlined,
+                size: 16, color: CColors.darkGrey),
+            const SizedBox(width: 6),
             Text(timeago.format(widget.job.createdAt.toDate()),
-                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                    fontSize: isUrdu ? 16 : 14)),
-          ]),
-          if (widget.job.hasLocation) ...[
-            const SizedBox(height: CSizes.sm),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.location_on_outlined,
-                    size: 20, color: CColors.primary),
-                const SizedBox(width: 8),
-                Expanded(
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                    color: CColors.darkGrey)),
+            if (widget.job.hasLocation) ...[
+              const SizedBox(width: 16),
+              Icon(Icons.location_on_outlined,
+                  size: 16, color: CColors.darkGrey),
+              const SizedBox(width: 4),
+              Flexible(
                   child: Text(widget.job.displayLocation,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium!
-                          .copyWith(fontSize: isUrdu ? 16 : 14)),
-                ),
-              ],
-            ),
-          ],
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis)),
+            ],
+          ]),
         ],
       ),
     );
   }
 
-  // ── Status chip ───────────────────────────────────────────────────
-  Widget _buildStatusChip(String status, bool isUrdu) {
-    Color  color;
-    String label;
-    switch (status) {
-      case 'open':
-        color = CColors.success;
-        label = 'job.status_open'.tr();
-        break;
-      case 'in-progress':
-        color = CColors.warning;
-        label = 'job.status_in_progress'.tr();
-        break;
-      case 'completed':
-        color = CColors.info;
-        label = 'job.status_completed'.tr();
-        break;
-      case 'cancelled':
-        color = CColors.error;
-        label = 'job.status_cancelled'.tr();
-        break;
-      default:
-        color = CColors.grey;
-        label = status;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color:        color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
-        border:       Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color:      color,
-              fontWeight: FontWeight.bold,
-              fontSize:   isUrdu ? 12 : 10)),
-    );
-  }
+  // ── Status lifecycle banner ───────────────────────────────────────
+  Widget _buildStatusBanner(bool isDark, bool isUrdu) {
+    final steps  = ['open', 'in-progress', 'completed'];
+    final labels = ['Open', 'In Progress', 'Completed'];
+    final idx    = steps.indexOf(_jobStatus);
 
-  // ── Mini-map ──────────────────────────────────────────────────────
-  Widget _buildMiniMap(bool isDark) {
-    final jobLatLng =
-    LatLng(widget.job.latitude!, widget.job.longitude!);
-
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        border: Border.all(
-            color:
-            isDark ? CColors.darkerGrey : CColors.borderPrimary),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: jobLatLng,
-              initialZoom:   15.0,
-              interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.none),
-            ),
-            children: [
-              _mapService.osmTileLayer(),
-              _mapService.selectedPinLayer(jobLatLng),
-            ],
+    if (_jobStatus == 'cancelled' || _jobStatus == 'deleted') {
+      return Container(
+        padding:    const EdgeInsets.all(CSizes.md),
+        decoration: BoxDecoration(
+          color:        CColors.error.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+          border:       Border.all(color: CColors.error.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.cancel_outlined, color: CColors.error),
+          const SizedBox(width: 10),
+          Text(
+            _jobStatus == 'deleted' ? 'Job Deleted' : 'Job Cancelled',
+            style: const TextStyle(
+                color: CColors.error, fontWeight: FontWeight.bold),
           ),
-          Positioned(
-            bottom: 10,
-            right:  10,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                try {
-                  await _mapService.openDirections(
-                    from:             widget.job.location!,
-                    to:               widget.job.location!,
-                    destinationLabel: widget.job.title,
-                  );
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content:         Text('Could not open maps: $e'),
-                      backgroundColor: CColors.error,
-                    ));
-                  }
-                }
-              },
-              icon:  const Icon(Icons.directions_rounded, size: 16),
-              label: Text('job.directions'.tr()),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                elevation: 3,
+        ]),
+      );
+    }
+
+    return Container(
+      padding:    const EdgeInsets.symmetric(
+          horizontal: CSizes.md, vertical: CSizes.sm),
+      decoration: BoxDecoration(
+        color:        isDark ? CColors.darkContainer : CColors.white,
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(
+            color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(steps.length * 2 - 1, (i) {
+          if (i.isOdd) {
+            // Connector
+            final leftDone = (i ~/ 2) < idx;
+            return Expanded(
+              child: Container(
+                height: 2,
+                color:  leftDone ? CColors.primary : Colors.grey.shade300,
+              ),
+            );
+          }
+          final stepIdx = i ~/ 2;
+          final done    = stepIdx <= idx;
+          final active  = stepIdx == idx;
+          return Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width:      28,
+              height:     28,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: done ? CColors.primary : Colors.grey.shade200,
+                border: active
+                    ? Border.all(color: CColors.primary, width: 2)
+                    : null,
+              ),
+              child: Icon(
+                done ? Icons.check : Icons.circle,
+                size:  done ? 16 : 8,
+                color: done ? Colors.white : Colors.grey.shade400,
               ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Text(labels[stepIdx],
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight:
+                    active ? FontWeight.bold : FontWeight.normal,
+                    color: done ? CColors.primary : Colors.grey)),
+          ]);
+        }),
+      ),
+    );
+  }
+
+  // ── Progress request banner ───────────────────────────────────────
+  Widget _buildProgressRequestBanner(bool isDark, bool isUrdu) {
+    final note = _pendingProgressRequest?['note'] as String?;
+    return Container(
+      padding:    const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color:        CColors.info.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border:       Border.all(color: CColors.info.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.task_alt_rounded, color: CColors.info, size: 20),
+            SizedBox(width: 8),
+            Text('Worker Requests Completion',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color:      CColors.info,
+                    fontSize:   15)),
+          ]),
+          if (note != null && note.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('"$note"',
+                style: const TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: CColors.darkGrey,
+                    fontSize: 13)),
+          ],
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _isRespondingToProgress
+                    ? null
+                    : () => _respondToProgressRequest(false),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: CColors.error,
+                    side: const BorderSide(color: CColors.error)),
+                child: const Text('Reject'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _isRespondingToProgress
+                    ? null
+                    : () => _respondToProgressRequest(true),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.success,
+                    foregroundColor: Colors.white),
+                child: _isRespondingToProgress
+                    ? const SizedBox(
+                    width:  16,
+                    height: 16,
+                    child:  CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2))
+                    : const Text('Approve & Complete'),
+              ),
+            ),
+          ]),
         ],
       ),
+    );
+  }
+
+  // ── Extra charges card ────────────────────────────────────────────
+  Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
+    return Container(
+      padding:    const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color:        isDark ? CColors.darkContainer : CColors.white,
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border:       Border.all(
+            color: _hasPendingExtras
+                ? CColors.warning.withOpacity(0.5)
+                : (isDark ? CColors.darkerGrey : CColors.borderPrimary)),
+      ),
+      child: Row(children: [
+        Icon(
+          _hasPendingExtras
+              ? Icons.warning_amber_rounded
+              : Icons.add_circle_outline,
+          color: _hasPendingExtras ? CColors.warning : CColors.primary,
+          size:  22,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _hasPendingExtras
+                    ? 'Extra charge awaiting your approval'
+                    : 'Extra Charges',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize:   14,
+                    color: _hasPendingExtras
+                        ? CColors.warning
+                        : (isDark
+                        ? CColors.textWhite
+                        : CColors.textPrimary)),
+              ),
+              Text(
+                'View, approve or propose additional charges',
+                style: const TextStyle(
+                    fontSize: 12, color: CColors.darkGrey),
+              ),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: () => ExtraChargesSheet.show(
+            context,
+            jobId:       widget.job.id!,
+            currentRole: 'client',
+          ),
+          child: const Text('Manage'),
+        ),
+      ]),
+    );
+  }
+
+  // ── Mini map ──────────────────────────────────────────────────────
+  Widget _buildMiniMap(bool isDark) {
+    final ll = LatLng(widget.job.latitude!, widget.job.longitude!);
+    return Container(
+      height:      180,
+      decoration:  BoxDecoration(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          border: Border.all(
+              color: isDark ? CColors.darkerGrey : CColors.borderPrimary)),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        FlutterMap(
+          options: MapOptions(
+            initialCenter: ll,
+            initialZoom:   15,
+            interactionOptions:
+            const InteractionOptions(flags: InteractiveFlag.none),
+          ),
+          children: [
+            _mapService.osmTileLayer(),
+            _mapService.selectedPinLayer(ll),
+          ],
+        ),
+        Positioned(
+          bottom: 10, right: 10,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              try {
+                await _mapService.openDirections(
+                  from:             widget.job.location!,
+                  to:               widget.job.location!,
+                  destinationLabel: widget.job.title,
+                );
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('Could not open maps: $e')));
+                }
+              }
+            },
+            icon:  const Icon(Icons.directions_rounded, size: 16),
+            label: Text('job.directions'.tr()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ]),
     );
   }
 
   // ── Bids list ─────────────────────────────────────────────────────
-  Widget _buildBidsList(
-      BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildBidsList(bool isDark, bool isUrdu) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('bids')
@@ -1148,11 +767,9 @@ class _ClientJobDetailsScreenState
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
-            child: Text('bid.no_bids'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 16 : 14)),
-          );
+              child: Text('bid.no_bids'.tr(),
+                  style: TextStyle(fontSize: isUrdu ? 16 : 14)));
         }
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1169,7 +786,7 @@ class _ClientJobDetailsScreenState
                 final doc = snapshot.data!.docs[index];
                 final bid = BidModel.fromSnapshot(
                     doc as DocumentSnapshot<Map<String, dynamic>>);
-                return _buildBidCard(bid, context, isDark, isUrdu);
+                return _buildBidCard(bid, isDark, isUrdu);
               },
             ),
           ],
@@ -1179,8 +796,7 @@ class _ClientJobDetailsScreenState
   }
 
   // ── Bid card ──────────────────────────────────────────────────────
-  Widget _buildBidCard(BidModel bid, BuildContext context,
-      bool isDark, bool isUrdu) {
+  Widget _buildBidCard(BidModel bid, bool isDark, bool isUrdu) {
     final isAccepted  = bid.status == 'accepted';
     final isRejected  = bid.status == 'rejected';
     final isAccepting = _acceptingBidId == bid.id;
@@ -1200,35 +816,27 @@ class _ClientJobDetailsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Rs. ${bid.amount.toStringAsFixed(0)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium!
-                      .copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize:   isUrdu ? 20 : 18,
-                    color:      CColors.primary,
-                  ),
-                ),
-                _buildBidStatusBadge(bid.status, isUrdu),
-              ],
-            ),
-
-            // ── View worker profile button ────────────────────
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Rs. ${bid.amount.toStringAsFixed(0)}',
+                      style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize:   isUrdu ? 20 : 18,
+                          color:      CColors.primary)),
+                  _bidStatusBadge(bid.status, isUrdu),
+                ]),
             const SizedBox(height: CSizes.sm),
+
+            // View worker profile
             InkWell(
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      WorkerBidProfileScreen(workerId: bid.workerId),
-                ),
+                    builder: (_) =>
+                        WorkerBidProfileScreen(workerId: bid.workerId)),
               ),
-              borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+              borderRadius:
+              BorderRadius.circular(CSizes.borderRadiusMd),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 8),
@@ -1239,25 +847,19 @@ class _ClientJobDetailsScreenState
                   border: Border.all(
                       color: CColors.primary.withOpacity(0.2)),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.person_outline_rounded,
-                        color: CColors.primary, size: 16),
-                    const SizedBox(width: 6),
-                    Text(
-                      'View Worker Profile',
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.person_outline_rounded,
+                      color: CColors.primary, size: 16),
+                  const SizedBox(width: 6),
+                  Text('View Worker Profile',
                       style: TextStyle(
-                        color:      CColors.primary,
-                        fontSize:   isUrdu ? 13 : 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.arrow_forward_ios_rounded,
-                        color: CColors.primary, size: 12),
-                  ],
-                ),
+                          color:      CColors.primary,
+                          fontSize:   isUrdu ? 13 : 12,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward_ios_rounded,
+                      color: CColors.primary, size: 12),
+                ]),
               ),
             ),
 
@@ -1265,13 +867,13 @@ class _ClientJobDetailsScreenState
               const SizedBox(height: CSizes.sm),
               Text(bid.message!,
                   style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                    fontSize: isUrdu ? 15 : 13,
-                    color:    isDark
-                        ? CColors.textWhite.withOpacity(0.7)
-                        : CColors.darkerGrey,
-                  )),
+                      fontSize: isUrdu ? 15 : 13,
+                      color:    isDark
+                          ? CColors.textWhite.withOpacity(0.7)
+                          : CColors.darkerGrey)),
             ],
 
+            // Accepted bid actions
             if (isAccepted) ...[
               const SizedBox(height: CSizes.md),
               SizedBox(
@@ -1293,16 +895,18 @@ class _ClientJobDetailsScreenState
                 ),
               ),
               const SizedBox(height: CSizes.sm),
-              // ── Pay Now button ──────────────────────────────
               SizedBox(
                 width: double.infinity,
                 child: _jobPaid
                     ? Container(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
-                    color:        CColors.success.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                    border:       Border.all(color: CColors.success.withOpacity(0.4)),
+                    color: CColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(
+                        CSizes.borderRadiusMd),
+                    border: Border.all(
+                        color:
+                        CColors.success.withOpacity(0.4)),
                   ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1325,20 +929,41 @@ class _ClientJobDetailsScreenState
                   label: Text(
                     'Pay Rs. ${bid.amount.toStringAsFixed(0)}',
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold),
+                        fontSize:   14,
+                        fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CColors.primary,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(
                             CSizes.borderRadiusMd)),
                   ),
                 ),
               ),
+              // Review button
+              if (_jobStatus == 'completed' && !_reviewSubmitted) ...[
+                const SizedBox(height: CSizes.sm),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _openReviewDialog,
+                    icon:  const Icon(Icons.star_outline),
+                    label: const Text('Leave a Review'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CColors.primary,
+                      side: const BorderSide(color: CColors.primary),
+                      padding:
+                      const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
             ],
 
+            // Accept button
             if (canAccept) ...[
               const SizedBox(height: CSizes.md),
               SizedBox(
@@ -1348,7 +973,8 @@ class _ClientJobDetailsScreenState
                   isAccepting ? null : () => _acceptBid(bid),
                   icon: isAccepting
                       ? const SizedBox(
-                      width:  16, height: 16,
+                      width:  16,
+                      height: 16,
                       child:  CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2))
                       : const Icon(
@@ -1378,12 +1004,177 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Open review dialog ──────────────────────────────────────────
+  // ── Action buttons (cancel / delete) ─────────────────────────────
+  Widget _buildActionButtons(bool isDark, bool isUrdu) {
+    final canDelete = _jobStatus == 'open';
+    final canCancel =
+        _jobStatus == 'open' || _jobStatus == 'in-progress';
+
+    if (!canDelete && !canCancel) return const SizedBox.shrink();
+
+    return Row(children: [
+      if (canDelete)
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _isDeleting ? null : _deleteJob,
+            icon:  const Icon(Icons.delete_outline, color: CColors.error),
+            label: _isDeleting
+                ? const SizedBox(
+                width:  16,
+                height: 16,
+                child:  CircularProgressIndicator(
+                    color: CColors.error, strokeWidth: 2))
+                : const Text('Delete Job',
+                style: TextStyle(color: CColors.error)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: CColors.error),
+              padding:
+              const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                      CSizes.borderRadiusLg)),
+            ),
+          ),
+        ),
+      if (canDelete && canCancel) const SizedBox(width: 12),
+      if (canCancel)
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _isCancelling ? null : _cancelJob,
+            icon:  const Icon(Icons.cancel_outlined,
+                color: CColors.warning),
+            label: _isCancelling
+                ? const SizedBox(
+                width:  16,
+                height: 16,
+                child:  CircularProgressIndicator(
+                    color: CColors.warning, strokeWidth: 2))
+                : const Text('Cancel Job',
+                style: TextStyle(color: CColors.warning)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: CColors.warning),
+              padding:
+              const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                      CSizes.borderRadiusLg)),
+            ),
+          ),
+        ),
+    ]);
+  }
+
+  // ── Raise dispute button ──────────────────────────────────────────
+  Widget _buildRaiseDisputeButton(bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => RaiseDisputeDialog.show(
+          context,
+          jobId:           widget.job.id!,
+          jobTitle:        widget.job.title,
+          clientId:        _clientId,
+          clientName:      '',
+          workerId:        _acceptedWorkerId ?? '',
+          workerName:      _workerName,
+          currentUserId:   _clientId,
+          currentUserRole: 'client',
+          onDisputeRaised: () => setState(() {}),
+        ),
+        icon:  const Icon(Icons.flag_outlined,
+            color: CColors.error, size: 18),
+        label: Text('Raise a Dispute',
+            style: TextStyle(
+                color:      CColors.error,
+                fontWeight: FontWeight.w600,
+                fontSize:   isUrdu ? 15 : 13)),
+        style: OutlinedButton.styleFrom(
+          side:    const BorderSide(color: CColors.error),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape:   RoundedRectangleBorder(
+              borderRadius:
+              BorderRadius.circular(CSizes.borderRadiusLg)),
+        ),
+      ),
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  Widget _badge(String label, Color color,
+      {IconData? icon, bool small = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color:        color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border:       Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[
+          Icon(icon, color: color, size: small ? 12 : 14),
+          const SizedBox(width: 4),
+        ],
+        Text(label,
+            style: TextStyle(
+                color:      color,
+                fontWeight: FontWeight.w600,
+                fontSize:   small ? 10 : 11)),
+      ]),
+    );
+  }
+
+  Widget _bidStatusBadge(String status, bool isUrdu) {
+    Color  color;
+    String label;
+    switch (status) {
+      case 'accepted':
+        color = CColors.success; label = 'Accepted'; break;
+      case 'rejected':
+        color = CColors.error;   label = 'Rejected';  break;
+      default:
+        color = CColors.warning; label = 'Pending';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color:        color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border:       Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              color:      color,
+              fontWeight: FontWeight.bold,
+              fontSize:   isUrdu ? 12 : 10)),
+    );
+  }
+
+  Color  _statusColor(String s) {
+    switch (s) {
+      case 'open':        return CColors.success;
+      case 'in-progress': return CColors.warning;
+      case 'completed':   return CColors.info;
+      case 'cancelled':
+      case 'deleted':     return CColors.error;
+      default:            return CColors.grey;
+    }
+  }
+
+  String _statusText(String s) {
+    switch (s) {
+      case 'open':        return 'Open';
+      case 'in-progress': return 'In Progress';
+      case 'completed':   return 'Completed';
+      case 'cancelled':   return 'Cancelled';
+      case 'deleted':     return 'Deleted';
+      default:            return s;
+    }
+  }
+
   Future<void> _openReviewDialog() async {
     if (_acceptedWorkerId == null) return;
     final workerName = await _getWorkerName(_acceptedWorkerId!);
     if (!mounted) return;
-
     await SubmitReviewDialog.show(
       context,
       workerName: workerName,
@@ -1400,7 +1191,7 @@ class _ClientJobDetailsScreenState
           if (mounted) {
             setState(() => _reviewSubmitted = true);
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content:         Text('Review submitted! Thank you.'),
+              content:         Text('Review submitted!'),
               backgroundColor: CColors.success,
               behavior:        SnackBarBehavior.floating,
             ));
@@ -1408,7 +1199,7 @@ class _ClientJobDetailsScreenState
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content:         Text('Failed to submit review: $e'),
+              content:         Text('Failed: $e'),
               backgroundColor: CColors.error,
               behavior:        SnackBarBehavior.floating,
             ));
@@ -1418,31 +1209,6 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  Future<String> _getWorkerName(String workerId) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('workers').doc(workerId).get();
-      final info =
-          doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
-      return info['name'] ?? info['fullName'] ?? 'Worker';
-    } catch (_) {
-      return 'Worker';
-    }
-  }
-
-  Future<String> _getClientName(String clientId) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('clients').doc(clientId).get();
-      final info =
-          doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
-      return info['fullName'] ?? info['name'] ?? 'Client';
-    } catch (_) {
-      return 'Client';
-    }
-  }
-
-  // ── Open payment screen ──────────────────────────────────────────
   void _openPaymentScreen(BidModel bid) {
     Navigator.push(
       context,
@@ -1477,30 +1243,25 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Bid status badge ──────────────────────────────────────────────
-  Widget _buildBidStatusBadge(String status, bool isUrdu) {
-    Color  color;
-    String label;
-    switch (status) {
-      case 'accepted':
-        color = CColors.success; label = 'Accepted'; break;
-      case 'rejected':
-        color = CColors.error;   label = 'Rejected';  break;
-      default:
-        color = CColors.warning; label = 'Pending';
+  Future<String> _getWorkerName(String id) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('workers').doc(id).get();
+      final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+      return info['name'] ?? info['fullName'] ?? 'Worker';
+    } catch (_) {
+      return 'Worker';
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color:        color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
-        border:       Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color:      color,
-              fontWeight: FontWeight.bold,
-              fontSize:   isUrdu ? 12 : 10)),
-    );
+  }
+
+  Future<String> _getClientName(String id) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('clients').doc(id).get();
+      final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+      return info['fullName'] ?? info['name'] ?? 'Client';
+    } catch (_) {
+      return 'Client';
+    }
   }
 }
