@@ -34,15 +34,13 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
   final _locationService = LocationService();
   final _workerService   = WorkerService();
 
-  String  _workerId           = '';
-  String  _workerCategory     = '';
-  String  _workerCategoryName = '';
-  int     _selectedFilter     = 0; // 0: All, 1: My Category
-  final List<String> _filterOptions = ['All Jobs', 'My Category'];
+  String _workerId           = '';
+  String _workerCategory     = '';   // categoryId stored in workInfo
+  String _workerCategoryName = '';   // human-readable name shown in badge
 
   // Location state
   WorkerModel? _currentWorker;
-  Map<String, String> _distanceCache = {}; // jobId → "2.4 km"
+  final Map<String, String> _distanceCache = {}; // jobId → "2.4 km"
   bool _locationReady = false;
 
   @override
@@ -54,10 +52,8 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
   Future<void> _loadWorkerData() async {
     final prefs    = await SharedPreferences.getInstance();
     final workerId = prefs.getString('user_uid') ?? '';
-
     if (mounted) setState(() => _workerId = workerId);
     if (workerId.isEmpty) return;
-
     await _loadWorkerCategory();
     await _loadWorkerLocation();
   }
@@ -69,32 +65,31 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
           .doc(_workerId)
           .get();
 
-      if (workerDoc.exists) {
-        final data      = workerDoc.data() as Map<String, dynamic>;
-        final workInfo  = data['workInfo'] as Map<String, dynamic>? ?? {};
-        final categoryId = workInfo['categoryId'] as String?;
+      if (!workerDoc.exists) return;
 
-        if (categoryId != null) {
-          final categoryDoc = await FirebaseFirestore.instance
-              .collection('workCategories')
-              .doc(categoryId)
-              .get();
+      final data      = workerDoc.data() as Map<String, dynamic>;
+      final workInfo  = data['workInfo'] as Map<String, dynamic>? ?? {};
+      final categoryId = workInfo['categoryId'] as String?;
 
-          if (categoryDoc.exists && mounted) {
-            final categoryData = categoryDoc.data() as Map<String, dynamic>;
-            setState(() {
-              _workerCategory     = categoryId;
-              _workerCategoryName = categoryData['name'] ?? '';
-            });
-          }
-        }
+      if (categoryId == null) return;
+
+      final categoryDoc = await FirebaseFirestore.instance
+          .collection('workCategories')
+          .doc(categoryId)
+          .get();
+
+      if (categoryDoc.exists && mounted) {
+        final categoryData = categoryDoc.data() as Map<String, dynamic>;
+        setState(() {
+          _workerCategory     = categoryId;
+          _workerCategoryName = categoryData['name'] as String? ?? '';
+        });
       }
     } catch (e) {
       debugPrint('Error loading worker category: $e');
     }
   }
 
-  // Load worker's location for distance calculations
   Future<void> _loadWorkerLocation() async {
     try {
       _currentWorker = await _workerService.getWorkerById(_workerId);
@@ -105,17 +100,13 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
     }
   }
 
-  // Calculate and cache distance from worker to a job
   String? _getDistanceLabel(JobModel job) {
     if (!job.hasLocation) return null;
     if (_distanceCache.containsKey(job.id)) return _distanceCache[job.id];
-
     final workerLoc = _currentWorker?.effectiveLocation;
     if (workerLoc == null) return null;
-
     final distKm = _locationService.distanceBetween(workerLoc, job.location!);
     final label  = _locationService.formatDistance(distKm);
-
     if (job.id != null) _distanceCache[job.id!] = label;
     return label;
   }
@@ -154,53 +145,35 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
       body: Column(
         children: [
           CommonHeader(
-            title: 'Find Jobs',
+            title:          'Find Jobs',
             showBackButton: widget.showAppBar,
-            onBackPressed: widget.showAppBar ? () => Navigator.pop(context) : null,
+            onBackPressed:
+            widget.showAppBar ? () => Navigator.pop(context) : null,
           ),
-          _buildFilterChips(),
+
+          // ── Category label banner ──────────────────────────────
+          if (_workerCategoryName.isNotEmpty)
+            Container(
+              width:   double.infinity,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
+              color: CColors.primary.withOpacity(0.08),
+              child: Row(children: [
+                const Icon(Icons.filter_list_rounded,
+                    size: 16, color: CColors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'Showing: $_workerCategoryName jobs only',
+                  style: const TextStyle(
+                      fontSize:   13,
+                      color:      CColors.primary,
+                      fontWeight: FontWeight.w600),
+                ),
+              ]),
+            ),
+
           Expanded(child: _buildJobsList()),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChips() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isUrdu = context.locale.languageCode == 'ur';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _filterOptions.asMap().entries.map((entry) {
-            final idx      = entry.key;
-            final label    = entry.value;
-            final isSelected = _selectedFilter == idx;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: FilterChip(
-                label: Text(label,
-                    style: TextStyle(fontSize: isUrdu ? 16 : 14)),
-                selected: isSelected,
-                onSelected: (selected) {
-                  if (selected) setState(() => _selectedFilter = idx);
-                },
-                selectedColor: CColors.primary,
-                labelStyle: TextStyle(
-                  color: isSelected
-                      ? CColors.white
-                      : (isDark ? CColors.white : CColors.textPrimary),
-                ),
-                backgroundColor: isDark
-                    ? CColors.darkContainer
-                    : CColors.lightContainer,
-              ),
-            );
-          }).toList(),
-        ),
       ),
     );
   }
@@ -213,14 +186,17 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
       );
     }
 
-    Query query = FirebaseFirestore.instance
-        .collection('jobs')
-        .where('status', isEqualTo: 'open')
-        .orderBy('createdAt', descending: true);
-
-    if (_selectedFilter == 1 && _workerCategoryName.isNotEmpty) {
-      query = query.where('category', isEqualTo: _workerCategoryName);
+    // Show loading indicator while category is being fetched
+    if (_workerCategoryName.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
     }
+
+    // ── CATEGORY FILTER: only show jobs matching the worker's category ──
+    final Query query = FirebaseFirestore.instance
+        .collection('jobs')
+        .where('status',   isEqualTo: 'open')
+        .where('category', isEqualTo: _workerCategoryName)
+        .orderBy('createdAt', descending: true);
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -228,50 +204,61 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
+
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.work_outline, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text('No jobs available',
-                    style: TextStyle(fontSize: 16, color: Colors.grey)),
+                Icon(Icons.work_off_outlined,
+                    size: 64,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? CColors.darkerGrey
+                        : CColors.grey),
+                const SizedBox(height: CSizes.md),
+                Text(
+                  'No $_workerCategoryName jobs available',
+                  style: const TextStyle(
+                      fontSize: 16, color: CColors.darkGrey),
+                ),
+                const SizedBox(height: CSizes.sm),
+                const Text(
+                  'Check back later for new postings.',
+                  style: TextStyle(fontSize: 13, color: CColors.darkGrey),
+                ),
               ],
             ),
           );
         }
 
-        final jobs = snapshot.data!.docs.map((doc) {
-          return JobModel.fromMap(
-              doc.data() as Map<String, dynamic>, doc.id);
-        }).toList();
+        final jobs = snapshot.data!.docs
+            .map((doc) => JobModel.fromMap(
+            doc.data() as Map<String, dynamic>, doc.id))
+            .toList();
 
-        final jobsWithLocation = jobs.where((j) => j.hasLocation).toList();
+        final jobsWithLocation =
+        jobs.where((j) => j.hasLocation).toList();
 
         return Stack(
           children: [
             ListView.builder(
-              controller: widget.scrollController,
-              padding: const EdgeInsets.all(CSizes.defaultSpace),
-              itemCount: jobs.length,
+              controller:  widget.scrollController,
+              padding:     const EdgeInsets.all(CSizes.defaultSpace),
+              itemCount:   jobs.length,
               itemBuilder: (context, index) =>
                   _buildJobCard(jobs[index]),
             ),
 
-            // ── Map view FAB (only when some jobs have locations) ──
+            // ── Map FAB ───────────────────────────────────────────
             if (jobsWithLocation.isNotEmpty)
               Positioned(
                 bottom: 16,
                 right:  16,
                 child: FloatingActionButton.extended(
-                  heroTag: 'find_jobs_map',
-                  onPressed: () => _openMapView(jobs),
+                  heroTag:         'find_jobs_map',
+                  onPressed:       () => _openMapView(jobs),
                   backgroundColor: CColors.primary,
-                  icon: const Icon(Icons.map_rounded, color: Colors.white),
+                  icon:  const Icon(Icons.map_rounded, color: Colors.white),
                   label: const Text('Map View',
                       style: TextStyle(color: Colors.white)),
                 ),
@@ -300,7 +287,7 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Title + category badge ─────────────────────────
+              // ── Title + category badge ──────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -312,7 +299,7 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
                           .titleMedium!
                           .copyWith(
                         fontWeight: FontWeight.bold,
-                        fontSize: isUrdu ? 18 : 16,
+                        fontSize:   isUrdu ? 18 : 16,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -342,7 +329,7 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
               ),
               const SizedBox(height: CSizes.sm),
 
-              // ── Description ───────────────────────────────────
+              // ── Description ────────────────────────────────────
               Text(
                 job.description,
                 style: Theme.of(context).textTheme.bodyMedium!.copyWith(
@@ -353,109 +340,103 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
               ),
               const SizedBox(height: CSizes.sm),
 
-              // ── Location row ──────────────────────────────────
+              // ── Location row ───────────────────────────────────
               if (job.hasLocation)
                 Padding(
                   padding: const EdgeInsets.only(bottom: CSizes.sm),
-                  child: Row(
-                    children: [
-                      Icon(Icons.location_on_outlined,
-                          size: 14, color: CColors.darkGrey),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          job.displayLocation,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall!
-                              .copyWith(
-                            fontSize: isUrdu ? 13 : 11,
-                            color:    CColors.darkGrey,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  child: Row(children: [
+                    const Icon(Icons.location_on_outlined,
+                        size: 14, color: CColors.darkGrey),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        job.displayLocation,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall!
+                            .copyWith(
+                          fontSize: isUrdu ? 13 : 11,
+                          color:    CColors.darkGrey,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // ── Time + distance + bid count ───────────────────
-              Row(
-                children: [
-                  Icon(Icons.access_time,
-                      size: 16, color: CColors.darkGrey),
-                  const SizedBox(width: 4),
-                  Text(
-                    timeago.format(job.createdAt.toDate()),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall!
-                        .copyWith(fontSize: isUrdu ? 14 : 12),
-                  ),
-
-                  // Distance badge
-                  if (distLabel != null) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color:        CColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.near_me_rounded,
-                              size: 11, color: CColors.primary),
-                          const SizedBox(width: 3),
-                          Text(
-                            distLabel,
-                            style: TextStyle(
-                              fontSize:   isUrdu ? 12 : 10,
-                              color:      CColors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ],
+                  ]),
+                ),
 
-                  const Spacer(),
+              // ── Time + distance + bid count ────────────────────
+              Row(children: [
+                Icon(Icons.access_time,
+                    size: 16, color: CColors.darkGrey),
+                const SizedBox(width: 4),
+                Text(
+                  timeago.format(job.createdAt.toDate()),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall!
+                      .copyWith(fontSize: isUrdu ? 14 : 12),
+                ),
 
-                  // Bid count
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('bids')
-                        .where('jobId', isEqualTo: job.id)
-                        .snapshots(),
-                    builder: (context, bidSnapshot) {
-                      final bidCount =
-                          bidSnapshot.data?.docs.length ?? 0;
-                      return Row(
-                        children: [
-                          Icon(Icons.gavel,
-                              size: 16, color: CColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$bidCount bids',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelMedium!
-                                .copyWith(
-                              color:      CColors.primary,
-                              fontWeight: FontWeight.bold,
-                              fontSize:   isUrdu ? 14 : 12,
-                            ),
+                // Distance badge
+                if (distLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color:        CColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.near_me_rounded,
+                            size: 11, color: CColors.primary),
+                        const SizedBox(width: 3),
+                        Text(
+                          distLabel,
+                          style: TextStyle(
+                            fontSize:   isUrdu ? 12 : 10,
+                            color:      CColors.primary,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      );
-                    },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-              ),
+
+                const Spacer(),
+
+                // Bid count
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('bids')
+                      .where('jobId', isEqualTo: job.id)
+                      .snapshots(),
+                  builder: (context, bidSnapshot) {
+                    final bidCount =
+                        bidSnapshot.data?.docs.length ?? 0;
+                    return Row(children: [
+                      const Icon(Icons.gavel,
+                          size: 16, color: CColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$bidCount bids',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelMedium!
+                            .copyWith(
+                          color:      CColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize:   isUrdu ? 14 : 12,
+                        ),
+                      ),
+                    ]);
+                  },
+                ),
+              ]),
             ],
           ),
         ),
