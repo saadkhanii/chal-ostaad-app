@@ -13,6 +13,7 @@ import '../../../core/models/bid_model.dart';
 import '../../../core/models/job_model.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../shared/widgets/common_header.dart';
+import '../../../shared/widgets/job_media_gallery.dart';
 import '../chat/chat_screen.dart';
 import 'worker_job_details_screen.dart';
 
@@ -303,6 +304,23 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                               fontSize: isUrdu ? 16 : 14,
                             ),
                           ),
+
+                          // ── Job media thumbnails ────────────────
+                          jobAsync.maybeWhen(
+                            data: (job) => job != null && job.hasMedia
+                                ? Padding(
+                              padding: const EdgeInsets.only(top: 8, bottom: 4),
+                              child: JobMediaGallery(
+                                mediaUrls:   job.mediaUrls,
+                                mediaTypes:  job.mediaTypes,
+                                mediaBase64: job.mediaBase64,
+                              ),
+                            )
+                                : const SizedBox.shrink(),
+                            orElse: () => const SizedBox.shrink(),
+                          ),
+                          // ────────────────────────────────────────
+
                           if (bid.message != null && bid.message!.isNotEmpty) ...[
                             const SizedBox(height: CSizes.xs),
                             Text(

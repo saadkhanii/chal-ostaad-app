@@ -27,6 +27,7 @@ import '../dispute/dispute_status_banner.dart';
 import '../payment/payment_screen.dart';
 import '../payment/extra_charges_sheet.dart';
 import '../../core/services/payment_service.dart';
+import '../../shared/widgets/job_media_gallery.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -465,6 +466,14 @@ class _ClientJobDetailsScreenState
                       : CColors.darkerGrey,
                   height: 1.5,
                   fontSize: isUrdu ? 16 : 14)),
+
+          // ── Job Photos ─────────────────────────────────────────
+          if (widget.job.hasMedia) ...[
+            const SizedBox(height: CSizes.spaceBtwItems),
+            JobMediaGallery(mediaBase64: widget.job.mediaBase64),
+          ],
+          // ──────────────────────────────────────────────────────
+
           const SizedBox(height: 16),
           Row(children: [
             Icon(Icons.access_time_outlined,

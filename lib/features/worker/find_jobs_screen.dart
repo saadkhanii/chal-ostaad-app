@@ -13,6 +13,7 @@ import '../../../core/models/worker_model.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/worker_service.dart';
 import '../../../shared/widgets/common_header.dart';
+import '../../../shared/widgets/job_media_gallery.dart';
 import '../../core/routes/app_routes.dart';
 import 'worker_job_details_screen.dart';
 
@@ -339,6 +340,16 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: CSizes.sm),
+
+              // ── Media thumbnails ───────────────────────────────
+              if (job.hasMedia) ...[
+                JobMediaGallery(
+                  mediaUrls:   job.mediaUrls,
+                  mediaTypes:  job.mediaTypes,
+                  mediaBase64: job.mediaBase64,
+                ),
+                const SizedBox(height: CSizes.sm),
+              ],
 
               // ── Location row ───────────────────────────────────
               if (job.hasLocation)

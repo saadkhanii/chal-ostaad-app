@@ -426,7 +426,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
               padding: const EdgeInsets.all(CSizes.md),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [CColors.info, CColors.info.withOpacity(0.75)],
+                  colors: [CColors.primary, CColors.primary.withOpacity(0.75)],
                 ),
                 borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
               ),

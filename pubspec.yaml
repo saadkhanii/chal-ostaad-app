@@ -31,10 +31,10 @@ dependencies:
   cloud_firestore: ^6.1.0
   firebase_auth: ^6.1.2
 
-  #Chatting
-  record: ^6.2.0       # microphone recording
-  just_audio: ^0.9.40     # audio playback
-  path_provider: ^2.1.2   # temp file path
+  # Chatting
+  record: ^6.2.0
+  just_audio: ^0.9.40
+  path_provider: ^2.1.2
 
   # Utilities
   http: ^1.6.0
@@ -43,8 +43,13 @@ dependencies:
   logger: ^2.6.2
   google_fonts: ^6.3.2
   image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
   fl_chart: ^0.66.0
 
+  # ── NEW: Media (Cloudinary upload + playback) ─────────────────────
+  video_player: ^2.9.2              # video playback in gallery viewer
+  cached_network_image: ^3.4.1      # fast image loading from Cloudinary URLs
+  # ─────────────────────────────────────────────────────────────────
 
   # Riverpod
   flutter_riverpod: ^2.4.9
@@ -52,11 +57,10 @@ dependencies:
   timeago: ^3.7.1
 
   # ── Maps & Location (100% Free — No API key required) ────────────
-  flutter_map: ^7.0.2              # OSM map widget — no API key needed
-  latlong2: ^0.9.1                 # LatLng type used by flutter_map
-  geolocator: ^13.0.2              # Device GPS + permissions
-  # Geocoding uses existing 'http' package via Nominatim REST API — no extra dep
-  url_launcher: ^6.3.1             # Open directions in Google/Apple Maps app
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  geolocator: ^13.0.2
+  url_launcher: ^6.3.1
   flutter_stripe: ^12.6.0
   # ─────────────────────────────────────────────────────────────────
 
