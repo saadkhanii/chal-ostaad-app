@@ -467,10 +467,14 @@ class _ClientJobDetailsScreenState
                   height: 1.5,
                   fontSize: isUrdu ? 16 : 14)),
 
-          // ── Job Photos ─────────────────────────────────────────
+          // ── Job Media (photos + videos) ──────────────────────
           if (widget.job.hasMedia) ...[
             const SizedBox(height: CSizes.spaceBtwItems),
-            JobMediaGallery(mediaBase64: widget.job.mediaBase64),
+            JobMediaGallery(
+              mediaUrls:   widget.job.mediaUrls,
+              mediaTypes:  widget.job.mediaTypes,
+              mediaBase64: widget.job.mediaBase64,
+            ),
           ],
           // ──────────────────────────────────────────────────────
 

@@ -10,6 +10,7 @@ import '../../../core/constants/sizes.dart';
 import '../../../core/models/job_model.dart';
 import '../../core/routes/app_routes.dart';
 import 'client_job_details_screen.dart';
+import '../../../shared/widgets/job_media_gallery.dart';
 
 final bidCountProvider =
 FutureProvider.family<int, String>((ref, jobId) async {
@@ -412,6 +413,16 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: CSizes.sm),
+
+              // ── Media thumbnails ──────────────────────────────
+              if (job.hasMedia) ...[
+                JobMediaGallery(
+                  mediaUrls:   job.mediaUrls,
+                  mediaTypes:  job.mediaTypes,
+                  mediaBase64: job.mediaBase64,
+                ),
+                const SizedBox(height: CSizes.sm),
+              ],
 
               // ── Location row ─────────────────────────────────
               if (job.hasLocation)

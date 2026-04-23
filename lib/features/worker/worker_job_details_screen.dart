@@ -819,6 +819,35 @@ class _WorkerJobDetailsScreenState
               fontWeight: FontWeight.w700,
               fontSize:   isUrdu ? 22 : 20)),
       const SizedBox(height: CSizes.spaceBtwItems),
+
+      // ── Ask client before bidding ──────────────────────────────
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _openPreBidChat,
+          icon:  const Icon(Icons.chat_rounded, size: 20, color: Colors.white),
+          label: Text(
+            'Ask Client Before Bidding',
+            style: TextStyle(
+              fontSize:   isUrdu ? 16 : 14,
+              fontWeight: FontWeight.w600,
+              color:      Colors.white,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: CColors.primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+            elevation: 3,
+            shadowColor: CColors.primary.withOpacity(0.4),
+          ),
+        ),
+      ),
+      // ──────────────────────────────────────────────────────────
+
+      const SizedBox(height: CSizes.spaceBtwItems),
       Container(
         padding: const EdgeInsets.all(CSizes.lg),
         decoration: BoxDecoration(
@@ -1081,7 +1110,28 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Open chat ─────────────────────────────────────────────────────
+  // ── Open pre-bid chat with client ────────────────────────────────
+  // Worker can chat before placing a bid to confirm job details.
+  // Uses the same chatId scheme so if a bid is later accepted, the
+  // same chat thread continues seamlessly.
+  void _openPreBidChat() {
+    final chatId = _chatService.getChatId(widget.job.id!, widget.workerId);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          chatId:        chatId,
+          jobTitle:      widget.job.title,
+          otherName:     _clientName,
+          currentUserId: widget.workerId,
+          otherUserId:   widget.job.clientId,
+          otherRole:     'client',
+        ),
+      ),
+    );
+  }
+
+  // ── Open chat (post-bid-accepted) ─────────────────────────────────
   void _openChat() {
     if (_acceptedBid == null) return;
     final chatId = _chatService.getChatId(widget.job.id!, widget.workerId);
