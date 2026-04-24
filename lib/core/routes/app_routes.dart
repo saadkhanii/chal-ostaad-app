@@ -34,6 +34,13 @@ class AppRoutes {
   static const String workerReviews       = '/worker-reviews';
   static const String disputes            = '/disputes';
 
+  // ── Settings & Support routes ────────────────────────────────────
+  static const String settings            = '/settings';
+  static const String helpSupport         = '/help-support';
+  static const String about               = '/about';
+  static const String transactionHistory  = '/transaction-history';
+  // ─────────────────────────────────────────────────────────────────
+
   @Deprecated('Use myPostedJobs instead')
   static const String myJobs = '/my-jobs';
 }

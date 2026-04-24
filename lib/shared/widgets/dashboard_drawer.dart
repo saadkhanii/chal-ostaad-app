@@ -252,6 +252,9 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
       padding: const EdgeInsets.symmetric(vertical: CSizes.sm),
       children: [
 
+        // ── MAIN ────────────────────────────────────────────────────
+        _buildSectionLabel(context, 'MAIN', isDark, isUrdu),
+
         // Dashboard
         _buildDrawerItem(
           context,
@@ -287,7 +290,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           },
         ),
 
-        // 🔔 Notifications with Badge
+        // Notifications with unread badge
         if (currentUser != null)
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -298,7 +301,6 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
                 .snapshots(),
             builder: (context, snapshot) {
               final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-
               return _buildDrawerItem(
                 context,
                 icon: Icons.notifications_outlined,
@@ -314,20 +316,49 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
             },
           ),
 
-        // Notification Settings
+        _buildDivider(isDark),
+
+        // ── ROLE-SPECIFIC TOOLS ──────────────────────────────────────
+        if (isWorker) ..._buildWorkerSpecificItems(context, isDark, isUrdu),
+        if (isClient) ..._buildClientSpecificItems(context, isDark, isUrdu),
+
+        _buildDivider(isDark),
+
+        // ── FINANCE ─────────────────────────────────────────────────
+        _buildSectionLabel(context, 'FINANCE', isDark, isUrdu),
+
+        // Wallet
         _buildDrawerItem(
           context,
-          icon: Icons.settings_outlined,
-          title: 'notification.notifications_settings'.tr(),
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'Wallet',
           isDark: isDark,
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            Navigator.pushNamed(context, AppRoutes.notificationSettings);
+            Navigator.pushNamed(context, AppRoutes.wallet);
           },
         ),
 
-        // Settings
+        // Transaction History
+        _buildDrawerItem(
+          context,
+          icon: Icons.receipt_long_outlined,
+          title: 'Transaction History',
+          isDark: isDark,
+          isUrdu: isUrdu,
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.pushNamed(context, AppRoutes.transactionHistory);
+          },
+        ),
+
+        _buildDivider(isDark),
+
+        // ── PREFERENCES ─────────────────────────────────────────────
+        _buildSectionLabel(context, 'PREFERENCES', isDark, isUrdu),
+
+        // Settings (expands to sub-sheet with all settings options)
         _buildDrawerItem(
           context,
           icon: Icons.settings_outlined,
@@ -336,39 +367,20 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            _showComingSoon(context, 'drawer.coming_soon_settings'.tr());
+            Navigator.pushNamed(context, AppRoutes.settings);
           },
         ),
 
-        // Language Section
+        // Language
         _buildLanguageSection(context, isDark, isUrdu),
 
-        // Theme Toggle
+        // Dark / Light theme toggle
         _buildThemeToggle(context, isDark, isUrdu),
 
-        // Divider
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: CSizes.defaultSpace,
-            vertical: CSizes.sm,
-          ),
-          child: Divider(height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
-        ),
+        _buildDivider(isDark),
 
-        // Worker Specific Items
-        if (isWorker) ..._buildWorkerSpecificItems(context, isDark, isUrdu),
-
-        // Client Specific Items
-        if (isClient) ..._buildClientSpecificItems(context, isDark, isUrdu),
-
-        // Divider
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: CSizes.defaultSpace,
-            vertical: CSizes.sm,
-          ),
-          child: Divider(height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
-        ),
+        // ── SUPPORT ─────────────────────────────────────────────────
+        _buildSectionLabel(context, 'SUPPORT', isDark, isUrdu),
 
         // Help & Support
         _buildDrawerItem(
@@ -379,7 +391,7 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            _showComingSoon(context, 'drawer.coming_soon_help'.tr());
+            Navigator.pushNamed(context, AppRoutes.helpSupport);
           },
         ),
 
@@ -392,10 +404,391 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
           isUrdu: isUrdu,
           onTap: () {
             Navigator.pop(context);
-            _showComingSoon(context, 'drawer.coming_soon_about'.tr());
+            Navigator.pushNamed(context, AppRoutes.about);
           },
         ),
+
+        const SizedBox(height: CSizes.md),
       ],
+    );
+  }
+
+  // ── Reusable divider ────────────────────────────────────────────
+  Widget _buildDivider(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
+      child: Divider(
+          height: 1, color: isDark ? CColors.darkGrey : CColors.grey),
+    );
+  }
+
+  // ── Settings bottom sheet ────────────────────────────────────────
+  // Contains: change profile pic, notification settings, privacy, etc.
+  void _showSettingsSheet(BuildContext context, bool isDark, bool isUrdu) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? CColors.dark : CColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? CColors.darkGrey : CColors.grey,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Text('Settings',
+                style: TextStyle(
+                  fontSize: isUrdu ? 20 : 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? CColors.white : CColors.textPrimary,
+                )),
+            const SizedBox(height: 20),
+
+            // Change Profile Picture
+            _buildSheetTile(
+              context,
+              icon: Icons.photo_camera_outlined,
+              title: 'Change Profile Picture',
+              subtitle: 'Update your display photo',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                _showComingSoon(context, 'Profile picture update coming soon.');
+              },
+            ),
+
+            // Change Password
+            _buildSheetTile(
+              context,
+              icon: Icons.lock_outline_rounded,
+              title: 'Change Password',
+              subtitle: 'Update your account password',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                _showComingSoon(context, 'Change password coming soon.');
+              },
+            ),
+
+            // Notification Settings — moved here from top-level
+            _buildSheetTile(
+              context,
+              icon: Icons.notifications_active_outlined,
+              title: 'Notification Settings',
+              subtitle: 'Manage push notification preferences',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, AppRoutes.notificationSettings);
+              },
+            ),
+
+            // Privacy Settings
+            _buildSheetTile(
+              context,
+              icon: Icons.privacy_tip_outlined,
+              title: 'Privacy Settings',
+              subtitle: 'Control who sees your information',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                _showComingSoon(context, 'Privacy settings coming soon.');
+              },
+            ),
+
+            // Delete Account
+            _buildSheetTile(
+              context,
+              icon: Icons.delete_outline_rounded,
+              title: 'Delete Account',
+              subtitle: 'Permanently remove your account',
+              isDark: isDark,
+              isDestructive: true,
+              onTap: () {
+                Navigator.pop(context);
+                _showComingSoon(context, 'Account deletion coming soon.');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Help & Support bottom sheet ──────────────────────────────────
+  void _showHelpSheet(BuildContext context, bool isDark, bool isUrdu) {
+    showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: isDark ? CColors.dark : CColors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+          Center(
+          child: Container(
+          width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: isDark ? CColors.darkGrey : CColors.grey,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        Text('Help & Support',
+            style: TextStyle(
+              fontSize: isUrdu ? 20 : 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? CColors.white : CColors.textPrimary,
+            )),
+        const SizedBox(height: 4),
+        Text("We're here to help you.",
+        style: TextStyle(
+          fontSize: 13,
+          color: isDark ? CColors.lightGrey : CColors.darkGrey,
+        )),
+    const SizedBox(height: 20),
+
+    // Email support
+    _buildSheetTile(
+    context,
+    icon: Icons.email_outlined,
+    title: 'Email Support',
+    subtitle: 'chalostaad@gmail.com',
+    isDark: isDark,
+    onTap: () {
+    Navigator.pop(context);
+    _showComingSoon(context, 'Opening email: chalostaad@gmail.com');
+    },
+    ),
+
+    // FAQs
+    _buildSheetTile(
+    context,
+    icon: Icons.quiz_outlined,
+    title: 'FAQs',
+    subtitle: 'Browse frequently asked questions',
+    isDark: isDark,
+    onTap: () {
+    Navigator.pop(context);
+    _showComingSoon(context, 'FAQs coming soon.');
+    },
+    ),
+
+    // Report a Problem
+    _buildSheetTile(
+    context,
+    icon: Icons.bug_report_outlined,
+    title: 'Report a Problem',
+    subtitle: 'Let us know if something is wrong',
+    isDark: isDark,
+    onTap: () {
+    Navigator.pop(context);
+    _showComingSoon(context, 'Problem reporting coming soon.');
+    },
+    ),
+
+    // Terms of Service
+    _buildSheetTile(
+    context,
+    icon: Icons.article_outlined,
+    title: 'Terms of Service',
+    subtitle: 'Read our terms and conditions',
+    isDark: isDark,
+    onTap: () {
+    Navigator.pop(context);
+    _showComingSoon(context, 'Terms of service coming soon.');
+    },
+    ),
+
+    // Privacy Policy
+    _buildSheetTile(
+    context,
+    icon: Icons.policy_outlined,
+    title: 'Privacy Policy',
+    subtitle: 'How we handle your data',
+    isDark: isDark,
+    onTap: () {
+    Navigator.pop(context);
+    _showComingSoon(context, 'Privacy policy coming soon.');
+    },
+    ),
+    ],
+    ),
+    ),
+    );
+  }
+
+  // ── About bottom sheet ───────────────────────────────────────────
+  void _showAboutSheet(BuildContext context, bool isDark, bool isUrdu) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? CColors.dark : CColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? CColors.darkGrey : CColors.grey,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // App logo placeholder + name
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [CColors.primary, CColors.secondary],
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.handyman_rounded,
+                  color: Colors.white, size: 36),
+            ),
+            const SizedBox(height: 12),
+
+            Text('Chal Ostaad',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? CColors.white : CColors.textPrimary,
+                )),
+            const SizedBox(height: 4),
+            Text('drawer.app_version'.tr(),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? CColors.lightGrey : CColors.darkGrey,
+                )),
+            const SizedBox(height: 12),
+
+            Text(
+              'Chal Ostaad connects skilled workers with clients who need '
+                  'quality work done. Post jobs, place bids, chat, and get paid — '
+                  'all in one place.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: isDark ? CColors.lightGrey : CColors.darkerGrey,
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Quick info tiles
+            _buildSheetTile(
+              context,
+              icon: Icons.email_outlined,
+              title: 'Contact Us',
+              subtitle: 'chalostaad@gmail.com',
+              isDark: isDark,
+              onTap: () {},
+            ),
+            _buildSheetTile(
+              context,
+              icon: Icons.star_outline_rounded,
+              title: 'Rate the App',
+              subtitle: 'Enjoying Chal Ostaad? Leave a review!',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                _showComingSoon(context, 'Rate us on the store — coming soon.');
+              },
+            ),
+            _buildSheetTile(
+              context,
+              icon: Icons.share_outlined,
+              title: 'Share the App',
+              subtitle: 'Invite friends and colleagues',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                _showComingSoon(context, 'Share coming soon.');
+              },
+            ),
+
+            const SizedBox(height: 8),
+            Text(
+              '© 2025 Chal Ostaad. All rights reserved.',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? CColors.darkGrey : CColors.lightGrey,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Reusable bottom sheet list tile ─────────────────────────────
+  Widget _buildSheetTile(
+      BuildContext context, {
+        required IconData icon,
+        required String title,
+        required String subtitle,
+        required bool isDark,
+        required VoidCallback onTap,
+        bool isDestructive = false,
+      }) {
+    final color = isDestructive ? CColors.error : CColors.primary;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color:        color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      title: Text(title,
+          style: TextStyle(
+            fontSize:   14,
+            fontWeight: FontWeight.w600,
+            color: isDestructive
+                ? CColors.error
+                : (isDark ? CColors.white : CColors.textPrimary),
+          )),
+      subtitle: Text(subtitle,
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? CColors.lightGrey : CColors.darkGrey,
+          )),
+      trailing: Icon(Icons.chevron_right_rounded,
+          color: isDark ? CColors.darkGrey : CColors.lightGrey, size: 20),
+      onTap: onTap,
     );
   }
 

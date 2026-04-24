@@ -28,6 +28,10 @@ import '../../features/review/worker_bid_profile_screen.dart';
 import '../../features/review/worker_reviews_screen.dart';
 import '../../features/payment/payment_screen.dart';
 import '../../features/payment/wallet_screen.dart';
+import '../../features/settings/settings_screen.dart';
+import '../../features/settings/help_support_screen.dart';
+import '../../features/settings/about_screen.dart';
+import '../../features/payment/transaction_history_screen.dart';
 
 class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -220,6 +224,21 @@ class AppRouter {
                     'Error: Email address is required for OTP screen.')),
           ),
         );
+
+    // ── Settings & Support routes ──────────────────────────────
+      case AppRoutes.settings:
+        return MaterialPageRoute(builder: (_) => const SettingsScreen());
+
+      case AppRoutes.helpSupport:
+        return MaterialPageRoute(builder: (_) => const HelpSupportScreen());
+
+      case AppRoutes.about:
+        return MaterialPageRoute(builder: (_) => const AboutScreen());
+
+      case AppRoutes.transactionHistory:
+        return MaterialPageRoute(
+            builder: (_) => const TransactionHistoryScreen());
+    // ──────────────────────────────────────────────────────────
 
       default:
         return MaterialPageRoute(
