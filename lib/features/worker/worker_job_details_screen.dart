@@ -55,13 +55,13 @@ class _WorkerJobDetailsScreenState
   final _locationService   = LocationService();
   final _paymentService    = PaymentService();
 
-  bool      _isLoading              = false;
-  bool      _hasExistingBid         = false;
+  bool      _isLoading      = false;
+  bool      _hasExistingBid = false;
   BidModel? _acceptedBid;
-  String    _clientName             = 'common.loading'.tr();
+  String    _clientName     = 'common.loading'.tr();
   String?   _distanceLabel;
-  bool      _isCancelling           = false;
-  bool      _confirmingCash         = false;
+  bool      _isCancelling   = false;
+  bool      _confirmingCash = false;
 
   late String _liveJobStatus;
   Map<String, dynamic>? _pendingProgressRequest;
@@ -69,12 +69,18 @@ class _WorkerJobDetailsScreenState
   // Extra charges notification
   bool _hasPendingExtras = false;
 
+  // ── FIX: track approved extras total from the live job stream ──────
+  // Shown in the accepted-bid amount chip and the cash confirm dialog
+  // so the worker always sees the real total they'll be paid.
+  double _approvedExtrasTotal = 0.0;
+
   // Cash payment
   String? _pendingPaymentId;
 
   StreamSubscription<DocumentSnapshot>? _jobSub;
 
   String _clientFullName = '';
+  String _workerName     = ''; // real full name from workers collection
 
   @override
   void initState() {
@@ -82,6 +88,7 @@ class _WorkerJobDetailsScreenState
     _liveJobStatus = widget.job.status;
     _checkExistingBid();
     _loadClientName();
+    _loadWorkerName();
     _loadDistanceToJob();
     _subscribeToJob();
     _loadPendingPayment();
@@ -94,17 +101,28 @@ class _WorkerJobDetailsScreenState
         .snapshots()
         .listen((snap) {
       if (!mounted || !snap.exists) return;
-      final data    = snap.data() as Map<String, dynamic>;
-      final status  = data['status']          as String? ?? _liveJobStatus;
-      final request = data['progressRequest'] as Map<String, dynamic>?;
-      final rawExtras = data['extraCharges']  as List<dynamic>? ?? [];
-      final hasPending = rawExtras
+      final data      = snap.data() as Map<String, dynamic>;
+      final status    = data['status']          as String? ?? _liveJobStatus;
+      final request   = data['progressRequest'] as Map<String, dynamic>?;
+      final rawExtras = data['extraCharges']    as List<dynamic>? ?? [];
+
+      final charges = rawExtras
           .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final hasPending = charges
           .any((c) => c['status'] == 'pending' && c['requestedBy'] != 'worker');
+
+      // ── FIX: sum only the approved charges ───────────────────────
+      final approvedTotal = charges
+          .where((c) => c['status'] == 'approved')
+          .fold<double>(0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
+
       setState(() {
         _liveJobStatus          = status;
         _pendingProgressRequest = request;
         _hasPendingExtras       = hasPending;
+        _approvedExtrasTotal    = approvedTotal; // ← FIX
       });
     });
   }
@@ -180,6 +198,22 @@ class _WorkerJobDetailsScreenState
     }
   }
 
+  /// Fetches the worker's actual full name from Firestore so createOrGetChat
+  /// writes a real name — not the category string — into the chat document.
+  Future<void> _loadWorkerName() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('workers')
+          .doc(widget.workerId)
+          .get();
+      if (doc.exists) {
+        final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+        final name = info['fullName'] as String? ?? '';
+        if (name.isNotEmpty && mounted) setState(() => _workerName = name);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadDistanceToJob() async {
     if (!widget.job.hasLocation) return;
     try {
@@ -194,9 +228,7 @@ class _WorkerJobDetailsScreenState
     } catch (_) {}
   }
 
-
-
-  // ── Cancel job (worker side) ──────────────────────────────────────
+  // ── Cancel job (worker side) ────────────────────────────────────────
   Future<void> _cancelJob() async {
     final reasonController = TextEditingController();
     final confirmed = await showDialog<bool>(
@@ -261,16 +293,24 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Confirm cash receipt ──────────────────────────────────────────
+  // ── Confirm cash receipt ────────────────────────────────────────────
   Future<void> _confirmCashReceived() async {
     if (_pendingPaymentId == null) return;
+
+    // ── FIX: show the real total (base + approved extras) ─────────────
+    final baseAmount = _acceptedBid?.amount ?? 0;
+    final totalAmount = baseAmount + _approvedExtrasTotal;
+    final amountText = totalAmount > 0
+        ? totalAmount.toStringAsFixed(0)
+        : baseAmount.toStringAsFixed(0);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Confirm Cash Receipt'),
         content: Text(
-          'Confirm you have received Rs. '
-              '${_acceptedBid?.amount.toStringAsFixed(0) ?? ''} in cash from the client?',
+          'Confirm you have received Rs. $amountText in cash from the client?'
+              '${_approvedExtrasTotal > 0 ? '\n(includes Rs. ${_approvedExtrasTotal.toStringAsFixed(0)} in approved extra charges)' : ''}',
         ),
         actions: [
           TextButton(
@@ -317,7 +357,7 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Place bid ─────────────────────────────────────────────────────
+  // ── Place bid ───────────────────────────────────────────────────────
   Future<void> _placeBid() async {
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
@@ -465,7 +505,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Job details card ──────────────────────────────────────────────
+  // ── Job details card ────────────────────────────────────────────────
   Widget _buildJobDetailsCard(bool isDark, bool isUrdu) {
     return Container(
       width:   double.infinity,
@@ -540,7 +580,7 @@ class _WorkerJobDetailsScreenState
                 height:   1.5,
                 fontSize: isUrdu ? 16 : 14)),
 
-        // ── Job Media (photos + videos) ──────────────────────────
+        // ── Job Media ────────────────────────────────────────────
         if (widget.job.hasMedia) ...[
           const SizedBox(height: CSizes.spaceBtwItems),
           JobMediaGallery(
@@ -549,7 +589,6 @@ class _WorkerJobDetailsScreenState
             mediaBase64: widget.job.mediaBase64,
           ),
         ],
-        // ────────────────────────────────────────────────────────
 
         const SizedBox(height: 16),
         Wrap(spacing: 16, runSpacing: 8, children: [
@@ -589,7 +628,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Extra charges card ────────────────────────────────────────────
+  // ── Extra charges card ──────────────────────────────────────────────
   Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
@@ -639,8 +678,12 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Cash confirm banner ───────────────────────────────────────────
+  // ── Cash confirm banner ─────────────────────────────────────────────
   Widget _buildCashConfirmBanner(bool isDark, bool isUrdu) {
+    // ── FIX: show real total (base + approved extras) ─────────────────
+    final baseAmount  = _acceptedBid?.amount ?? 0;
+    final totalAmount = baseAmount + _approvedExtrasTotal;
+
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
@@ -659,10 +702,15 @@ class _WorkerJobDetailsScreenState
                   fontSize:   15)),
         ]),
         const SizedBox(height: 6),
-        const Text(
-          'The client has chosen to pay in cash. '
+        Text(
+          _approvedExtrasTotal > 0
+              ? 'The client has chosen to pay Rs. ${totalAmount.toStringAsFixed(0)} in cash '
+              '(Rs. ${baseAmount.toStringAsFixed(0)} base + '
+              'Rs. ${_approvedExtrasTotal.toStringAsFixed(0)} extras). '
+              'Once you receive the cash, confirm below to complete the job.'
+              : 'The client has chosen to pay in cash. '
               'Once you receive the cash, confirm below to complete the job.',
-          style: TextStyle(fontSize: 13, color: CColors.darkGrey),
+          style: const TextStyle(fontSize: 13, color: CColors.darkGrey),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -689,7 +737,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Mini map ──────────────────────────────────────────────────────
+  // ── Mini map ────────────────────────────────────────────────────────
   Widget _buildMiniMap(bool isDark, bool isUrdu) {
     final jobLatLng = LatLng(widget.job.latitude!, widget.job.longitude!);
     return Container(
@@ -750,7 +798,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Bid form ──────────────────────────────────────────────────────
+  // ── Bid form ────────────────────────────────────────────────────────
   Widget _buildBidForm(bool isDark, bool isUrdu) {
     if (_acceptedBid != null) return _buildAcceptedPanel(isDark, isUrdu);
 
@@ -840,12 +888,11 @@ class _WorkerJobDetailsScreenState
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
-            elevation: 3,
+            elevation:   3,
             shadowColor: CColors.primary.withOpacity(0.4),
           ),
         ),
       ),
-      // ──────────────────────────────────────────────────────────
 
       const SizedBox(height: CSizes.spaceBtwItems),
       Container(
@@ -921,9 +968,7 @@ class _WorkerJobDetailsScreenState
     ]);
   }
 
-
-
-  // ── Completed banner ──────────────────────────────────────────────
+  // ── Completed banner ────────────────────────────────────────────────
   Widget _buildCompletedBanner(bool isDark, bool isUrdu) {
     return Container(
       width:   double.infinity,
@@ -965,8 +1010,12 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Accepted panel ────────────────────────────────────────────────
+  // ── Accepted panel ──────────────────────────────────────────────────
   Widget _buildAcceptedPanel(bool isDark, bool isUrdu) {
+    // ── FIX: show base + approved extras in the earnings chip ─────────
+    final baseAmount  = _acceptedBid!.amount;
+    final totalAmount = baseAmount + _approvedExtrasTotal;
+
     return Container(
       width:   double.infinity,
       padding: const EdgeInsets.all(CSizes.lg),
@@ -1005,22 +1054,34 @@ class _WorkerJobDetailsScreenState
                     : CColors.darkerGrey,
                 fontSize: isUrdu ? 15 : 13,
                 height:   1.5)),
-        if (_acceptedBid != null) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color:        CColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: CColors.primary.withOpacity(0.3)),
-            ),
-            child: Text('Rs. ${_acceptedBid!.amount.toStringAsFixed(0)}',
+
+        // Amount chip — shows total incl. approved extras
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color:        CColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: CColors.primary.withOpacity(0.3)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Rs. ${totalAmount.toStringAsFixed(0)}',
                 style: const TextStyle(
                     color:      CColors.primary,
                     fontWeight: FontWeight.bold,
                     fontSize:   14)),
-          ),
-        ],
+            // ── FIX: if extras exist, show a breakdown hint ───────
+            if (_approvedExtrasTotal > 0)
+              Text(
+                'Base Rs. ${baseAmount.toStringAsFixed(0)}'
+                    ' + Extras Rs. ${_approvedExtrasTotal.toStringAsFixed(0)}',
+                style: const TextStyle(
+                    color:    CColors.darkGrey,
+                    fontSize: 10),
+              ),
+          ]),
+        ),
+
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -1047,7 +1108,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Cancel button ─────────────────────────────────────────────────
+  // ── Cancel button ───────────────────────────────────────────────────
   Widget _buildCancelButton(bool isDark, bool isUrdu) {
     return SizedBox(
       width: double.infinity,
@@ -1075,7 +1136,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Raise dispute button ──────────────────────────────────────────
+  // ── Raise dispute button ────────────────────────────────────────────
   Widget _buildRaiseDisputeButton(bool isDark, bool isUrdu) {
     return SizedBox(
       width: double.infinity,
@@ -1110,43 +1171,88 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Open pre-bid chat with client ────────────────────────────────
-  // Worker can chat before placing a bid to confirm job details.
-  // Uses the same chatId scheme so if a bid is later accepted, the
-  // same chat thread continues seamlessly.
-  void _openPreBidChat() {
-    final chatId = _chatService.getChatId(widget.job.id!, widget.workerId);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          chatId:        chatId,
-          jobTitle:      widget.job.title,
-          otherName:     _clientName,
-          currentUserId: widget.workerId,
-          otherUserId:   widget.job.clientId,
-          otherRole:     'client',
+  // ── Open pre-bid chat with client ───────────────────────────────────
+  // Calls createOrGetChat so the Firestore doc is written with real names,
+  // not the workerId/category — fixing the client inbox name display.
+  Future<void> _openPreBidChat() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final chatId = await _chatService.createOrGetChat(
+        jobId:      widget.job.id!,
+        jobTitle:   widget.job.title,
+        clientId:   widget.job.clientId,
+        workerId:   widget.workerId,
+        // _workerName is loaded from Firestore; fall back to category only
+        // if the async fetch hasn't completed yet (rare race).
+        workerName: _workerName.isNotEmpty ? _workerName : widget.workerCategory,
+        clientName: _clientFullName.isNotEmpty ? _clientFullName : _clientName,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId:        chatId,
+            jobTitle:      widget.job.title,
+            otherName:     _clientName,
+            currentUserId: widget.workerId,
+            otherUserId:   widget.job.clientId,
+            otherRole:     'client',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:         Text('Could not open chat: $e'),
+          backgroundColor: CColors.error,
+          behavior:        SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  // ── Open chat (post-bid-accepted) ─────────────────────────────────
-  void _openChat() {
-    if (_acceptedBid == null) return;
-    final chatId = _chatService.getChatId(widget.job.id!, widget.workerId);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          chatId:        chatId,
-          jobTitle:      widget.job.title,
-          otherName:     _clientName,
-          currentUserId: widget.workerId,
-          otherUserId:   _acceptedBid!.clientId,
-          otherRole:     'client',
+  // ── Open chat (post-bid-accepted) ───────────────────────────────────
+  // Same fix: ensure doc exists with correct names before navigating.
+  Future<void> _openChat() async {
+    if (_acceptedBid == null || !mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final chatId = await _chatService.createOrGetChat(
+        jobId:      widget.job.id!,
+        jobTitle:   widget.job.title,
+        clientId:   _acceptedBid!.clientId,
+        workerId:   widget.workerId,
+        workerName: _workerName.isNotEmpty ? _workerName : widget.workerCategory,
+        clientName: _clientFullName.isNotEmpty ? _clientFullName : _clientName,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId:        chatId,
+            jobTitle:      widget.job.title,
+            otherName:     _clientName,
+            currentUserId: widget.workerId,
+            otherUserId:   _acceptedBid!.clientId,
+            otherRole:     'client',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:         Text('Could not open chat: $e'),
+          backgroundColor: CColors.error,
+          behavior:        SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }

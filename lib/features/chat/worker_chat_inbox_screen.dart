@@ -40,9 +40,11 @@ class _WorkerChatInboxScreenState
   String _workerName = '';
 
   final ChatService _chatService = ChatService();
-  final Map<String, String> _avatarCache  = {};
-  final Set<String>         _fetchingIds  = {};
-  List<ChatModel>           _cachedChats  = [];
+  final Map<String, String> _avatarCache = {};
+  // Key: clientId → real display name fetched live from clients collection
+  final Map<String, String> _nameCache   = {};
+  final Set<String>         _fetchingIds = {};
+  List<ChatModel>           _cachedChats = [];
 
   @override
   void initState() {
@@ -65,8 +67,9 @@ class _WorkerChatInboxScreenState
     }
   }
 
-  /// Fetch client avatar once and cache it.
-  Future<void> _prefetchAvatar(String clientId) async {
+  /// Fetches a client's name + photo from the clients collection once,
+  /// caching both so the list never shows a raw uid.
+  Future<void> _prefetchClientInfo(String clientId) async {
     if (_avatarCache.containsKey(clientId) ||
         _fetchingIds.contains(clientId)) return;
     _fetchingIds.add(clientId);
@@ -76,15 +79,19 @@ class _WorkerChatInboxScreenState
           .doc(clientId)
           .get();
       String photo = '';
+      String name  = '';
       if (doc.exists) {
         final info =
             (doc.data()?['personalInfo']) as Map<String, dynamic>? ?? {};
         photo = (info['photoBase64'] as String?) ?? '';
+        name  = (info['fullName']    as String?) ?? '';
       }
       _avatarCache[clientId] = photo;
+      _nameCache[clientId]   = name;
       if (mounted) setState(() {});
     } catch (_) {
       _avatarCache[clientId] = '';
+      _nameCache[clientId]   = '';
       if (mounted) setState(() {});
     } finally {
       _fetchingIds.remove(clientId);
@@ -142,7 +149,7 @@ class _WorkerChatInboxScreenState
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             for (final chat in _cachedChats) {
-              _prefetchAvatar(chat.clientId);
+              _prefetchClientInfo(chat.clientId);
             }
           });
         }
@@ -166,10 +173,13 @@ class _WorkerChatInboxScreenState
   }
 
   Widget _buildChatTile(ChatModel chat, bool isDark) {
-    final isUnread  = !chat.isRead && chat.lastSenderId != _workerId;
-    // From worker's perspective, the other person is always the client
-    final otherName = chat.clientName;
-    final clientId  = chat.clientId;
+    final isUnread = !chat.isRead && chat.lastSenderId != _workerId;
+    final clientId = chat.clientId;
+    // Prefer the live-fetched name from _nameCache (always a real fullName).
+    // Fall back to the Firestore chat doc field only if cache isn't ready yet.
+    final otherName = (_nameCache[clientId]?.isNotEmpty == true)
+        ? _nameCache[clientId]!
+        : chat.clientName;
 
     return InkWell(
       onTap: () {

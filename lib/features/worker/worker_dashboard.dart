@@ -49,6 +49,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
   String _photoBase64     = '';
   int    _selectedFilter  = 0;
 
+  Future<Map<String, dynamic>>? _workerStatsFuture;
+
   List<String> _filterOptions    = [];
   List<String> _morningQuotes    = [];
   List<String> _afternoonQuotes  = [];
@@ -139,7 +141,10 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         }
       }
 
-      if (mounted) ref.read(workerLoadingProvider.notifier).state = false;
+      if (mounted) {
+        setState(() => _workerStatsFuture = _fetchWorkerStats());
+        ref.read(workerLoadingProvider.notifier).state = false;
+      }
     } catch (e) {
       debugPrint('Error loading worker data: $e');
       if (mounted) ref.read(workerLoadingProvider.notifier).state = false;
@@ -390,15 +395,13 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                       Navigator.pushNamed(context, AppRoutes.notifications),
                 ),
                 const SizedBox(height: CSizes.spaceBtwSections),
-                _buildWelcomeSection(context),
-                const SizedBox(height: CSizes.spaceBtwSections),
-                _buildQuickActions(context),
-                const SizedBox(height: CSizes.spaceBtwSections),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: CSizes.defaultSpace),
                   child: _buildOpportunityCard(context),
                 ),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildQuickActions(context),
               ]),
             ),
           ),
@@ -465,7 +468,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
   Widget _buildEarningsCard(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchWorkerStats(),
+      future: _workerStatsFuture ??= _fetchWorkerStats(),
       builder: (context, snap) {
         final isLoading = snap.connectionState == ConnectionState.waiting;
         final s = snap.data ?? {};
@@ -718,7 +721,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
 
   Widget _buildStatsGrid(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchWorkerStats(),
+      future: _workerStatsFuture ??= _fetchWorkerStats(),
       builder: (context, snap) {
         final isLoading = snap.connectionState == ConnectionState.waiting;
         final s = snap.data ??

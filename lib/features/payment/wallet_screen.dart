@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/models/payment_model.dart';
+import '../../core/routes/app_routes.dart';
 import '../../core/services/payment_service.dart';
 import '../../shared/widgets/common_header.dart';
 
@@ -61,7 +62,13 @@ class _WalletScreenState extends State<WalletScreen>
           CommonHeader(
             title:          'Wallet',
             showBackButton: true,
-            onBackPressed:  () => Navigator.pop(context),
+            onBackPressed:  () {
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              } else {
+                Navigator.pushReplacementNamed(context, AppRoutes.clientDashboard);
+              }
+            },
           ),
           if (_loading)
             const Expanded(child: Center(child: CircularProgressIndicator()))

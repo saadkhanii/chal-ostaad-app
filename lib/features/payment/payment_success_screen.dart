@@ -223,6 +223,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                     width:  double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
+                      // Clears entire stack and goes to dashboard
                       onPressed: () => Navigator.pushNamedAndRemoveUntil(
                           context,
                           AppRoutes.clientDashboard,
@@ -243,10 +244,12 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                     width:  double.infinity,
                     height: 50,
                     child: OutlinedButton.icon(
+                      // FIX: keep dashboard in stack, remove everything else
+                      // so wallet's back button returns to dashboard
                       onPressed: () => Navigator.pushNamedAndRemoveUntil(
                           context,
                           AppRoutes.wallet,
-                              (r) => false),
+                              (r) => r.settings.name == AppRoutes.clientDashboard),
                       icon: const Icon(
                           Icons.account_balance_wallet_rounded),
                       label: const Text('View Payment History'),

@@ -38,12 +38,11 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   static const String _role = 'client';
   final ChatService _chatService = ChatService();
 
-  // ── Avatar cache: avoids re-fetching on every stream rebuild ──
-  // Key: other user's Firestore doc id → base64 string or empty string
-  final Map<String, String> _avatarCache = {};
-
-  // Track which IDs are currently being fetched to avoid duplicate calls
-  final Set<String> _fetchingIds = {};
+  // ── Avatar + name caches: keyed by workerId ──────────────────
+  final Map<String, String> _avatarCache  = {}; // workerId → base64 photo
+  final Map<String, String> _nameCache    = {}; // workerId → real fullName
+  final Set<String>         _fetchingIds  = {}; // avatar fetches in-flight
+  final Set<String>         _fetchingNames = {}; // name fetches in-flight
 
   @override
   void initState() {
@@ -65,7 +64,8 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   }
 
   /// Fetches a worker's photoBase64 once and stores it in [_avatarCache].
-  /// Always looks in the 'workers' collection — clients chat with workers.
+  /// Also opportunistically caches the real fullName so _prefetchWorkerName
+  /// can skip a duplicate Firestore read for the same worker.
   Future<void> _prefetchAvatar(String workerId) async {
     if (_avatarCache.containsKey(workerId) || _fetchingIds.contains(workerId)) {
       return;
@@ -80,6 +80,11 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
       if (doc.exists) {
         final info = (doc.data()?['personalInfo']) as Map<String, dynamic>? ?? {};
         photo = (info['photoBase64'] as String?) ?? '';
+        // Cache real name from the same fetch — avoids a second Firestore call
+        if (!_nameCache.containsKey(workerId)) {
+          final name = (info['fullName'] as String?) ?? '';
+          if (name.isNotEmpty) _nameCache[workerId] = name;
+        }
       }
       _avatarCache[workerId] = photo;
       if (mounted) setState(() {});
@@ -88,6 +93,47 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
       if (mounted) setState(() {});
     } finally {
       _fetchingIds.remove(workerId);
+    }
+  }
+
+  /// Returns the best display name for [workerId].
+  /// Uses [storedName] from the chat doc if it looks like a real name;
+  /// falls back to [_nameCache] which is populated from the workers collection.
+  String _resolvedWorkerName(String storedName, String workerId) {
+    final looksValid = storedName.isNotEmpty &&
+        storedName.length < 28 &&
+        !RegExp(r'^[A-Za-z0-9]{20,}$').hasMatch(storedName);
+    if (looksValid) return storedName;
+    return _nameCache[workerId] ?? storedName;
+  }
+
+  /// Fetches the worker's real fullName from the workers collection when
+  /// [storedName] from the chat doc looks like a uid or category string.
+  /// The avatar prefetch already fills [_nameCache] for most cases.
+  Future<void> _prefetchWorkerName(String workerId, String storedName) async {
+    final looksValid = storedName.isNotEmpty &&
+        storedName.length < 28 &&
+        !RegExp(r'^[A-Za-z0-9]{20,}$').hasMatch(storedName);
+    if (looksValid) return; // stored name is already good
+    if (_nameCache.containsKey(workerId) || _fetchingNames.contains(workerId)) return;
+
+    _fetchingNames.add(workerId);
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('workers')
+          .doc(workerId)
+          .get();
+      if (doc.exists) {
+        final info = (doc.data()?['personalInfo']) as Map<String, dynamic>? ?? {};
+        final name = (info['fullName'] as String?) ?? '';
+        if (name.isNotEmpty) {
+          _nameCache[workerId] = name;
+          if (mounted) setState(() {});
+        }
+      }
+    } catch (_) {
+    } finally {
+      _fetchingNames.remove(workerId);
     }
   }
 
@@ -153,10 +199,11 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
               .map((doc) => ChatModel.fromSnapshot(doc))
               .toList();
 
-          // Prefetch worker avatars AFTER the current build frame
+          // Prefetch worker avatars + real names AFTER the current build frame
           WidgetsBinding.instance.addPostFrameCallback((_) {
             for (final chat in _cachedChats) {
               _prefetchAvatar(chat.workerId);
+              _prefetchWorkerName(chat.workerId, chat.workerName);
             }
           });
         }
@@ -182,8 +229,9 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
 
   Widget _buildChatTile(ChatModel chat, bool isDark) {
     final isUnread  = !chat.isRead && chat.lastSenderId != _userId;
-    // Client always talks to the worker — other person is always the worker
-    final otherName = chat.workerName;
+    // _resolvedWorkerName fixes chats where workerName was stored as a
+    // category string or uid before the chat_service patch landed.
+    final otherName = _resolvedWorkerName(chat.workerName, chat.workerId);
     final otherId   = chat.workerId;
 
     return InkWell(

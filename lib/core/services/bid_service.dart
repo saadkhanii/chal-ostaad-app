@@ -24,7 +24,7 @@ class BidService {
           if (workerDoc.exists) {
             final personalInfo =
             workerDoc.data()?['personalInfo'] as Map<String, dynamic>?;
-            workerName = personalInfo?['name'] ?? 'Worker';
+            workerName = personalInfo?['fullName'] ?? 'Worker';
           }
 
           await _notificationService.sendBidPlacedNotification(

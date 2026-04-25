@@ -47,6 +47,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
   String _clientEmail  = '';
   String _photoBase64  = '';
 
+  Future<Map<String, dynamic>>? _clientStatsFuture;
+
   List<String> _morningQuotes   = [];
   List<String> _afternoonQuotes = [];
   List<String> _eveningQuotes   = [];
@@ -140,6 +142,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             _userName    = userName  ?? 'dashboard.client'.tr();
             _clientEmail = userEmail ?? '';
             _photoBase64 = photoBase64;
+            _clientStatsFuture = _fetchClientStats();
           });
           ref.read(clientLoadingProvider.notifier).state = false;
         }
@@ -198,12 +201,13 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
           .toList();
 
       final paid    = payments.where((p) => p.status == 'completed').toList();
-      final pending = payments.where((p) => p.status == 'pending').toList();
+      final pending = payments.where((p) => p.status == 'pending' && p.isCash).toList();
 
-      double totalSpent    = paid.fold(0, (s, p) => s + p.amount);
-      double stripeSpent   = paid.where((p) => p.isStripe).fold(0, (s, p) => s + p.amount);
-      double cashSpent     = paid.where((p) => p.isCash).fold(0, (s, p) => s + p.amount);
-      double pendingAmt    = pending.fold(0, (s, p) => s + p.amount);
+      double totalSpent    = paid.fold(0.0, (s, p) => s + p.amount)
+          + pending.fold(0.0, (s, p) => s + p.amount);
+      double stripeSpent   = paid.where((p) => p.isStripe).fold(0.0, (s, p) => s + p.amount);
+      double cashSpent     = paid.where((p) => p.isCash).fold(0.0, (s, p) => s + p.amount);
+      double pendingAmt    = pending.fold(0.0, (s, p) => s + p.amount);
 
       // Platform fees paid
       double platformFees = 0;
@@ -323,15 +327,13 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                       Navigator.pushNamed(context, AppRoutes.notifications),
                 ),
                 const SizedBox(height: CSizes.spaceBtwSections),
-                _buildWelcomeSection(context),
-                const SizedBox(height: CSizes.spaceBtwSections),
-                _buildQuickActions(context),
-                const SizedBox(height: CSizes.spaceBtwSections),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: CSizes.defaultSpace),
                   child: _buildOpportunityCard(context),
                 ),
+                const SizedBox(height: CSizes.spaceBtwSections),
+                _buildQuickActions(context),
               ]),
             ),
           ),
@@ -392,7 +394,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
   Widget _buildSpendingCard(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchClientStats(),
+      future: _clientStatsFuture ??= _fetchClientStats(),
       builder: (context, snap) {
         final isLoading = snap.connectionState == ConnectionState.waiting;
         final s = snap.data ?? {};
@@ -635,7 +637,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
 
   Widget _buildStatsGrid(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchClientStats(),
+      future: _clientStatsFuture ??= _fetchClientStats(),
       builder: (context, snapshot) {
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final s = snapshot.data ?? {
@@ -728,7 +730,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
 
   Widget _buildJobDistributionChart(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchClientStats(),
+      future: _clientStatsFuture ??= _fetchClientStats(),
       builder: (context, snapshot) {
         final open       = (snapshot.data?['postedJobs']    as int? ?? 0) -
             (snapshot.data?['activeJobs']    as int? ?? 0) -

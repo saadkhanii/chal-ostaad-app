@@ -37,44 +37,37 @@ class _PaymentScreenState extends State<PaymentScreen> {
   // Selected payment method: 'stripe' | 'cash'
   String _selectedMethod = 'stripe';
 
-  // Extra charges loaded from Firestore
+  // ── FIX: stream-based approved extra charges ──────────────────────
+  // Instead of a one-time get() in initState(), we watch the job doc
+  // in real time so the total updates the moment a charge is approved.
+  late final Stream<List<Map<String, dynamic>>> _extrasStream;
+
+  // Snapshot of latest approved charges — kept in state so _pay() can
+  // read the current value without needing to re-await the stream.
   List<Map<String, dynamic>> _approvedExtraCharges = [];
-  bool _loadingExtras = true;
 
   @override
   void initState() {
     super.initState();
-    _loadExtras();
-  }
-
-  Future<void> _loadExtras() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('jobs')
-          .doc(widget.jobId)
-          .get();
+    _extrasStream = FirebaseFirestore.instance
+        .collection('jobs')
+        .doc(widget.jobId)
+        .snapshots()
+        .map((snap) {
       final raw = snap.data()?['extraCharges'] as List<dynamic>? ?? [];
-      final approved = raw
+      return raw
           .map((e) => Map<String, dynamic>.from(e as Map))
           .where((c) => c['status'] == 'approved')
           .toList();
-      if (mounted) {
-        setState(() {
-          _approvedExtraCharges = approved;
-          _loadingExtras = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loadingExtras = false);
-    }
+    });
   }
 
+  // ── Derived totals (computed from latest stream data) ─────────────
   double get _extrasTotal => _approvedExtraCharges.fold<double>(
       0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
 
-  double get _grandTotal => widget.amount + _extrasTotal;
-  double get _platformFee => PaymentService.calcPlatformFee(_grandTotal);
-  double get _usdAmount => _grandTotal / 280;
+  double get _grandTotal   => widget.amount + _extrasTotal;
+  double get _platformFee  => PaymentService.calcPlatformFee(_grandTotal);
 
   Future<void> _pay() async {
     setState(() => _isProcessing = true);
@@ -106,10 +99,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => PaymentSuccessScreen(
-            jobTitle:      widget.jobTitle,
-            amount:        _grandTotal,
-            paymentId:     paymentId,
-            isCash:        _selectedMethod == 'cash',
+            jobTitle:  widget.jobTitle,
+            amount:    _grandTotal,
+            paymentId: paymentId,
+            isCash:    _selectedMethod == 'cash',
           ),
         ),
       );
@@ -148,54 +141,81 @@ class _PaymentScreenState extends State<PaymentScreen> {
             showBackButton: true,
             onBackPressed:  () => Navigator.pop(context),
           ),
+
+          // ── FIX: StreamBuilder replaces the old _loadingExtras flag ──
           Expanded(
-            child: _loadingExtras
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-              padding: const EdgeInsets.all(CSizes.defaultSpace),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Order Summary ────────────────────────
-                  _buildCard(isDark,
-                      child: _buildSummarySection(isDark)),
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _extrasStream,
+              builder: (context, snapshot) {
+                // Keep state in sync so _pay() can read current totals
+                if (snapshot.hasData &&
+                    snapshot.data != _approvedExtraCharges) {
+                  // Schedule a micro-task so we don't setState during build
+                  Future.microtask(() {
+                    if (mounted) {
+                      setState(() =>
+                      _approvedExtraCharges = snapshot.data!);
+                    }
+                  });
+                }
 
-                  const SizedBox(height: CSizes.spaceBtwItems),
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-                  // ── Extra Charges ────────────────────────
-                  if (_approvedExtraCharges.isNotEmpty) ...[
-                    _buildCard(isDark,
-                        child: _buildExtrasSection(isDark)),
-                    const SizedBox(height: CSizes.spaceBtwItems),
-                  ],
+                // Use the snapshot data directly for this build frame
+                final charges   = snapshot.data!;
+                final extrasTot = charges.fold<double>(
+                    0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
+                final grandTot  = widget.amount + extrasTot;
+                final platFee   = PaymentService.calcPlatformFee(grandTot);
 
-                  // ── Payment Method ───────────────────────
-                  _buildCard(isDark,
-                      child: _buildMethodSelector(isDark)),
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(CSizes.defaultSpace),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Order Summary ────────────────────────────
+                      _buildCard(isDark,
+                          child: _buildSummarySection(
+                              isDark, charges, extrasTot, grandTot, platFee)),
 
-                  const SizedBox(height: CSizes.spaceBtwItems),
+                      const SizedBox(height: CSizes.spaceBtwItems),
 
-                  // ── Stripe test hint ─────────────────────
-                  if (_selectedMethod == 'stripe')
-                    _buildStripeHint(),
+                      // ── Approved Extra Charges ───────────────────
+                      if (charges.isNotEmpty) ...[
+                        _buildCard(isDark,
+                            child: _buildExtrasSection(isDark, charges)),
+                        const SizedBox(height: CSizes.spaceBtwItems),
+                      ],
 
-                  if (_selectedMethod == 'cash')
-                    _buildCashInfo(isDark),
+                      // ── Payment Method ───────────────────────────
+                      _buildCard(isDark,
+                          child: _buildMethodSelector(isDark)),
 
-                  const SizedBox(height: CSizes.spaceBtwItems),
+                      const SizedBox(height: CSizes.spaceBtwItems),
 
-                  // ── Security note ────────────────────────
-                  if (_selectedMethod == 'stripe')
-                    _buildSecurityNote(),
+                      // ── Stripe test hint ─────────────────────────
+                      if (_selectedMethod == 'stripe') _buildStripeHint(),
 
-                  const SizedBox(height: CSizes.spaceBtwSections),
+                      if (_selectedMethod == 'cash')
+                        _buildCashInfo(isDark),
 
-                  // ── Pay button ───────────────────────────
-                  _buildPayButton(isDark),
+                      const SizedBox(height: CSizes.spaceBtwItems),
 
-                  const SizedBox(height: CSizes.md),
-                ],
-              ),
+                      // ── Security note ────────────────────────────
+                      if (_selectedMethod == 'stripe') _buildSecurityNote(),
+
+                      const SizedBox(height: CSizes.spaceBtwSections),
+
+                      // ── Pay button ───────────────────────────────
+                      _buildPayButton(isDark, grandTot),
+
+                      const SizedBox(height: CSizes.md),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -203,8 +223,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Order summary ─────────────────────────────────────────────────
-  Widget _buildSummarySection(bool isDark) {
+  // ── Order summary ──────────────────────────────────────────────────
+  Widget _buildSummarySection(
+      bool isDark,
+      List<Map<String, dynamic>> charges,
+      double extrasTot,
+      double grandTot,
+      double platFee,
+      ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -228,27 +254,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           fontSize:   15,
                           color: isDark ? CColors.textWhite : CColors.textPrimary)),
                   Text(widget.jobTitle,
-                      style:     const TextStyle(
+                      style:    const TextStyle(
                           fontSize: 12, color: CColors.darkGrey),
-                      maxLines:  1,
-                      overflow:  TextOverflow.ellipsis),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ],
               )),
         ]),
         const SizedBox(height: CSizes.md),
         Divider(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
         const SizedBox(height: CSizes.sm),
-        _row('Base Bid',        'Rs. ${widget.amount.toStringAsFixed(0)}', isDark),
-        if (_extrasTotal > 0) ...[
+        _row('Base Bid', 'Rs. ${widget.amount.toStringAsFixed(0)}', isDark),
+        // ── FIX: show approved extras total in the summary ────────────
+        if (extrasTot > 0) ...[
           const SizedBox(height: 6),
           _row('Approved Extras',
-              'Rs. ${_extrasTotal.toStringAsFixed(0)}', isDark,
+              'Rs. ${extrasTot.toStringAsFixed(0)}', isDark,
               valueColor: CColors.warning),
         ],
         const SizedBox(height: 6),
-        _row('Platform Fee (${PaymentService.platformFeePercent.toStringAsFixed(0)}%)',
-            'Rs. ${_platformFee.toStringAsFixed(0)}', isDark,
-            valueColor: CColors.error),
+        _row(
+          'Platform Fee (${PaymentService.platformFeePercent.toStringAsFixed(0)}%)',
+          'Rs. ${platFee.toStringAsFixed(0)}',
+          isDark,
+          valueColor: CColors.error,
+        ),
         const SizedBox(height: CSizes.sm),
         Divider(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
         const SizedBox(height: CSizes.sm),
@@ -258,7 +288,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                   color: isDark ? CColors.textWhite : CColors.textPrimary)),
-          Text('Rs. ${_grandTotal.toStringAsFixed(0)}',
+          Text('Rs. ${grandTot.toStringAsFixed(0)}',
               style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize:   20,
@@ -268,8 +298,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Extra charges list ────────────────────────────────────────────
-  Widget _buildExtrasSection(bool isDark) {
+  // ── Approved extra charges list ────────────────────────────────────
+  Widget _buildExtrasSection(
+      bool isDark, List<Map<String, dynamic>> charges) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -284,10 +315,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   color: isDark ? CColors.textWhite : CColors.textPrimary)),
         ]),
         const SizedBox(height: CSizes.sm),
-        ..._approvedExtraCharges.map((c) {
-          final amt  = (c['amount']      as num?)?.toDouble() ?? 0;
-          final desc = c['description']  as String? ?? '';
-          final by   = c['requestedBy']  as String? ?? '';
+        ...charges.map((c) {
+          final amt  = (c['amount']     as num?)?.toDouble() ?? 0;
+          final desc = c['description'] as String? ?? '';
+          final by   = c['requestedBy'] as String? ?? '';
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
@@ -317,7 +348,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Payment method selector ───────────────────────────────────────
+  // ── Payment method selector ────────────────────────────────────────
   Widget _buildMethodSelector(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,17 +398,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
         decoration:  BoxDecoration(
           color:        selected
               ? CColors.primary.withOpacity(0.08)
-              : isDark ? CColors.darkContainer.withOpacity(0.4) : Colors.grey.withOpacity(0.06),
+              : isDark
+              ? CColors.darkContainer.withOpacity(0.4)
+              : Colors.grey.withOpacity(0.06),
           borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
           border:       Border.all(
-            color: selected ? CColors.primary : (isDark ? CColors.darkerGrey : CColors.borderPrimary),
+            color: selected
+                ? CColors.primary
+                : (isDark ? CColors.darkerGrey : CColors.borderPrimary),
             width: selected ? 2 : 1,
           ),
         ),
         child: Column(children: [
           Icon(icon,
-              color:   selected ? CColors.primary : CColors.darkGrey,
-              size:    28),
+              color: selected ? CColors.primary : CColors.darkGrey, size: 28),
           const SizedBox(height: 6),
           Text(label,
               style: TextStyle(
@@ -387,7 +421,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ? CColors.primary
                       : (isDark ? CColors.textWhite : CColors.textPrimary))),
           Text(caption,
-              style:    const TextStyle(
+              style:     const TextStyle(
                   fontSize: 10, color: CColors.darkGrey),
               textAlign: TextAlign.center),
         ]),
@@ -395,7 +429,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Stripe test hint ──────────────────────────────────────────────
+  // ── Stripe test hint ───────────────────────────────────────────────
   Widget _buildStripeHint() {
     return Container(
       width:   double.infinity,
@@ -427,7 +461,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Cash info banner ──────────────────────────────────────────────
+  // ── Cash info banner ───────────────────────────────────────────────
   Widget _buildCashInfo(bool isDark) {
     return Container(
       width:   double.infinity,
@@ -452,13 +486,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
           SizedBox(height: 10),
           _CashStep(num: '1', text: 'Tap "Pay Now" — this records your intent to pay cash.'),
           _CashStep(num: '2', text: 'Hand the cash to the worker after the job is done.'),
-          _CashStep(num: '3', text: 'The worker confirms receipt in their app, and the job is marked complete.'),
+          _CashStep(
+              num:  '3',
+              text: 'The worker confirms receipt in their app, and the job is marked complete.'),
         ],
       ),
     );
   }
 
-  // ── Security note ─────────────────────────────────────────────────
+  // ── Security note ──────────────────────────────────────────────────
   Widget _buildSecurityNote() {
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
@@ -480,11 +516,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Pay button ────────────────────────────────────────────────────
-  Widget _buildPayButton(bool isDark) {
+  // ── Pay button ─────────────────────────────────────────────────────
+  Widget _buildPayButton(bool isDark, double grandTot) {
     final label = _selectedMethod == 'cash'
-        ? 'Confirm Cash Payment — Rs. ${_grandTotal.toStringAsFixed(0)}'
-        : 'Pay Now — Rs. ${_grandTotal.toStringAsFixed(0)}';
+        ? 'Confirm Cash Payment — Rs. ${grandTot.toStringAsFixed(0)}'
+        : 'Pay Now — Rs. ${grandTot.toStringAsFixed(0)}';
 
     return SizedBox(
       width:  double.infinity,
@@ -522,7 +558,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────
   Widget _buildCard(bool isDark, {required Widget child}) {
     return Container(
       width:   double.infinity,
@@ -582,7 +618,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 }
 
-// ── Cash step helper ──────────────────────────────────────────────────
+// ── Cash step helper ───────────────────────────────────────────────────
 class _CashStep extends StatelessWidget {
   final String num;
   final String text;
@@ -596,10 +632,10 @@ class _CashStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width:       22,
-            height:      22,
-            margin:      const EdgeInsets.only(right: 8, top: 1),
-            decoration:  const BoxDecoration(
+            width:      22,
+            height:     22,
+            margin:     const EdgeInsets.only(right: 8, top: 1),
+            decoration: const BoxDecoration(
                 color:  CColors.info, shape: BoxShape.circle),
             child: Center(
               child: Text(num,

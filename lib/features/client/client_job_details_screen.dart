@@ -64,6 +64,11 @@ class _ClientJobDetailsScreenState
   // Extra charges notification
   bool _hasPendingExtras = false;
 
+  // ── FIX: track approved extras total from the live job stream ──────
+  // Used to show the correct total on the Pay button before opening
+  // PaymentScreen (which streams its own copy independently).
+  double _approvedExtrasTotal = 0.0;
+
   StreamSubscription<DocumentSnapshot>? _jobSub;
 
   @override
@@ -94,14 +99,25 @@ class _ClientJobDetailsScreenState
       final request  = data['progressRequest'] as Map<String, dynamic>?;
       final reviewed = data['reviewSubmitted']  as bool? ?? false;
       final rawExtras = data['extraCharges']    as List<dynamic>? ?? [];
-      final hasPending = rawExtras
+
+      final charges = rawExtras
           .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final hasPending = charges
           .any((c) => c['status'] == 'pending' && c['requestedBy'] != 'client');
+
+      // ── FIX: sum only the approved charges ───────────────────────
+      final approvedTotal = charges
+          .where((c) => c['status'] == 'approved')
+          .fold<double>(0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
+
       setState(() {
         _jobStatus              = status;
         _pendingProgressRequest = request;
         _reviewSubmitted        = reviewed;
         _hasPendingExtras       = hasPending;
+        _approvedExtrasTotal    = approvedTotal; // ← FIX
       });
     });
   }
@@ -136,7 +152,7 @@ class _ClientJobDetailsScreenState
     } catch (_) {}
   }
 
-  // ── Accept bid — status auto-moves to in-progress ─────────────────
+  // ── Accept bid — status auto-moves to in-progress ──────────────────
   Future<void> _acceptBid(BidModel bid) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -162,8 +178,6 @@ class _ClientJobDetailsScreenState
     if (confirmed != true) return;
     setState(() => _acceptingBidId = bid.id);
     try {
-      // acceptBid() in BidService handles: bid accepted, others rejected,
-      // job → in-progress, chat creation, notification — all in one call.
       await _bidService.acceptBid(bid.id!);
 
       await _chatService.createOrGetChat(
@@ -199,7 +213,7 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Cancel job (either party — client side) ───────────────────────
+  // ── Cancel job (client side) ────────────────────────────────────────
   Future<void> _cancelJob() async {
     final reasonController = TextEditingController();
     final confirmed = await showDialog<bool>(
@@ -267,7 +281,7 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Delete job (client only, only when open) ──────────────────────
+  // ── Delete job (client only, only when open) ────────────────────────
   Future<void> _deleteJob() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -304,7 +318,7 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Respond to worker's progress/completion request ───────────────
+  // ── Respond to worker's progress/completion request ─────────────────
   Future<void> _respondToProgressRequest(bool accepted) async {
     if (_acceptedWorkerId == null) return;
     setState(() => _isRespondingToProgress = true);
@@ -341,7 +355,7 @@ class _ClientJobDetailsScreenState
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────
+  // ── Build ───────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -426,7 +440,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Job info card ─────────────────────────────────────────────────
+  // ── Job info card ───────────────────────────────────────────────────
   Widget _buildJobInfoCard(bool isDark, bool isUrdu) {
     final statusColor = _statusColor(_jobStatus);
     final statusText  = _statusText(_jobStatus);
@@ -443,7 +457,6 @@ class _ClientJobDetailsScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Status + payment badges
           Wrap(spacing: 8, children: [
             _badge(statusText, statusColor),
             if (_jobPaid)
@@ -467,7 +480,7 @@ class _ClientJobDetailsScreenState
                   height: 1.5,
                   fontSize: isUrdu ? 16 : 14)),
 
-          // ── Job Media (photos + videos) ──────────────────────
+          // ── Job Media ──────────────────────────────────────────
           if (widget.job.hasMedia) ...[
             const SizedBox(height: CSizes.spaceBtwItems),
             JobMediaGallery(
@@ -476,7 +489,6 @@ class _ClientJobDetailsScreenState
               mediaBase64: widget.job.mediaBase64,
             ),
           ],
-          // ──────────────────────────────────────────────────────
 
           const SizedBox(height: 16),
           Row(children: [
@@ -504,7 +516,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Status lifecycle banner ───────────────────────────────────────
+  // ── Status lifecycle banner ─────────────────────────────────────────
   Widget _buildStatusBanner(bool isDark, bool isUrdu) {
     final steps  = ['open', 'in-progress', 'completed'];
     final labels = ['Open', 'In Progress', 'Completed'];
@@ -543,7 +555,6 @@ class _ClientJobDetailsScreenState
         mainAxisAlignment: MainAxisAlignment.center,
         children: List.generate(steps.length * 2 - 1, (i) {
           if (i.isOdd) {
-            // Connector
             final leftDone = (i ~/ 2) < idx;
             return Expanded(
               child: Container(
@@ -585,7 +596,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Progress request banner ───────────────────────────────────────
+  // ── Progress request banner ─────────────────────────────────────────
   Widget _buildProgressRequestBanner(bool isDark, bool isUrdu) {
     final note = _pendingProgressRequest?['note'] as String?;
     return Container(
@@ -652,7 +663,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Extra charges card ────────────────────────────────────────────
+  // ── Extra charges card ──────────────────────────────────────────────
   Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
@@ -690,10 +701,9 @@ class _ClientJobDetailsScreenState
                         ? CColors.textWhite
                         : CColors.textPrimary)),
               ),
-              Text(
+              const Text(
                 'View, approve or propose additional charges',
-                style: const TextStyle(
-                    fontSize: 12, color: CColors.darkGrey),
+                style: TextStyle(fontSize: 12, color: CColors.darkGrey),
               ),
             ],
           ),
@@ -710,7 +720,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Mini map ──────────────────────────────────────────────────────
+  // ── Mini map ────────────────────────────────────────────────────────
   Widget _buildMiniMap(bool isDark) {
     final ll = LatLng(widget.job.latitude!, widget.job.longitude!);
     return Container(
@@ -745,8 +755,8 @@ class _ClientJobDetailsScreenState
                 );
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Could not open maps: $e')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not open maps: $e')));
                 }
               }
             },
@@ -755,8 +765,7 @@ class _ClientJobDetailsScreenState
             style: ElevatedButton.styleFrom(
               backgroundColor: CColors.primary,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
             ),
@@ -766,7 +775,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Bids list ─────────────────────────────────────────────────────
+  // ── Bids list ───────────────────────────────────────────────────────
   Widget _buildBidsList(bool isDark, bool isUrdu) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -808,13 +817,15 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Bid card ──────────────────────────────────────────────────────
+  // ── Bid card ────────────────────────────────────────────────────────
   Widget _buildBidCard(BidModel bid, bool isDark, bool isUrdu) {
     final isAccepted  = bid.status == 'accepted';
     final isRejected  = bid.status == 'rejected';
     final isAccepting = _acceptingBidId == bid.id;
-    final canAccept   =
-        _jobStatus == 'open' && !isRejected && !isAccepted;
+    final canAccept   = _jobStatus == 'open' && !isRejected && !isAccepted;
+
+    // ── FIX: include approved extras in the displayed Pay total ───────
+    final displayTotal = bid.amount + _approvedExtrasTotal;
 
     return Card(
       margin: const EdgeInsets.only(bottom: CSizes.sm),
@@ -848,8 +859,7 @@ class _ClientJobDetailsScreenState
                     builder: (_) =>
                         WorkerBidProfileScreen(workerId: bid.workerId)),
               ),
-              borderRadius:
-              BorderRadius.circular(CSizes.borderRadiusMd),
+              borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 8),
@@ -918,8 +928,7 @@ class _ClientJobDetailsScreenState
                     borderRadius: BorderRadius.circular(
                         CSizes.borderRadiusMd),
                     border: Border.all(
-                        color:
-                        CColors.success.withOpacity(0.4)),
+                        color: CColors.success.withOpacity(0.4)),
                   ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -939,8 +948,12 @@ class _ClientJobDetailsScreenState
                   icon:  const Icon(
                       Icons.account_balance_wallet_rounded,
                       size: 18),
+                  // ── FIX: show total incl. approved extras ─────
                   label: Text(
-                    'Pay Rs. ${bid.amount.toStringAsFixed(0)}',
+                    _approvedExtrasTotal > 0
+                        ? 'Pay Rs. ${displayTotal.toStringAsFixed(0)}'
+                        ' (incl. extras)'
+                        : 'Pay Rs. ${bid.amount.toStringAsFixed(0)}',
                     style: const TextStyle(
                         fontSize:   14,
                         fontWeight: FontWeight.bold),
@@ -1017,11 +1030,10 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Action buttons (cancel / delete) ─────────────────────────────
+  // ── Action buttons (cancel / delete) ──────────────────────────────
   Widget _buildActionButtons(bool isDark, bool isUrdu) {
     final canDelete = _jobStatus == 'open';
-    final canCancel =
-        _jobStatus == 'open' || _jobStatus == 'in-progress';
+    final canCancel = _jobStatus == 'open' || _jobStatus == 'in-progress';
 
     if (!canDelete && !canCancel) return const SizedBox.shrink();
 
@@ -1077,7 +1089,7 @@ class _ClientJobDetailsScreenState
     ]);
   }
 
-  // ── Raise dispute button ──────────────────────────────────────────
+  // ── Raise dispute button ───────────────────────────────────────────
   Widget _buildRaiseDisputeButton(bool isDark, bool isUrdu) {
     return SizedBox(
       width: double.infinity,
@@ -1112,7 +1124,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────
   Widget _badge(String label, Color color,
       {IconData? icon, bool small = false}) {
     return Container(
@@ -1231,6 +1243,8 @@ class _ClientJobDetailsScreenState
           jobTitle: widget.job.title,
           clientId: _clientId,
           workerId: bid.workerId,
+          // Pass base bid amount only — PaymentScreen streams
+          // its own approved extras from Firestore in real time.
           amount:   bid.amount,
         ),
       ),
