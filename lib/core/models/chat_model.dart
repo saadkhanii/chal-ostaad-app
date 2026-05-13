@@ -62,13 +62,12 @@ class ChatModel {
     'createdAt':       createdAt,
   };
 
-  // The other person's name from current user's perspective
   String otherPersonName(String currentUserId) =>
       currentUserId == clientId ? workerName : clientName;
 }
 
 // ── Message type enum ──────────────────────────────────────────────
-enum MessageType { text, voice }
+enum MessageType { text, voice, image, video }
 
 class MessageModel {
   final String id;
@@ -76,9 +75,14 @@ class MessageModel {
   final String text;
   final Timestamp timestamp;
   final bool isRead;
-  final MessageType type;       // text or voice
-  final String? audioBase64;    // base64-encoded audio for voice messages
-  final int? audioDurationMs;   // duration in milliseconds
+  final MessageType type;
+  // Voice: audio is small enough (~20–200 KB) to stay as base64 in Firestore
+  final String? audioBase64;
+  final int?    audioDurationMs;
+  // Image / video: Cloudinary URL — never stored as base64
+  final String? mediaUrl;
+  final bool edited;
+  final List<String> deletedFor;   // userIds who soft-deleted this message
 
   MessageModel({
     required this.id,
@@ -89,22 +93,39 @@ class MessageModel {
     this.type = MessageType.text,
     this.audioBase64,
     this.audioDurationMs,
+    this.mediaUrl,
+    this.edited = false,
+    this.deletedFor = const [],
   });
 
+  bool isDeletedFor(String userId) => deletedFor.contains(userId);
+
   bool get isVoice => type == MessageType.voice;
+  bool get isImage => type == MessageType.image;
+  bool get isVideo => type == MessageType.video;
 
   factory MessageModel.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+    final data    = doc.data()!;
     final typeStr = data['type'] as String? ?? 'text';
+    MessageType msgType;
+    switch (typeStr) {
+      case 'voice': msgType = MessageType.voice; break;
+      case 'image': msgType = MessageType.image; break;
+      case 'video': msgType = MessageType.video; break;
+      default:      msgType = MessageType.text;
+    }
     return MessageModel(
-      id:             doc.id,
-      senderId:       data['senderId']       ?? '',
-      text:           data['text']           ?? '',
-      timestamp:      data['timestamp']      ?? Timestamp.now(),
-      isRead:         data['isRead']         ?? false,
-      type:           typeStr == 'voice' ? MessageType.voice : MessageType.text,
-      audioBase64:    data['audioBase64']    as String?,
+      id:              doc.id,
+      senderId:        data['senderId']        ?? '',
+      text:            data['text']            ?? '',
+      timestamp:       data['timestamp']       ?? Timestamp.now(),
+      isRead:          data['isRead']          ?? false,
+      type:            msgType,
+      audioBase64:     data['audioBase64']     as String?,
       audioDurationMs: data['audioDurationMs'] as int?,
+      mediaUrl:        data['mediaUrl']        as String?,
+      edited:          data['edited']          as bool? ?? false,
+      deletedFor:      List<String>.from(data['deletedFor'] as List? ?? []),
     );
   }
 
@@ -113,8 +134,11 @@ class MessageModel {
     'text':            text,
     'timestamp':       timestamp,
     'isRead':          isRead,
-    'type':            type == MessageType.voice ? 'voice' : 'text',
-    if (audioBase64 != null)    'audioBase64':    audioBase64,
+    'type':            type.name,
+    if (audioBase64     != null) 'audioBase64':     audioBase64,
     if (audioDurationMs != null) 'audioDurationMs': audioDurationMs,
+    if (mediaUrl        != null) 'mediaUrl':        mediaUrl,
+    if (edited)                  'edited':          true,
+    if (deletedFor.isNotEmpty)   'deletedFor':      deletedFor,
   };
 }

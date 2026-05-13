@@ -18,7 +18,6 @@ class ChatInboxScreen extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final bool showAppBar;
   /// If provided, skips SharedPreferences lookup entirely.
-  /// Pass this from the client dashboard which already knows the clientId.
   final String? userId;
 
   const ChatInboxScreen({
@@ -34,15 +33,15 @@ class ChatInboxScreen extends ConsumerStatefulWidget {
 
 class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   String _userId = '';
-  // Role is always 'client' — workers use WorkerChatInboxScreen instead.
   static const String _role = 'client';
   final ChatService _chatService = ChatService();
 
-  // ── Avatar + name caches: keyed by workerId ──────────────────
-  final Map<String, String> _avatarCache  = {}; // workerId → base64 photo
-  final Map<String, String> _nameCache    = {}; // workerId → real fullName
-  final Set<String>         _fetchingIds  = {}; // avatar fetches in-flight
-  final Set<String>         _fetchingNames = {}; // name fetches in-flight
+  final Map<String, String> _avatarCache   = {};
+  final Map<String, String> _nameCache     = {};
+  final Set<String>         _fetchingIds   = {};
+  final Set<String>         _fetchingNames = {};
+
+  List<ChatModel> _cachedChats = [];
 
   @override
   void initState() {
@@ -51,25 +50,18 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
   }
 
   Future<void> _loadUserInfo() async {
-    // Use passed-in userId directly if available — no prefs hit needed.
     if (widget.userId != null && widget.userId!.isNotEmpty) {
       if (mounted) setState(() => _userId = widget.userId!);
       return;
     }
-    // Fallback: read from SharedPreferences (set during login).
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() => _userId = prefs.getString('user_uid') ?? '');
     }
   }
 
-  /// Fetches a worker's photoBase64 once and stores it in [_avatarCache].
-  /// Also opportunistically caches the real fullName so _prefetchWorkerName
-  /// can skip a duplicate Firestore read for the same worker.
   Future<void> _prefetchAvatar(String workerId) async {
-    if (_avatarCache.containsKey(workerId) || _fetchingIds.contains(workerId)) {
-      return;
-    }
+    if (_avatarCache.containsKey(workerId) || _fetchingIds.contains(workerId)) return;
     _fetchingIds.add(workerId);
     try {
       final doc = await FirebaseFirestore.instance
@@ -80,7 +72,6 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
       if (doc.exists) {
         final info = (doc.data()?['personalInfo']) as Map<String, dynamic>? ?? {};
         photo = (info['photoBase64'] as String?) ?? '';
-        // Cache real name from the same fetch — avoids a second Firestore call
         if (!_nameCache.containsKey(workerId)) {
           final name = (info['fullName'] as String?) ?? '';
           if (name.isNotEmpty) _nameCache[workerId] = name;
@@ -96,9 +87,6 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     }
   }
 
-  /// Returns the best display name for [workerId].
-  /// Uses [storedName] from the chat doc if it looks like a real name;
-  /// falls back to [_nameCache] which is populated from the workers collection.
   String _resolvedWorkerName(String storedName, String workerId) {
     final looksValid = storedName.isNotEmpty &&
         storedName.length < 28 &&
@@ -107,16 +95,12 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     return _nameCache[workerId] ?? storedName;
   }
 
-  /// Fetches the worker's real fullName from the workers collection when
-  /// [storedName] from the chat doc looks like a uid or category string.
-  /// The avatar prefetch already fills [_nameCache] for most cases.
   Future<void> _prefetchWorkerName(String workerId, String storedName) async {
     final looksValid = storedName.isNotEmpty &&
         storedName.length < 28 &&
         !RegExp(r'^[A-Za-z0-9]{20,}$').hasMatch(storedName);
-    if (looksValid) return; // stored name is already good
+    if (looksValid) return;
     if (_nameCache.containsKey(workerId) || _fetchingNames.contains(workerId)) return;
-
     _fetchingNames.add(workerId);
     try {
       final doc = await FirebaseFirestore.instance
@@ -137,18 +121,92 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     }
   }
 
+  // ── Delete chat with confirmation ──────────────────────────────────
+  Future<void> _confirmDeleteChat(ChatModel chat, String otherName) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: isDark ? CColors.darkContainer : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, color: CColors.error, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'chat.delete_chat'.tr(),
+              style: TextStyle(
+                fontSize:   17,
+                fontWeight: FontWeight.bold,
+                color:      isDark ? CColors.white : CColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'chat.delete_chat_confirm'.tr(args: [otherName]),
+          style: TextStyle(
+            fontSize: 14,
+            color:    isDark ? CColors.grey : CColors.darkGrey,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'common.cancel'.tr(),
+              style: const TextStyle(color: CColors.darkGrey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CColors.error,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              'chat.delete'.tr(),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _chatService.deleteChat(chat.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('chat.chat_deleted'.tr()),
+            backgroundColor: CColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:         Text('Failed to delete chat: $e'),
+            backgroundColor: CColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // When embedded inside the dashboard IndexedStack (showAppBar == false),
-    // do NOT wrap in a Scaffold — the dashboard already provides one.
-    // A nested Scaffold intercepts scroll notifications and prevents
-    // CurvedNavBar from reappearing after hiding on scroll.
     final content = Column(
       children: [
         CommonHeader(
-          title:          'chat.inbox'.tr(),
+          title: 'chat.inbox'.tr(),
           showBackButton: widget.showAppBar,
           onBackPressed:  widget.showAppBar
               ? () => Navigator.pop(context)
@@ -175,31 +233,21 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     );
   }
 
-  // Holds the last known good list so we never flash empty on a re-subscription
-  List<ChatModel> _cachedChats = [];
-
   Widget _buildChatList(bool isDark) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      // FIX: ValueKey forces the StreamBuilder to tear down and resubscribe
-      // whenever _userId changes (e.g. after _loadUserInfo() completes async).
-      // Without this, the stream was permanently bound to the empty-string
-      // query from the very first build, so workers never saw their chats.
       key: ValueKey(_userId),
       stream: _chatService.chatsStream(userId: _userId, role: _role),
       builder: (context, snapshot) {
-        // Only show spinner on the very first load
         if (snapshot.connectionState == ConnectionState.waiting &&
             _cachedChats.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        // Update cache whenever we get real data
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           _cachedChats = snapshot.data!.docs
               .map((doc) => ChatModel.fromSnapshot(doc))
               .toList();
 
-          // Prefetch worker avatars + real names AFTER the current build frame
           WidgetsBinding.instance.addPostFrameCallback((_) {
             for (final chat in _cachedChats) {
               _prefetchAvatar(chat.workerId);
@@ -208,7 +256,6 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
           });
         }
 
-        // Use cached list — never drops to empty while cache has data
         if (_cachedChats.isEmpty) return _buildEmpty(isDark);
 
         return ListView.separated(
@@ -229,8 +276,6 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
 
   Widget _buildChatTile(ChatModel chat, bool isDark) {
     final isUnread  = !chat.isRead && chat.lastSenderId != _userId;
-    // _resolvedWorkerName fixes chats where workerName was stored as a
-    // category string or uid before the chat_service patch landed.
     final otherName = _resolvedWorkerName(chat.workerName, chat.workerId);
     final otherId   = chat.workerId;
 
@@ -245,11 +290,12 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
               otherName:     otherName,
               currentUserId: _userId,
               otherUserId:   otherId,
-              otherRole:     'worker', // client always chats with a worker
+              otherRole:     'worker',
             ),
           ),
         );
       },
+      onLongPress: () => _confirmDeleteChat(chat, otherName),
       child: Container(
         color: isUnread
             ? CColors.primary.withOpacity(0.05)
@@ -258,11 +304,8 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
             horizontal: CSizes.defaultSpace, vertical: 12),
         child: Row(
           children: [
-            // Avatar — built from cache, no FutureBuilder inside list
             _buildAvatar(otherName, otherId, isDark),
             const SizedBox(width: CSizes.md),
-
-            // Chat info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,7 +346,7 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
                   const SizedBox(height: 2),
                   Text(
                     chat.jobTitle,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize:   11,
                       color:      CColors.primary,
                       fontWeight: FontWeight.w500,
@@ -348,8 +391,6 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
                 ],
               ),
             ),
-
-            // Unread dot
             if (isUnread)
               Container(
                 width:  10,
@@ -366,10 +407,8 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
     );
   }
 
-  /// Builds avatar from [_avatarCache] — no async call, no FutureBuilder.
-  /// Shows initials placeholder while the photo is still loading.
   Widget _buildAvatar(String name, String otherId, bool isDark) {
-    final cached = _avatarCache[otherId]; // null = still loading, '' = no photo
+    final cached = _avatarCache[otherId];
 
     ImageProvider? img;
     if (cached != null && cached.isNotEmpty) {

@@ -19,7 +19,6 @@ class WorkerChatInboxScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
 
   /// Pass workerId directly from the dashboard (preferred).
-  /// If null, falls back to SharedPreferences.
   final String? workerId;
 
   const WorkerChatInboxScreen({
@@ -41,7 +40,6 @@ class _WorkerChatInboxScreenState
 
   final ChatService _chatService = ChatService();
   final Map<String, String> _avatarCache = {};
-  // Key: clientId → real display name fetched live from clients collection
   final Map<String, String> _nameCache   = {};
   final Set<String>         _fetchingIds = {};
   List<ChatModel>           _cachedChats = [];
@@ -53,7 +51,6 @@ class _WorkerChatInboxScreenState
   }
 
   Future<void> _loadWorkerInfo() async {
-    // Use passed-in workerId if available — no prefs hit needed.
     if (widget.workerId != null && widget.workerId!.isNotEmpty) {
       if (mounted) setState(() => _workerId = widget.workerId!);
       return;
@@ -67,8 +64,6 @@ class _WorkerChatInboxScreenState
     }
   }
 
-  /// Fetches a client's name + photo from the clients collection once,
-  /// caching both so the list never shows a raw uid.
   Future<void> _prefetchClientInfo(String clientId) async {
     if (_avatarCache.containsKey(clientId) ||
         _fetchingIds.contains(clientId)) return;
@@ -98,14 +93,88 @@ class _WorkerChatInboxScreenState
     }
   }
 
+  // ── Delete chat with confirmation ──────────────────────────────────
+  Future<void> _confirmDeleteChat(ChatModel chat, String otherName) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: isDark ? CColors.darkContainer : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, color: CColors.error, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'chat.delete_chat'.tr(),
+              style: TextStyle(
+                fontSize:   17,
+                fontWeight: FontWeight.bold,
+                color:      isDark ? CColors.white : CColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'chat.delete_chat_confirm'.tr(args: [otherName]),
+          style: TextStyle(
+            fontSize: 14,
+            color:    isDark ? CColors.grey : CColors.darkGrey,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'common.cancel'.tr(),
+              style: const TextStyle(color: CColors.darkGrey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CColors.error,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              'chat.delete'.tr(),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _chatService.deleteChat(chat.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('chat.chat_deleted'.tr()),
+            backgroundColor: CColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:         Text('Failed to delete chat: $e'),
+            backgroundColor: CColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Always use Scaffold — even when embedded in the dashboard.
-    // The key fix for nav bar disappearing is NotificationListener below,
-    // which re-shows the nav bar whenever the user scrolls UP or when
-    // the list is too short to scroll (overscroll at top).
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(
@@ -128,12 +197,10 @@ class _WorkerChatInboxScreenState
 
   Widget _buildChatList(bool isDark) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      // ValueKey ensures a fresh Firestore subscription whenever
-      // _workerId changes (async load from prefs on first open).
       key: ValueKey(_workerId),
       stream: FirebaseFirestore.instance
           .collection('chats')
-          .where('workerId', isEqualTo: _workerId) // always worker field
+          .where('workerId', isEqualTo: _workerId)
           .orderBy('lastMessageTime', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
@@ -175,8 +242,6 @@ class _WorkerChatInboxScreenState
   Widget _buildChatTile(ChatModel chat, bool isDark) {
     final isUnread = !chat.isRead && chat.lastSenderId != _workerId;
     final clientId = chat.clientId;
-    // Prefer the live-fetched name from _nameCache (always a real fullName).
-    // Fall back to the Firestore chat doc field only if cache isn't ready yet.
     final otherName = (_nameCache[clientId]?.isNotEmpty == true)
         ? _nameCache[clientId]!
         : chat.clientName;
@@ -197,6 +262,7 @@ class _WorkerChatInboxScreenState
           ),
         );
       },
+      onLongPress: () => _confirmDeleteChat(chat, otherName),
       child: Container(
         color: isUnread
             ? CColors.primary.withOpacity(0.05)

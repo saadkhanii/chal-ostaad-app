@@ -437,7 +437,14 @@
     "type_message": "پیغام لکھیں...",
     "no_messages": "کوئی پیغام نہیں",
     "open_chat": "چیٹ کھولیں",
-    "chat": "چیٹ"
+    "chat": "چیٹ",
+    "delete_chat":         "چیٹ حذف کریں",
+    "delete_chat_confirm": "{0} کے ساتھ گفتگو حذف کریں؟ یہ واپس نہیں ہو سکتا۔",
+    "delete":              "حذف کریں",
+    "chat_deleted":        "چیٹ حذف ہو گئی",
+    "photo_from_gallery":  "گیلری سے تصویر",
+    "take_photo":          "تصویر کھینچیں",
+    "video_from_gallery":  "گیلری سے ویڈیو"
   },
   "nav": {
     "notifications": "اطلاعات"

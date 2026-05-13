@@ -437,7 +437,14 @@
     "type_message": "Type a message...",
     "no_messages": "No messages",
     "open_chat": "Open Chat",
-    "chat": "Chat"
+    "chat": "Chat",
+    "delete_chat": "Delete Chat",
+    "delete_chat_confirm": "Delete your conversation with {0}? This cannot be undone.",
+    "delete":              "Delete",
+    "chat_deleted":        "Chat deleted",
+    "photo_from_gallery":  "Photo from Gallery",
+    "take_photo":          "Take a Photo",
+    "video_from_gallery":  "Video from Gallery"
   },
   "nav": {
     "notifications": "Notifications"
