@@ -48,7 +48,8 @@ dependencies:
   fl_chart: ^0.66.0
 
   # ── NEW: Media (Cloudinary upload + playback) ─────────────────────
-  video_player: ^2.9.2              # video playback in gallery viewer
+  better_player_plus: ^1.1.1
+  video_compress: ^3.1.2
   cached_network_image: ^3.4.1      # fast image loading from Cloudinary URLs
   # ─────────────────────────────────────────────────────────────────
 

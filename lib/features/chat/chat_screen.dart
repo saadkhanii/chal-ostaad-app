@@ -11,7 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'dart:io';
 
-import 'package:video_player/video_player.dart';
+import 'package:better_player_plus/better_player_plus.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -72,9 +72,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, Duration>             _progressMap   = {};
   final Map<String, Duration>             _durationMap   = {};
 
-  // ── Pre-initialized video controllers (keyed by message id) ──────
-  final Map<String, VideoPlayerController> _videoControllers = {};
-
   @override
   void initState() {
     super.initState();
@@ -90,7 +87,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _recordingTimer?.cancel();
     _recorder.dispose();
     for (final p in _players.values) p.dispose();
-    for (final v in _videoControllers.values) v.dispose();
     super.dispose();
   }
 
@@ -1099,9 +1095,6 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     } else if (msg.isVideo && msg.mediaUrl != null) {
-      // Pre-initialize controller in background as soon as bubble is built
-      _prewarmVideo(msg.id, msg.mediaUrl!);
-
       final thumbUrl = msg.mediaUrl!
           .replaceFirst('/upload/', '/upload/so_0,w_440,h_320,c_fill/')
           .replaceAll(RegExp(r'\.(mp4|mov|avi|webm)$', caseSensitive: false), '.jpg');
@@ -1197,25 +1190,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _openVideoUrl(String url, String msgId) {
-    // Controller is pre-initialized — dialog opens and plays immediately
-    final controller = _videoControllers[msgId];
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (_) => _VideoPlayerDialog(url: url, prewarmed: controller),
+      builder: (_) => _BetterVideoDialog(url: url),
     );
-  }
-
-  // Called as each video message scrolls into the list — initializes the
-  // controller in the background so it's ready before the user taps.
-  void _prewarmVideo(String msgId, String url) {
-    if (_videoControllers.containsKey(msgId)) return; // already warming
-    final ctrl = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    );
-    _videoControllers[msgId] = ctrl;
-    ctrl.initialize().catchError((_) {}); // silent — dialog handles errors
   }
 
   // ── Voice bubble ──────────────────────────────────────────────────
@@ -1658,65 +1637,84 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ── Inline video player dialog ─────────────────────────────────────────────
-class _VideoPlayerDialog extends StatefulWidget {
+// ── Inline video player dialog (better_player) ────────────────────────────
+class _BetterVideoDialog extends StatefulWidget {
   final String url;
-  final VideoPlayerController? prewarmed; // already initialized by the screen
-  const _VideoPlayerDialog({required this.url, this.prewarmed});
+  const _BetterVideoDialog({required this.url});
 
   @override
-  State<_VideoPlayerDialog> createState() => _VideoPlayerDialogState();
+  State<_BetterVideoDialog> createState() => _BetterVideoDialogState();
 }
 
-class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
-  late VideoPlayerController _controller;
-  bool _initialized = false;
-  bool _hasError    = false;
-  bool _ownsController = false; // true if we created it ourselves (must dispose)
+class _BetterVideoDialogState extends State<_BetterVideoDialog> {
+  late BetterPlayerController _controller;
 
   @override
   void initState() {
     super.initState();
-    if (widget.prewarmed != null && widget.prewarmed!.value.isInitialized) {
-      // Already ready — play immediately
-      _controller  = widget.prewarmed!;
-      _initialized = true;
-      _controller.seekTo(Duration.zero).then((_) => _controller.play());
-    } else if (widget.prewarmed != null) {
-      // Warming in progress — reuse but wait for it
-      _controller      = widget.prewarmed!;
-      _ownsController  = false;
-      _controller.initialize().then((_) {
-        if (mounted) {
-          setState(() => _initialized = true);
-          _controller.play();
-        }
-      }).catchError((_) {
-        if (mounted) setState(() => _hasError = true);
-      });
-    } else {
-      // Fallback: create fresh controller
-      _ownsController = true;
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.url),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      )..initialize().then((_) {
-        if (mounted) {
-          setState(() => _initialized = true);
-          _controller.play();
-        }
-      }).catchError((_) {
-        if (mounted) setState(() => _hasError = true);
-      });
-    }
-    _controller.setLooping(false);
+
+    final dataSource = BetterPlayerDataSource(
+      BetterPlayerDataSourceType.network,
+      widget.url,
+      cacheConfiguration: const BetterPlayerCacheConfiguration(
+        useCache:              true,
+        maxCacheSize:          100 * 1024 * 1024,  // 100 MB disk cache
+        maxCacheFileSize:      20  * 1024 * 1024,  // 20 MB per file
+        preCacheSize:          5   * 1024 * 1024,  // pre-buffer 5 MB immediately
+      ),
+      bufferingConfiguration: const BetterPlayerBufferingConfiguration(
+        minBufferMs:               5000,   // start playing after 5 s buffered
+        maxBufferMs:               30000,  // keep up to 30 s ahead
+        bufferForPlaybackMs:       2500,   // resume after rebuffer at 2.5 s
+        bufferForPlaybackAfterRebufferMs: 5000,
+      ),
+      notificationConfiguration: const BetterPlayerNotificationConfiguration(
+        showNotification: false,
+      ),
+    );
+
+    _controller = BetterPlayerController(
+      BetterPlayerConfiguration(
+        autoPlay:          true,
+        looping:           false,
+        aspectRatio:       16 / 9,
+        fit:               BoxFit.contain,
+        controlsConfiguration: BetterPlayerControlsConfiguration(
+          enableFullscreen:    true,
+          enableSkips:         false,
+          enableMute:          true,
+          enablePlayPause:     true,
+          enableProgressBar:   true,
+          progressBarPlayedColor:    CColors.primary,
+          progressBarBufferedColor:  Colors.white30,
+          progressBarBackgroundColor: Colors.white12,
+          iconsColor:          Colors.white,
+          controlBarColor:     Colors.black45,
+          loadingColor:        CColors.primary,
+        ),
+        errorBuilder: (context, errorMessage) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  color: Colors.white54, size: 56),
+              const SizedBox(height: 12),
+              Text(
+                errorMessage ?? 'Could not load video',
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+      betterPlayerDataSource: dataSource,
+    );
   }
 
   @override
   void dispose() {
-    // Pause when dialog closes; only dispose if we created the controller
-    _controller.pause();
-    if (_ownsController) _controller.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -1728,73 +1726,24 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
         backgroundColor: Colors.transparent,
         body: Center(
           child: GestureDetector(
-            onTap: () {}, // prevent tap-through closing when tapping controls
-            child: _hasError
-                ? const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.error_outline_rounded,
-                    color: Colors.white54, size: 56),
-                SizedBox(height: 12),
-                Text('Could not load video',
-                    style: TextStyle(color: Colors.white54)),
-              ],
-            )
-                : !_initialized
-                ? const CircularProgressIndicator(color: Colors.white)
-                : SafeArea(
+            onTap: () {}, // prevent tap-through
+            child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Close hint
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'Tap outside to close',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                            fontSize: 12),
-                      ),
+                    Text(
+                      'Tap outside to close',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.5), fontSize: 12),
                     ),
-                    // Video
+                    const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: AspectRatio(
-                        aspectRatio: _controller.value.aspectRatio,
-                        child: VideoPlayer(_controller),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Progress bar
-                    VideoProgressIndicator(
-                      _controller,
-                      allowScrubbing: true,
-                      colors: VideoProgressColors(
-                        playedColor:    CColors.primary,
-                        bufferedColor:  Colors.white30,
-                        backgroundColor: Colors.white12,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                    ),
-                    const SizedBox(height: 4),
-                    // Play / Pause button
-                    ValueListenableBuilder<VideoPlayerValue>(
-                      valueListenable: _controller,
-                      builder: (_, value, __) => IconButton(
-                        iconSize: 48,
-                        icon: Icon(
-                          value.isPlaying
-                              ? Icons.pause_circle_filled_rounded
-                              : Icons.play_circle_filled_rounded,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          value.isPlaying
-                              ? _controller.pause()
-                              : _controller.play();
-                        },
+                        aspectRatio: 16 / 9,
+                        child: BetterPlayer(controller: _controller),
                       ),
                     ),
                   ],

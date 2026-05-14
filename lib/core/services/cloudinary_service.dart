@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:video_compress/video_compress.dart';
 
 class CloudinaryService {
   // ── ⚙️  Your Cloudinary credentials ─────────────────────────────
@@ -38,10 +39,33 @@ class CloudinaryService {
       File file, {
         void Function(double progress)? onProgress,
       }) async {
-    final sizeMb = (await file.length()) / (1024 * 1024);
-    debugPrint('[Cloudinary] Uploading video — ${sizeMb.toStringAsFixed(1)}MB');
+    final originalMb = (await file.length()) / (1024 * 1024);
+    debugPrint('[Cloudinary] Original video — ${originalMb.toStringAsFixed(1)}MB');
+
+    // ── Compress on device before uploading ───────────────────────
+    // VideoCompress shrinks a typical 30s phone recording from ~40MB → ~4MB.
+    // Quality.MediumQuality targets ~720p with good compression.
+    File fileToUpload = file;
+    try {
+      onProgress?.call(0.0);
+      final info = await VideoCompress.compressVideo(
+        file.path,
+        quality:       VideoQuality.MediumQuality,
+        deleteOrigin:  false,
+        includeAudio:  true,
+      );
+      if (info?.file != null) {
+        fileToUpload = info!.file!;
+        final compressedMb = (await fileToUpload.length()) / (1024 * 1024);
+        debugPrint('[Cloudinary] Compressed → ${compressedMb.toStringAsFixed(1)}MB');
+      }
+    } catch (e) {
+      debugPrint('[Cloudinary] Compression failed, uploading original: $e');
+      // Fall through with the original file
+    }
+
     return _upload(
-      file,
+      fileToUpload,
       resourceType: 'video',
       timeout:      _videoTimeout,
       onProgress:   onProgress,

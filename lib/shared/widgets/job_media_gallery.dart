@@ -8,13 +8,13 @@
 //   • LEGACY — mediaBase64 list (old base64 strings still in Firestore)
 //
 // Dependencies to add in pubspec.yaml:
-//   video_player: ^2.9.2
-//   cached_network_image: ^3.4.1   ← for fast image loading from URLs
+//   better_player_plus: ^1.1.1
+//   cached_network_image: ^3.4.1
 
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:better_player_plus/better_player_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/constants/colors.dart';
@@ -171,8 +171,19 @@ class _VideoThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cloudinary generates a still frame at second 0 — much better than black
+    final thumbUrl = url
+        .replaceFirst('/upload/', '/upload/so_0,w_220,h_220,c_fill/')
+        .replaceAll(RegExp(r'\.(mp4|mov|avi|webm)$', caseSensitive: false), '.jpg');
+
     return Stack(fit: StackFit.expand, children: [
-      Container(color: Colors.black87),
+      CachedNetworkImage(
+        imageUrl:    thumbUrl,
+        fit:         BoxFit.cover,
+        placeholder: (_, __) => Container(color: Colors.black87),
+        errorWidget: (_, __, ___) => Container(color: Colors.black87),
+      ),
+      Container(color: Colors.black26),
       const Center(
         child: Icon(Icons.play_circle_fill_rounded,
             color: Colors.white, size: 40),
@@ -303,7 +314,7 @@ class _FullScreenImageView extends StatelessWidget {
   }
 }
 
-// ── Full-screen video player ──────────────────────────────────────────────
+// ── Full-screen video player (better_player_plus) ────────────────────────
 class _FullScreenVideoPlayer extends StatefulWidget {
   final String url;
   const _FullScreenVideoPlayer({required this.url});
@@ -313,19 +324,62 @@ class _FullScreenVideoPlayer extends StatefulWidget {
 }
 
 class _FullScreenVideoPlayerState extends State<_FullScreenVideoPlayer> {
-  late VideoPlayerController _controller;
-  bool _initialized = false;
-  bool _error       = false;
+  late BetterPlayerController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize().then((_) {
-        if (mounted) setState(() => _initialized = true);
-      }).catchError((_) {
-        if (mounted) setState(() => _error = true);
-      });
+    final dataSource = BetterPlayerDataSource(
+      BetterPlayerDataSourceType.network,
+      widget.url,
+      cacheConfiguration: const BetterPlayerCacheConfiguration(
+        useCache:         true,
+        maxCacheSize:     100 * 1024 * 1024,
+        maxCacheFileSize: 20  * 1024 * 1024,
+        preCacheSize:     5   * 1024 * 1024,
+      ),
+      bufferingConfiguration: const BetterPlayerBufferingConfiguration(
+        minBufferMs:                      5000,
+        maxBufferMs:                      30000,
+        bufferForPlaybackMs:              2500,
+        bufferForPlaybackAfterRebufferMs: 5000,
+      ),
+      notificationConfiguration: const BetterPlayerNotificationConfiguration(
+        showNotification: false,
+      ),
+    );
+
+    _controller = BetterPlayerController(
+      BetterPlayerConfiguration(
+        autoPlay:    true,
+        looping:     false,
+        fit:         BoxFit.contain,
+        aspectRatio: 16 / 9,
+        controlsConfiguration: BetterPlayerControlsConfiguration(
+          enableFullscreen:          true,
+          enableSkips:               false,
+          enableMute:                true,
+          enablePlayPause:           true,
+          enableProgressBar:         true,
+          progressBarPlayedColor:    CColors.primary,
+          progressBarBufferedColor:  Colors.white30,
+          progressBarBackgroundColor: Colors.white12,
+          iconsColor:                Colors.white,
+          controlBarColor:           Colors.black45,
+          loadingColor:              CColors.primary,
+        ),
+        errorBuilder: (context, errorMessage) => Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.error_outline_rounded,
+                color: Colors.red, size: 48),
+            const SizedBox(height: 8),
+            Text(errorMessage ?? 'Failed to load video',
+                style: const TextStyle(color: Colors.white)),
+          ]),
+        ),
+      ),
+      betterPlayerDataSource: dataSource,
+    );
   }
 
   @override
@@ -336,66 +390,11 @@ class _FullScreenVideoPlayerState extends State<_FullScreenVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error) {
-      return const Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
-          SizedBox(height: 8),
-          Text('Failed to load video',
-              style: TextStyle(color: Colors.white)),
-        ]),
-      );
-    }
-
-    if (!_initialized) {
-      return const Center(
-          child: CircularProgressIndicator(color: Colors.white));
-    }
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _controller.value.isPlaying
-              ? _controller.pause()
-              : _controller.play();
-        });
-      },
-      child: Stack(alignment: Alignment.center, children: [
-        Center(
-          child: AspectRatio(
-            aspectRatio: _controller.value.aspectRatio,
-            child: VideoPlayer(_controller),
-          ),
-        ),
-        // Play/pause overlay
-        AnimatedOpacity(
-          opacity: _controller.value.isPlaying ? 0.0 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          child: Container(
-            padding:    const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color:  Colors.black45,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.play_arrow_rounded,
-                color: Colors.white, size: 48),
-          ),
-        ),
-        // Progress bar at bottom
-        Positioned(
-          bottom: 0, left: 0, right: 0,
-          child: VideoProgressIndicator(
-            _controller,
-            allowScrubbing: true,
-            colors: VideoProgressColors(
-              playedColor:   CColors.primary,
-              bufferedColor: Colors.white30,
-              backgroundColor: Colors.white12,
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          ),
-        ),
-      ]),
+    return Center(
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: BetterPlayer(controller: _controller),
+      ),
     );
   }
 }
@@ -414,12 +413,20 @@ class _Base64ViewerScreen extends StatefulWidget {
 }
 
 class _Base64ViewerScreenState extends State<_Base64ViewerScreen> {
-  late int _current;
+  late int            _current;
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _current = widget.initialIndex;
+    _current        = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -433,8 +440,8 @@ class _Base64ViewerScreenState extends State<_Base64ViewerScreen> {
             style: const TextStyle(color: Colors.white)),
       ),
       body: PageView.builder(
-        itemCount: widget.base64List.length,
-        controller: PageController(initialPage: widget.initialIndex),
+        itemCount:  widget.base64List.length,
+        controller: _pageController,
         onPageChanged: (i) => setState(() => _current = i),
         itemBuilder: (_, i) {
           try {
