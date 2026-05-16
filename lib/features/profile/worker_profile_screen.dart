@@ -18,7 +18,10 @@ import '../../shared/widgets/common_header.dart';
 
 class WorkerProfileScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
-  const WorkerProfileScreen({super.key, this.showAppBar = true});
+  /// When provided, displays this worker's profile in read-only/view mode.
+  /// When null, displays the currently logged-in worker's own profile.
+  final String? workerId;
+  const WorkerProfileScreen({super.key, this.showAppBar = true, this.workerId});
 
   @override
   ConsumerState<WorkerProfileScreen> createState() => _WorkerProfileScreenState();
@@ -58,18 +61,26 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
   bool   _isSavingPhoto = false;
 
   bool _isLoading = true;
+  /// True when viewing another worker's profile (not the logged-in user's own).
+  bool _isViewMode = false;
 
   @override
   void initState() {
     super.initState();
+    _isViewMode = widget.workerId != null;
     _loadWorkerData();
   }
 
   // ── Load all data ──────────────────────────────────────────────
   Future<void> _loadWorkerData() async {
     try {
-      final prefs    = await SharedPreferences.getInstance();
-      final workerId = prefs.getString('user_uid') ?? '';
+      // If a specific workerId was passed (view-mode), use it directly.
+      // Otherwise fall back to the logged-in worker stored in SharedPreferences.
+      String workerId = widget.workerId ?? '';
+      if (workerId.isEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        workerId = prefs.getString('user_uid') ?? '';
+      }
 
       if (workerId.isEmpty) {
         if (mounted) setState(() => _isLoading = false);
@@ -421,60 +432,60 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
                     const SizedBox(height: CSizes.md),
                   ],
 
-                  // Settings
-                  _buildSectionCard(
-                    context: context,
-                    isDark:  isDark,
-                    title:   'profile.settings'.tr(),
-                    child:   Column(
-                      children: [
-                        _buildOptionTile(
-                          icon:   Icons.lock_reset_rounded,
-                          title:  'Reset Password',
-                          onTap:  _resetPassword,
-                          isDark: isDark,
-                        ),
-                        _buildOptionTile(
-                          icon:   Icons.notifications_outlined,
-                          title:  'nav.notifications'.tr(),
-                          onTap:  () => Navigator.pushNamed(
-                              context, AppRoutes.notificationSettings),
-                          isDark: isDark,
-                        ),
-                        _buildOptionTile(
-                          icon:   Icons.star_rounded,
-                          title:  'My Reviews',
-                          onTap:  () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => WorkerReviewsScreen(
-                                workerId:      _workerId,
-                                workerName:    _fullName,
-                                averageRating: _avgRating,
-                                totalReviews:  _totalReviews,
+                  // Settings + Logout — only shown on the owner's own profile
+                  if (!_isViewMode) ...[
+                    _buildSectionCard(
+                      context: context,
+                      isDark:  isDark,
+                      title:   'profile.settings'.tr(),
+                      child:   Column(
+                        children: [
+                          _buildOptionTile(
+                            icon:   Icons.lock_reset_rounded,
+                            title:  'Reset Password',
+                            onTap:  _resetPassword,
+                            isDark: isDark,
+                          ),
+                          _buildOptionTile(
+                            icon:   Icons.notifications_outlined,
+                            title:  'nav.notifications'.tr(),
+                            onTap:  () => Navigator.pushNamed(
+                                context, AppRoutes.notificationSettings),
+                            isDark: isDark,
+                          ),
+                          _buildOptionTile(
+                            icon:   Icons.star_rounded,
+                            title:  'My Reviews',
+                            onTap:  () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => WorkerReviewsScreen(
+                                  workerId:      _workerId,
+                                  workerName:    _fullName,
+                                  averageRating: _avgRating,
+                                  totalReviews:  _totalReviews,
+                                ),
                               ),
                             ),
+                            isDark: isDark,
                           ),
-                          isDark: isDark,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: CSizes.md),
-
-                  // Logout
-                  _buildSectionCard(
-                    context: context,
-                    isDark:  isDark,
-                    title:   '',
-                    child:   _buildOptionTile(
-                      icon:   Icons.logout_rounded,
-                      title:  'profile.logout'.tr(),
-                      onTap:  _logout,
-                      isDark: isDark,
-                      color:  CColors.error,
+                    const SizedBox(height: CSizes.md),
+                    _buildSectionCard(
+                      context: context,
+                      isDark:  isDark,
+                      title:   '',
+                      child:   _buildOptionTile(
+                        icon:   Icons.logout_rounded,
+                        title:  'profile.logout'.tr(),
+                        onTap:  _logout,
+                        isDark: isDark,
+                        color:  CColors.error,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -497,33 +508,38 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
       try { imageProvider = MemoryImage(base64Decode(_photoBase64)); } catch (_) {}
     }
 
+    final avatar = Container(
+      decoration: BoxDecoration(
+        shape:  BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color:      Colors.black.withOpacity(0.15),
+            blurRadius: 8,
+            offset:     const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: CircleAvatar(
+        radius:          36,
+        backgroundColor: CColors.secondary,
+        backgroundImage: imageProvider,
+        child: imageProvider == null
+            ? Text(initials,
+            style: const TextStyle(
+                fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))
+            : null,
+      ),
+    );
+
+    // In view-mode (another worker's profile) hide the camera edit button
+    if (_isViewMode) return avatar;
+
     return GestureDetector(
       onTap: _pickProfilePhoto,
       child: Stack(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              shape:  BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color:      Colors.black.withOpacity(0.15),
-                  blurRadius: 8,
-                  offset:     const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: CircleAvatar(
-              radius:          36,
-              backgroundColor: CColors.secondary,
-              backgroundImage: imageProvider,
-              child: imageProvider == null
-                  ? Text(initials,
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))
-                  : null,
-            ),
-          ),
+          avatar,
           Positioned(
             bottom: 0, right: 0,
             child: Container(

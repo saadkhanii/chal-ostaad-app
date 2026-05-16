@@ -247,6 +247,7 @@
     "no_bids_message": "Bids will appear here when workers apply to your job",
     "amount": "Amount",
     "status": "Status",
+    "amount_hint": "Enter your bid amount",
     "no_bids_placed": "You haven't placed any bids yet",
     "bid_accepted_congrats": "🎉 Your Bid Was Accepted!",
     "bid_accepted_message": "Congratulations! The client accepted your bid. Start chatting to discuss the job details."

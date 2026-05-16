@@ -1,21 +1,23 @@
-// lib/features/worker/screens/my_bids_screen.dart
-
+// lib/features/worker/my_bids_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
 import '../../../core/models/bid_model.dart';
 import '../../../core/models/job_model.dart';
+import '../../../core/services/bid_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../shared/widgets/common_header.dart';
 import '../../../shared/widgets/job_media_gallery.dart';
 import '../chat/chat_screen.dart';
 import 'worker_job_details_screen.dart';
+import 'edit_bid_screen.dart';
 
 // Provider to get job details for a bid
 final jobForBidProvider = FutureProvider.family<JobModel?, String>((ref, jobId) async {
@@ -48,6 +50,8 @@ class MyBidsScreen extends ConsumerStatefulWidget {
 class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
   String _workerId = '';
   String _selectedFilter = 'all'; // all, pending, accepted, rejected
+  final BidService _bidService = BidService();
+  String? _deletingBidId;
 
   @override
   void initState() {
@@ -90,6 +94,77 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
     }
   }
 
+  // Helper to get the proposed start time from a bid
+  DateTime? _getProposedStartTime(BidModel bid, JobModel? job) {
+    if (bid.workerProposedStartTime != null) return bid.workerProposedStartTime;
+    if (job?.scheduledAt != null) return job!.scheduledAt!.toDate();
+    return null;
+  }
+
+  Future<void> _deleteBid(String bidId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Bid'),
+        content: const Text('Are you sure you want to delete this bid? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('common.cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _deletingBidId = bidId);
+    try {
+      await _bidService.deleteBid(bidId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Bid deleted successfully'),
+          backgroundColor: CColors.success,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to delete bid: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _deletingBidId = null);
+    }
+  }
+
+  Future<void> _editBid(BidModel bid, String jobTitle) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditBidScreen(
+          bid: bid,
+          jobTitle: jobTitle,
+        ),
+      ),
+    );
+    if (result == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Bid updated successfully'),
+          backgroundColor: CColors.success,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -99,7 +174,6 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(
         children: [
-          // Header with conditional back button
           CommonHeader(
             title: 'My Bids',
             showBackButton: widget.showAppBar,
@@ -305,21 +379,65 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                             ),
                           ),
 
-                          // ── Job media thumbnails ────────────────
+                          // ── Available Time (worker's general availability) ──
+                          if (bid.availableTime != null)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.access_time_outlined, size: 14, color: CColors.primary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Available: ${DateFormat('d MMM yyyy, hh:mm a').format(bid.availableTime!)}',
+                                    style: TextStyle(
+                                      fontSize: isUrdu ? 13 : 11,
+                                      color: CColors.darkGrey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          // ── Proposed start time display (after fetching job) ──
+                          jobAsync.when(
+                            data: (job) {
+                              final proposedStart = _getProposedStartTime(bid, job);
+                              if (proposedStart == null) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Proposed start: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedStart)}',
+                                      style: TextStyle(
+                                        fontSize: isUrdu ? 13 : 11,
+                                        color: CColors.darkGrey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            loading: () => const SizedBox.shrink(),
+                            error: (_, __) => const SizedBox.shrink(),
+                          ),
+
+                          // ── Job media thumbnails ────────────────────────
                           jobAsync.maybeWhen(
                             data: (job) => job != null && job.hasMedia
                                 ? Padding(
                               padding: const EdgeInsets.only(top: 8, bottom: 4),
                               child: JobMediaGallery(
-                                mediaUrls:   job.mediaUrls,
-                                mediaTypes:  job.mediaTypes,
+                                mediaUrls: job.mediaUrls,
+                                mediaTypes: job.mediaTypes,
                                 mediaBase64: job.mediaBase64,
                               ),
                             )
                                 : const SizedBox.shrink(),
                             orElse: () => const SizedBox.shrink(),
                           ),
-                          // ────────────────────────────────────────
 
                           if (bid.message != null && bid.message!.isNotEmpty) ...[
                             const SizedBox(height: CSizes.xs),
@@ -346,21 +464,40 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                                 ),
                               ),
                               const Spacer(),
+                              // ── Edit / Delete for pending bids ───────────
+                              if (bid.status == 'pending')
+                                Row(
+                                  children: [
+                                    if (_deletingBidId != bid.id)
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined, size: 18, color: CColors.primary),
+                                        onPressed: () => jobAsync.whenData((job) {
+                                          if (job != null) _editBid(bid, job.title);
+                                        }),
+                                        tooltip: 'Edit',
+                                      ),
+                                    IconButton(
+                                      icon: _deletingBidId == bid.id
+                                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                          : const Icon(Icons.delete_outline, size: 18, color: CColors.error),
+                                      onPressed: _deletingBidId == bid.id ? null : () => _deleteBid(bid.id!),
+                                      tooltip: 'Delete',
+                                    ),
+                                  ],
+                                ),
                               // Chat button for accepted bids
                               if (bid.status == 'accepted')
                                 GestureDetector(
                                   onTap: () async {
                                     final chatService = ChatService();
                                     final chatId = chatService.getChatId(bid.jobId, _workerId);
-                                    // Fetch the real client name before opening chat
                                     String clientName = 'Client';
                                     try {
                                       final doc = await FirebaseFirestore.instance
                                           .collection('clients')
                                           .doc(bid.clientId)
                                           .get();
-                                      final info = doc.data()?['personalInfo']
-                                      as Map<String, dynamic>? ?? {};
+                                      final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
                                       clientName = info['fullName'] ?? info['name'] ?? 'Client';
                                     } catch (_) {}
                                     jobAsync.whenData((job) {
@@ -368,36 +505,35 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (_) => ChatScreen(
-                                            chatId:        chatId,
-                                            jobTitle:      job?.title ?? '',
-                                            otherName:     clientName,
+                                            chatId: chatId,
+                                            jobTitle: job?.title ?? '',
+                                            otherName: clientName,
                                             currentUserId: _workerId,
-                                            otherUserId:   bid.clientId,
-                                            otherRole:     'client',
+                                            otherUserId: bid.clientId,
+                                            otherRole: 'client',
                                           ),
                                         ),
                                       );
                                     });
                                   },
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color:        CColors.primary.withOpacity(0.1),
+                                      color: CColors.primary.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(20),
-                                      border:       Border.all(color: CColors.primary),
+                                      border: Border.all(color: CColors.primary),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.chat_outlined,
-                                            size: 14, color: CColors.primary),
+                                        Icon(Icons.chat_outlined, size: 14, color: CColors.primary),
                                         const SizedBox(width: 4),
                                         Text('chat.chat'.tr(),
                                             style: TextStyle(
-                                                fontSize: 12,
-                                                color: CColors.primary,
-                                                fontWeight: FontWeight.w600)),
+                                              fontSize: 12,
+                                              color: CColors.primary,
+                                              fontWeight: FontWeight.w600,
+                                            )),
                                       ],
                                     ),
                                   ),

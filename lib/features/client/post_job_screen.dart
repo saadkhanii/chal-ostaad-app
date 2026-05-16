@@ -6,10 +6,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
@@ -30,10 +32,15 @@ class PostJobScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
   final VoidCallback? onJobPosted;
 
+  /// Pass an existing job to enter edit mode.
+  /// The form will be pre-filled and Save will call updateJob() instead of createJob().
+  final JobModel? existingJob;
+
   const PostJobScreen({
     super.key,
     this.showAppBar = true,
     this.onJobPosted,
+    this.existingJob,
   });
 
   @override
@@ -44,6 +51,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _formKey               = GlobalKey<FormState>();
   final _titleController       = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _minAmountController   = TextEditingController();
+  final _maxAmountController   = TextEditingController();
   final _mapService            = MapService();
   final _cloudinary            = CloudinaryService();
 
@@ -58,25 +67,64 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   GeoPoint? _jobLocation;
   String?   _jobLocationAddress;
   String?   _jobCity;
-  // ────────────────────────────────────────────────────────────────
+
+  // ── Scheduled start time ─────────────────────────────────────────
+  DateTime? _scheduledAt;
+  bool _isUrgent = false;
 
   // ── Media state (up to 3 items: images or videos) ────────────────
-  final List<File>   _pickedFiles = [];
-  final List<String> _mediaTypes  = []; // 'image' | 'video'
-  static const int   _maxMedia    = 3;
+  final List<File>   _pickedFiles        = [];
+  final List<String> _mediaTypes         = [];
+  final List<String> _existingMediaUrls  = [];
+  final List<String> _existingMediaTypes = [];
+  static const int   _maxMedia           = 3;
 
   // ── Upload progress (drives the progress dialog) ─────────────────
   int    _uploadTotal   = 0;
   int    _uploadCurrent = 0;
   double _fileProgress  = 0.0;
   final ValueNotifier<double> _progressNotifier = ValueNotifier(0.0);
-  // ────────────────────────────────────────────────────────────────
+
+  // ── Edit mode helpers ─────────────────────────────────────────────
+  bool get _isEditMode => widget.existingJob != null;
+
+  int get _totalMediaCount =>
+      _existingMediaUrls.length + _pickedFiles.length;
 
   @override
   void initState() {
     super.initState();
     _loadClientInfo();
     _fetchCategories();
+    if (_isEditMode) _prefillFromExistingJob();
+  }
+
+  /// Pre-fill all fields from the existing job when editing.
+  void _prefillFromExistingJob() {
+    final job = widget.existingJob!;
+    _titleController.text       = job.title;
+    _descriptionController.text = job.description;
+    _jobLocation        = job.location;
+    _jobLocationAddress = job.locationAddress;
+    _jobCity            = job.city;
+    _scheduledAt        = job.scheduledAt?.toDate();
+    _isUrgent           = job.isUrgent;
+
+    if (job.recommendedAmountMin != null) {
+      _minAmountController.text =
+          job.recommendedAmountMin!.toStringAsFixed(0);
+    }
+    if (job.recommendedAmountMax != null) {
+      _maxAmountController.text =
+          job.recommendedAmountMax!.toStringAsFixed(0);
+    }
+
+    // Keep existing cloud media so the client can remove individual items.
+    _existingMediaUrls.addAll(job.mediaUrls);
+    _existingMediaTypes.addAll(
+        job.mediaTypes.isNotEmpty
+            ? job.mediaTypes
+            : List.filled(job.mediaUrls.length, 'image'));
   }
 
   Future<void> _loadClientInfo() async {
@@ -113,6 +161,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         setState(() {
           _categories           = categoriesData;
           _isFetchingCategories = false;
+
+          // In edit mode: match the job's category name back to an id.
+          if (_isEditMode && _selectedCategoryId == null) {
+            final jobCategoryName = widget.existingJob!.category;
+            final match = _categories.where(
+                    (c) => c.name == jobCategoryName).toList();
+            if (match.isNotEmpty) _selectedCategoryId = match.first.id;
+          }
         });
       }
     } catch (e) {
@@ -126,7 +182,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   // ── Pick image ───────────────────────────────────────────────────
   Future<void> _pickImage(ImageSource source) async {
-    if (_pickedFiles.length >= _maxMedia) {
+    if (_totalMediaCount >= _maxMedia) {
       _showErrorMessage('Maximum $_maxMedia media items allowed.');
       return;
     }
@@ -146,18 +202,17 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   // ── Pick video ───────────────────────────────────────────────────
   Future<void> _pickVideo(ImageSource source) async {
-    if (_pickedFiles.length >= _maxMedia) {
+    if (_totalMediaCount >= _maxMedia) {
       _showErrorMessage('Maximum $_maxMedia media items allowed.');
       return;
     }
     final picker = ImagePicker();
     final picked = await picker.pickVideo(
-      source:            source,
-      maxDuration: const Duration(seconds: 60), // keep videos short
+      source:      source,
+      maxDuration: const Duration(seconds: 60),
     );
     if (picked == null || !mounted) return;
 
-    // Warn if the file is very large (> 50 MB)
     final size = await File(picked.path).length();
     if (size > 50 * 1024 * 1024) {
       _showErrorMessage('Video is too large (max 50 MB). Please trim it first.');
@@ -170,10 +225,17 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     });
   }
 
-  void _removeMedia(int index) {
+  void _removeNewMedia(int index) {
     setState(() {
       _pickedFiles.removeAt(index);
       _mediaTypes.removeAt(index);
+    });
+  }
+
+  void _removeExistingMedia(int index) {
+    setState(() {
+      _existingMediaUrls.removeAt(index);
+      _existingMediaTypes.removeAt(index);
     });
   }
 
@@ -198,7 +260,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             leading: Icon(isVideo
                 ? Icons.video_library_rounded
                 : Icons.photo_library_rounded),
-            title: Text(isVideo ? 'Choose Video from Gallery' : 'Choose from Gallery'),
+            title: Text(isVideo
+                ? 'Choose Video from Gallery'
+                : 'Choose from Gallery'),
             onTap: () {
               Navigator.pop(context);
               isVideo
@@ -212,7 +276,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 
   void _showAddMediaDialog() {
-    if (_pickedFiles.length >= _maxMedia) {
+    if (_totalMediaCount >= _maxMedia) {
       _showErrorMessage('Maximum $_maxMedia media items allowed.');
       return;
     }
@@ -234,9 +298,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.videocam_rounded),
-            title:   const Text('Add Video'),
-            subtitle: const Text('Max 60 sec · Max 50 MB'),
+            leading:   const Icon(Icons.videocam_rounded),
+            title:     const Text('Add Video'),
+            subtitle:  const Text('Max 60 sec · Max 50 MB'),
             onTap: () {
               Navigator.pop(context);
               _showMediaSourceDialog(isVideo: true);
@@ -275,6 +339,37 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
+  // ── Scheduled date/time picker ───────────────────────────────────
+  Future<void> _pickScheduledAt() async {
+    final now  = DateTime.now();
+    final date = await showDatePicker(
+      context:     context,
+      initialDate: _scheduledAt ?? now.add(const Duration(hours: 1)),
+      firstDate:   now,
+      lastDate:    now.add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context:     context,
+      initialTime: _scheduledAt != null
+          ? TimeOfDay.fromDateTime(_scheduledAt!)
+          : TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+
+    final chosen = DateTime(
+        date.year, date.month, date.day, time.hour, time.minute);
+
+    // Must be in the future
+    if (chosen.isBefore(DateTime.now())) {
+      _showErrorMessage('Please choose a future date and time.');
+      return;
+    }
+
+    setState(() => _scheduledAt = chosen);
+  }
+
   // ── Upload progress helpers ──────────────────────────────────────
   void _showUploadDialog() {
     showDialog(
@@ -294,17 +389,46 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       _uploadTotal   = total;
       _fileProgress  = fileProgress;
     });
-    // Update notifier so the dialog rebuilds with latest progress
     final overall = total == 0 ? 0.0 : ((current - 1) + fileProgress) / total;
     _progressNotifier.value = overall.clamp(0.0, 1.0);
   }
 
-  // ── Submit job ───────────────────────────────────────────────────
-  Future<void> _handlePostJob() async {
+  // ── Validate budget ──────────────────────────────────────────────
+  /// Returns null if valid, or an error string.
+  String? _validateBudget() {
+    final minText = _minAmountController.text.trim();
+    final maxText = _maxAmountController.text.trim();
+
+    // Both empty → no budget set, that's fine
+    if (minText.isEmpty && maxText.isEmpty) return null;
+
+    // One filled but not both
+    if (minText.isEmpty || maxText.isEmpty) {
+      return 'Enter both minimum and maximum amounts, or leave both empty.';
+    }
+
+    final min = double.tryParse(minText);
+    final max = double.tryParse(maxText);
+
+    if (min == null || min < 0) return 'Minimum amount is invalid.';
+    if (max == null || max < 0) return 'Maximum amount is invalid.';
+    if (min >= max) return 'Minimum must be less than maximum amount.';
+
+    return null;
+  }
+
+  // ── Submit (create or update) ────────────────────────────────────
+  Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedCategoryId == null) {
       _showErrorMessage('job.category_required'.tr());
+      return;
+    }
+
+    final budgetError = _validateBudget();
+    if (budgetError != null) {
+      _showErrorMessage(budgetError);
       return;
     }
 
@@ -330,9 +454,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         throw Exception('errors.category_not_found'.tr());
       }
 
-      // ── Upload media to Cloudinary with progress dialog ────────
-      final List<String> mediaUrls  = [];
-      final List<String> mediaTypes = List<String>.from(_mediaTypes);
+      // ── Upload newly picked media to Cloudinary ────────────────
+      final List<String> newUrls  = [];
+      final List<String> newTypes = List<String>.from(_mediaTypes);
 
       if (_pickedFiles.isNotEmpty) {
         _updateProgress(1, _pickedFiles.length, 0.0);
@@ -353,32 +477,97 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 _updateProgress(i + 1, _pickedFiles.length, p),
           );
 
-          mediaUrls.add(url);
+          newUrls.add(url);
           _updateProgress(i + 1, _pickedFiles.length, 1.0);
         }
 
         if (mounted) Navigator.of(context, rootNavigator: true).pop();
       }
-      // ──────────────────────────────────────────────────────────
 
-      final newJob = JobModel(
-        title:           _titleController.text.trim(),
-        description:     _descriptionController.text.trim(),
-        category:        selectedCategory.name,
-        clientId:        clientIdToUse,
-        createdAt:       Timestamp.now(),
-        status:          'open',
-        mediaUrls:       mediaUrls,
-        mediaTypes:      mediaTypes,
-        location:        _jobLocation,
-        locationAddress: _jobLocationAddress,
-        city:            _jobCity,
-      );
+      // Merge kept existing + newly uploaded
+      final finalUrls  = [..._existingMediaUrls,  ...newUrls];
+      final finalTypes = [..._existingMediaTypes, ...newTypes];
+
+      // ── Parse budget ───────────────────────────────────────────
+      final minText = _minAmountController.text.trim();
+      final maxText = _maxAmountController.text.trim();
+      final recMin  = minText.isNotEmpty ? double.tryParse(minText) : null;
+      final recMax  = maxText.isNotEmpty ? double.tryParse(maxText) : null;
+
+      // ── Scheduled start ────────────────────────────────────────
+      final scheduledTs = _scheduledAt != null
+          ? Timestamp.fromDate(_scheduledAt!)
+          : null;
 
       final jobService = JobService();
-      await jobService.createJob(newJob);
 
-      _showSuccessMessage('job.job_posted'.tr());
+      if (_isEditMode) {
+        // ── Edit: build a partial map and call updateJob() ─────
+        final updatedFields = <String, dynamic>{
+          'title':       _titleController.text.trim(),
+          'description': _descriptionController.text.trim(),
+          'category':    selectedCategory.name,
+          'mediaUrls':   finalUrls,
+          'mediaTypes':  finalTypes,
+          'isUrgent':    _isUrgent,
+        };
+
+        // Location — allow clearing
+        if (_jobLocation != null) {
+          updatedFields['location']        = _jobLocation;
+          updatedFields['locationAddress'] = _jobLocationAddress;
+          updatedFields['city']            = _jobCity;
+        } else {
+          updatedFields['location']        = FieldValue.delete();
+          updatedFields['locationAddress'] = FieldValue.delete();
+          updatedFields['city']            = FieldValue.delete();
+        }
+
+        // Budget — allow clearing
+        if (recMin != null && recMax != null) {
+          updatedFields['recommendedAmountMin'] = recMin;
+          updatedFields['recommendedAmountMax'] = recMax;
+        } else {
+          updatedFields['recommendedAmountMin'] = FieldValue.delete();
+          updatedFields['recommendedAmountMax'] = FieldValue.delete();
+        }
+
+        // Scheduled — allow clearing
+        if (scheduledTs != null) {
+          updatedFields['scheduledAt'] = scheduledTs;
+        } else {
+          updatedFields['scheduledAt'] = FieldValue.delete();
+        }
+
+        await jobService.updateJob(
+          jobId:         widget.existingJob!.id!,
+          updatedFields: updatedFields,
+        );
+
+        _showSuccessMessage('Job updated successfully.');
+      } else {
+        // ── Create new job ────────────────────────────────────
+        final newJob = JobModel(
+          title:                _titleController.text.trim(),
+          description:          _descriptionController.text.trim(),
+          category:             selectedCategory.name,
+          clientId:             clientIdToUse,
+          createdAt:            Timestamp.now(),
+          status:               'open',
+          mediaUrls:            finalUrls,
+          mediaTypes:           finalTypes,
+          location:             _jobLocation,
+          locationAddress:      _jobLocationAddress,
+          city:                 _jobCity,
+          recommendedAmountMin: recMin,
+          recommendedAmountMax: recMax,
+          scheduledAt:          scheduledTs,
+          isUrgent:             _isUrgent,
+        );
+
+        await jobService.createJob(newJob);
+        _showSuccessMessage('job.job_posted'.tr());
+      }
 
       if (mounted) {
         if (widget.onJobPosted != null) {
@@ -391,7 +580,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       if (mounted) {
         try { Navigator.of(context, rootNavigator: true).pop(); } catch (_) {}
       }
-      _showErrorMessage('${"errors.post_job_failed".tr()}: ${e.toString()}');
+      _showErrorMessage(
+          '${_isEditMode ? "Failed to update job" : "errors.post_job_failed".tr()}: '
+              '${e.toString()}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -401,6 +592,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _minAmountController.dispose();
+    _maxAmountController.dispose();
     _progressNotifier.dispose();
     super.dispose();
   }
@@ -415,7 +608,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       body: Column(
         children: [
           CommonHeader(
-            title: 'job.post_job'.tr(),
+            title: _isEditMode ? 'Edit Job' : 'job.post_job'.tr(),
             showBackButton: true,
             onBackPressed: () {
               if (widget.onJobPosted != null) {
@@ -434,7 +627,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'job.fill_details'.tr(),
+                      _isEditMode
+                          ? 'Update the job details below.'
+                          : 'job.fill_details'.tr(),
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge
@@ -442,7 +637,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                     ),
                     const SizedBox(height: CSizes.spaceBtwSections),
 
-                    // Title
+                    // ── Title ───────────────────────────────────────
                     CTextField(
                       label:      'job.job_title'.tr(),
                       hintText:   'job.title_hint'.tr(),
@@ -453,7 +648,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // Description
+                    // ── Description ─────────────────────────────────
                     CTextField(
                       label:      'job.job_description'.tr(),
                       hintText:   'job.description_hint'.tr(),
@@ -465,24 +660,34 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // Category
+                    // ── Category ────────────────────────────────────
                     _buildCategoryDropdown(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // Location Picker
+                    // ── Budget range ────────────────────────────────
+                    _buildBudgetSection(isDark, isUrdu),
+                    const SizedBox(height: CSizes.spaceBtwItems),
+
+                    // ── Scheduled start time + Urgent checkbox ────────
+                    _buildSchedulePicker(isDark, isUrdu),
+                    const SizedBox(height: CSizes.spaceBtwItems),
+
+                    // ── Location Picker ─────────────────────────────
                     _buildLocationPicker(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // Media Picker
+                    // ── Media Picker ────────────────────────────────
                     _buildMediaPicker(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwSections),
 
-                    // Submit
+                    // ── Submit ──────────────────────────────────────
                     _isLoading
                         ? const Center(child: CircularProgressIndicator())
                         : CButton(
-                      text:      'job.post_job'.tr(),
-                      onPressed: _handlePostJob,
+                      text:      _isEditMode
+                          ? 'Save Changes'
+                          : 'job.post_job'.tr(),
+                      onPressed: _handleSubmit,
                       width:     double.infinity,
                     ),
                   ],
@@ -492,6 +697,210 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Budget range section ─────────────────────────────────────────
+  Widget _buildBudgetSection(bool isDark, bool isUrdu) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Budget Range (PKR) — optional',
+          style: TextStyle(
+            fontSize:   isUrdu ? 16 : 14,
+            fontWeight: FontWeight.w500,
+            color:      isDark ? CColors.light : CColors.dark,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Workers will see this as a reference when placing bids.',
+          style: TextStyle(
+            fontSize: 11,
+            color:    isDark
+                ? CColors.textWhite.withOpacity(0.45)
+                : CColors.darkGrey,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller:  _minAmountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  labelText:   'Min',
+                  prefixText:  'PKR ',
+                  hintText:    '500',
+                  labelStyle:  TextStyle(
+                      fontSize: isUrdu ? 15 : 13,
+                      color:    isDark ? CColors.light : CColors.dark),
+                  border:      OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(
+                          CSizes.borderRadiusMd)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text('–',
+                style: TextStyle(
+                    fontSize: 18,
+                    color: isDark ? CColors.light : CColors.dark)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                controller:  _maxAmountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  labelText:  'Max',
+                  prefixText: 'PKR ',
+                  hintText:   '2,000',
+                  labelStyle: TextStyle(
+                      fontSize: isUrdu ? 15 : 13,
+                      color:    isDark ? CColors.light : CColors.dark),
+                  border:     OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(
+                          CSizes.borderRadiusMd)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ── Schedule picker widget (with Urgent checkbox) ─────────────────
+  Widget _buildSchedulePicker(bool isDark, bool isUrdu) {
+    final hasSchedule = _scheduledAt != null;
+    final formatted   = hasSchedule
+        ? DateFormat('EEE, d MMM yyyy  hh:mm a').format(_scheduledAt!)
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Preferred Start Time — optional',
+                style: TextStyle(
+                  fontSize:   isUrdu ? 16 : 14,
+                  fontWeight: FontWeight.w500,
+                  color:      isDark ? CColors.light : CColors.dark,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Checkbox(
+                  value: _isUrgent,
+                  onChanged: (val) {
+                    setState(() {
+                      _isUrgent = val ?? false;
+                      if (_isUrgent) {
+                        _scheduledAt = null;
+                      }
+                    });
+                  },
+                  activeColor: CColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'ASAP / Urgent',
+                  style: TextStyle(
+                    fontSize: isUrdu ? 13 : 12,
+                    color: isDark ? CColors.light : CColors.dark,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: _isUrgent ? null : _pickScheduledAt,
+          child: Container(
+            width:   double.infinity,
+            padding: const EdgeInsets.all(CSizes.md),
+            decoration: BoxDecoration(
+              color:        isDark ? CColors.darkContainer : CColors.white,
+              borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+              border: Border.all(
+                color: hasSchedule
+                    ? CColors.primary
+                    : (isDark ? CColors.darkerGrey : CColors.borderPrimary),
+                width: hasSchedule ? 1.5 : 1.0,
+              ),
+            ),
+            child: Row(children: [
+              Container(
+                padding:    const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color:        CColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  hasSchedule
+                      ? Icons.event_available_rounded
+                      : Icons.calendar_month_outlined,
+                  color: CColors.primary,
+                  size:  22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _isUrgent
+                      ? 'ASAP / Urgent'
+                      : (hasSchedule
+                      ? formatted!
+                      : 'Tap to pick a start date & time'),
+                  style: TextStyle(
+                    fontSize:   isUrdu ? 14 : 13,
+                    fontWeight: hasSchedule
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                    color: hasSchedule
+                        ? CColors.primary
+                        : (isDark
+                        ? CColors.textWhite.withOpacity(0.5)
+                        : CColors.darkGrey),
+                  ),
+                ),
+              ),
+              if (!_isUrgent)
+                Icon(Icons.chevron_right_rounded,
+                    color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+            ]),
+          ),
+        ),
+        if (hasSchedule && !_isUrgent)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _scheduledAt = null),
+              icon:  const Icon(Icons.clear, size: 14),
+              label: const Text('Clear', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: CColors.error,
+                padding:         EdgeInsets.zero,
+                visualDensity:   VisualDensity.compact,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -511,10 +920,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           ),
           const SizedBox(width: 8),
           Text(
-            '${_pickedFiles.length}/$_maxMedia',
+            '$_totalMediaCount/$_maxMedia',
             style: TextStyle(
               fontSize: 12,
-              color:    _pickedFiles.length >= _maxMedia
+              color:    _totalMediaCount >= _maxMedia
                   ? CColors.error
                   : CColors.darkGrey,
             ),
@@ -526,80 +935,41 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              // Existing media thumbnails
+              // ── Existing cloud thumbnails (edit mode) ──────────
+              ..._existingMediaUrls.asMap().entries.map((entry) {
+                final i       = entry.key;
+                final url     = entry.value;
+                final isVideo = i < _existingMediaTypes.length &&
+                    _existingMediaTypes[i] == 'video';
+                return _mediaThumbnailCloud(
+                    i, url, isVideo, isDark);
+              }),
+
+              // ── Newly picked local files ───────────────────────
               ..._pickedFiles.asMap().entries.map((entry) {
                 final i       = entry.key;
                 final isVideo = _mediaTypes[i] == 'video';
-                return Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  width:  90,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                    border: Border.all(
-                        color: CColors.primary.withOpacity(0.4)),
-                    color: isDark ? CColors.darkContainer : CColors.lightGrey,
-                  ),
-                  child: Stack(children: [
-                    // Thumbnail
-                    ClipRRect(
-                      borderRadius:
-                      BorderRadius.circular(CSizes.borderRadiusMd),
-                      child: isVideo
-                          ? _VideoThumbnail(file: _pickedFiles[i])
-                          : Image.file(
-                        _pickedFiles[i],
-                        width:  90,
-                        height: 90,
-                        fit:    BoxFit.cover,
-                      ),
-                    ),
-                    // Video badge
-                    if (isVideo)
-                      const Positioned(
-                        bottom: 4,
-                        left:   4,
-                        child: Icon(Icons.play_circle_fill_rounded,
-                            color: Colors.white, size: 22),
-                      ),
-                    // Remove button
-                    Positioned(
-                      top: 4, right: 4,
-                      child: GestureDetector(
-                        onTap: () => _removeMedia(i),
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.close,
-                              color: Colors.white, size: 14),
-                        ),
-                      ),
-                    ),
-                  ]),
-                );
+                return _mediaThumbnailLocal(
+                    i, _pickedFiles[i], isVideo, isDark);
               }),
 
-              // Add button
-              if (_pickedFiles.length < _maxMedia)
+              // ── Add button ─────────────────────────────────────
+              if (_totalMediaCount < _maxMedia)
                 GestureDetector(
                   onTap: _showAddMediaDialog,
                   child: Container(
                     width:  90,
                     height: 90,
                     decoration: BoxDecoration(
-                      color: isDark
+                      color:        isDark
                           ? CColors.darkContainer
                           : CColors.lightGrey,
-                      borderRadius:
-                      BorderRadius.circular(CSizes.borderRadiusMd),
+                      borderRadius: BorderRadius.circular(
+                          CSizes.borderRadiusMd),
                       border: Border.all(
                         color: isDark
                             ? CColors.darkerGrey
                             : CColors.borderPrimary,
-                        style: BorderStyle.solid,
                       ),
                     ),
                     child: Column(
@@ -633,6 +1003,110 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _mediaThumbnailCloud(
+      int index, String url, bool isVideo, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      width:  90,
+      height: 90,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        border: Border.all(color: CColors.primary.withOpacity(0.4)),
+        color:  isDark ? CColors.darkContainer : CColors.lightGrey,
+      ),
+      child: Stack(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+          child: isVideo
+              ? Container(
+            width:  90,
+            height: 90,
+            color:  Colors.black87,
+            child:  const Center(
+              child: Icon(Icons.videocam_rounded,
+                  color: Colors.white, size: 32),
+            ),
+          )
+              : Image.network(
+            url,
+            width:  90,
+            height: 90,
+            fit:    BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(
+                Icons.broken_image_outlined, size: 32),
+          ),
+        ),
+        if (isVideo)
+          const Positioned(
+            bottom: 4, left: 4,
+            child: Icon(Icons.play_circle_fill_rounded,
+                color: Colors.white, size: 22),
+          ),
+        // Cloud badge to distinguish existing from new
+        const Positioned(
+          bottom: 4, right: 4,
+          child: Icon(Icons.cloud_done_rounded,
+              color: Colors.white70, size: 16),
+        ),
+        Positioned(
+          top: 4, right: 4,
+          child: GestureDetector(
+            onTap: () => _removeExistingMedia(index),
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                  color: Colors.black54, shape: BoxShape.circle),
+              child: const Icon(Icons.close,
+                  color: Colors.white, size: 14),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _mediaThumbnailLocal(
+      int index, File file, bool isVideo, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      width:  90,
+      height: 90,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+        border: Border.all(color: CColors.primary.withOpacity(0.4)),
+        color:  isDark ? CColors.darkContainer : CColors.lightGrey,
+      ),
+      child: Stack(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+          child: isVideo
+              ? _VideoThumbnail(file: file)
+              : Image.file(file,
+              width: 90, height: 90, fit: BoxFit.cover),
+        ),
+        if (isVideo)
+          const Positioned(
+            bottom: 4, left: 4,
+            child: Icon(Icons.play_circle_fill_rounded,
+                color: Colors.white, size: 22),
+          ),
+        Positioned(
+          top: 4, right: 4,
+          child: GestureDetector(
+            onTap: () => _removeNewMedia(index),
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                  color: Colors.black54, shape: BoxShape.circle),
+              child: const Icon(Icons.close,
+                  color: Colors.white, size: 14),
+            ),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -812,9 +1286,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   }
 }
 
-// ── Local video thumbnail (shows a video icon over a dark box) ─────────────
-// We use a simple placeholder instead of video_player here to keep the
-// picker lightweight. Full playback is in JobMediaGallery.
+// ── Local video thumbnail ─────────────────────────────────────────────────────
 class _VideoThumbnail extends StatelessWidget {
   final File file;
   const _VideoThumbnail({required this.file});
@@ -833,7 +1305,7 @@ class _VideoThumbnail extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Upload Progress Dialog
+// Upload Progress Dialog – Updated with app primary/secondary colors
 // ══════════════════════════════════════════════════════════════════
 class _UploadProgressDialog extends StatelessWidget {
   final _PostJobScreenState    screen;
@@ -849,7 +1321,7 @@ class _UploadProgressDialog extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
-      canPop: false, // block back button during upload
+      canPop: false,
       child: ValueListenableBuilder<double>(
         valueListenable: progressNotifier,
         builder: (_, overall, __) {
@@ -861,82 +1333,97 @@ class _UploadProgressDialog extends StatelessWidget {
 
           return Dialog(
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+                borderRadius: BorderRadius.circular(20)),
             backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            elevation: 6,
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Icon
+                  // Animated icon with gradient background
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color:  const Color(0xFF5B5BDB).withOpacity(0.1),
+                      gradient: LinearGradient(
+                        colors: [
+                          CColors.primary.withOpacity(0.15),
+                          CColors.secondary.withOpacity(0.08),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       shape: BoxShape.circle,
+                      border: Border.all(
+                        color: CColors.primary.withOpacity(0.3),
+                        width: 1.5,
+                      ),
                     ),
                     child: Icon(
                       isVideo
                           ? Icons.videocam_rounded
                           : Icons.cloud_upload_rounded,
-                      color: const Color(0xFF5B5BDB),
-                      size:  36,
+                      color: CColors.primary,
+                      size: 40,
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Title
+                  const SizedBox(height: 20),
                   Text(
                     isVideo ? 'Uploading Video…' : 'Uploading Photo…',
                     style: TextStyle(
-                      fontSize:   16,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color:      isDark ? Colors.white : Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 4),
-
-                  // e.g. "File 1 of 3"
+                  const SizedBox(height: 6),
                   Text(
                     'File $current of $total',
                     style: TextStyle(
                       fontSize: 13,
-                      color:    isDark ? Colors.white54 : Colors.black45,
+                      color: isDark ? Colors.white60 : Colors.black54,
                     ),
                   ),
-                  const SizedBox(height: 20),
-
-                  // Progress bar
+                  const SizedBox(height: 24),
+                  // Stylish progress indicator
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     child: LinearProgressIndicator(
-                      value:           overall,
-                      minHeight:       10,
+                      value: overall,
+                      minHeight: 8,
                       backgroundColor: isDark
                           ? Colors.white12
                           : Colors.grey.shade200,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF5B5BDB)),
+                      valueColor: AlwaysStoppedAnimation<Color>(CColors.primary),
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  // Percentage
+                  const SizedBox(height: 10),
                   Text(
                     '${(overall * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(
-                      fontSize:   13,
-                      fontWeight: FontWeight.w600,
-                      color:      Color(0xFF5B5BDB),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: CColors.primary,
                     ),
                   ),
-                  const SizedBox(height: 8),
-
+                  const SizedBox(height: 12),
+                  // Decorative secondary color accent
+                  Container(
+                    height: 2,
+                    width: 40,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [CColors.primary, CColors.secondary],
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
                     'Please keep the app open',
                     style: TextStyle(
                       fontSize: 11,
-                      color:    isDark ? Colors.white38 : Colors.black38,
+                      color: isDark ? Colors.white38 : Colors.black38,
                     ),
                   ),
                 ],

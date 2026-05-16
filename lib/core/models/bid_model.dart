@@ -1,4 +1,4 @@
-// lib/core/models/bid_model.dart - UPDATED
+// lib/core/models/bid_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BidModel {
@@ -11,6 +11,8 @@ class BidModel {
   final String status; // 'pending', 'accepted', 'rejected'
   final Timestamp createdAt;
   final Timestamp? updatedAt;
+  final DateTime? availableTime;           // worker's availability (used as proposed start time)
+  final DateTime? workerProposedStartTime; // NEW: explicit proposed start time (if different from client's)
 
   BidModel({
     this.id,
@@ -22,33 +24,37 @@ class BidModel {
     this.status = 'pending',
     required this.createdAt,
     this.updatedAt,
+    this.availableTime,
+    this.workerProposedStartTime,
   });
 
   factory BidModel.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     final data = document.data()!;
 
-    // SAFE amount parsing
     double parsedAmount = 0.0;
     final amountValue = data['amount'];
-
     if (amountValue is int) {
       parsedAmount = amountValue.toDouble();
     } else if (amountValue is double) {
       parsedAmount = amountValue;
     } else if (amountValue is String) {
-      // Handle string amounts (remove Rs symbol, commas, etc.)
       try {
         final cleaned = amountValue.replaceAll(RegExp(r'[^0-9\.]'), '');
         parsedAmount = double.parse(cleaned);
       } catch (e) {
-        print('Error parsing amount string: $amountValue, error: $e');
         parsedAmount = 0.0;
       }
     } else if (amountValue is num) {
       parsedAmount = amountValue.toDouble();
-    } else {
-      print('Warning: Unknown amount type: ${amountValue.runtimeType}');
     }
+
+    DateTime? availableTime;
+    final avTime = data['availableTime'];
+    if (avTime is Timestamp) availableTime = avTime.toDate();
+
+    DateTime? proposed;
+    final prop = data['workerProposedStartTime'];
+    if (prop is Timestamp) proposed = prop.toDate();
 
     return BidModel(
       id: document.id,
@@ -60,27 +66,30 @@ class BidModel {
       status: data['status'] ?? 'pending',
       createdAt: data['createdAt'] ?? Timestamp.now(),
       updatedAt: data['updatedAt'],
+      availableTime: availableTime,
+      workerProposedStartTime: proposed,
     );
   }
 
   factory BidModel.fromMap(Map<String, dynamic> data, String id) {
     double parsedAmount = 0.0;
     final amountValue = data['amount'];
-
-    if (amountValue is int) {
-      parsedAmount = amountValue.toDouble();
-    } else if (amountValue is double) {
-      parsedAmount = amountValue;
-    } else if (amountValue is String) {
+    if (amountValue is int) parsedAmount = amountValue.toDouble();
+    else if (amountValue is double) parsedAmount = amountValue;
+    else if (amountValue is String) {
       try {
         final cleaned = amountValue.replaceAll(RegExp(r'[^0-9\.]'), '');
         parsedAmount = double.parse(cleaned);
-      } catch (e) {
-        parsedAmount = 0.0;
-      }
-    } else if (amountValue is num) {
-      parsedAmount = amountValue.toDouble();
-    }
+      } catch (_) {}
+    } else if (amountValue is num) parsedAmount = amountValue.toDouble();
+
+    DateTime? availableTime;
+    final avTime = data['availableTime'];
+    if (avTime is Timestamp) availableTime = avTime.toDate();
+
+    DateTime? proposed;
+    final prop = data['workerProposedStartTime'];
+    if (prop is Timestamp) proposed = prop.toDate();
 
     return BidModel(
       id: id,
@@ -92,6 +101,8 @@ class BidModel {
       status: data['status'] ?? 'pending',
       createdAt: data['createdAt'] ?? Timestamp.now(),
       updatedAt: data['updatedAt'],
+      availableTime: availableTime,
+      workerProposedStartTime: proposed,
     );
   }
 
@@ -105,6 +116,8 @@ class BidModel {
       'status': status,
       'createdAt': createdAt,
       if (updatedAt != null) 'updatedAt': updatedAt,
+      if (availableTime != null) 'availableTime': Timestamp.fromDate(availableTime!),
+      if (workerProposedStartTime != null) 'workerProposedStartTime': Timestamp.fromDate(workerProposedStartTime!),
     };
   }
 }

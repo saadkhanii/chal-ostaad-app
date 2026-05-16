@@ -2,6 +2,7 @@
 //
 // Phase 5: Proximity-based notification filtering added to createJob().
 // Phase 6: Progress-update request flow (worker → client approval).
+// Phase 1 (edit): updateJob() added — updates mutable fields on an open job.
 //
 // Progress flow:
 //   Worker calls requestProgressUpdate()  → writes progressRequest to job doc
@@ -83,18 +84,35 @@ class JobService {
     }
   }
 
+  // ── Edit/update job (client, only while open or waiting for bids) ─
+  //
+  // Updates the mutable fields a client is allowed to change:
+  //   title, description, category, location fields,
+  //   recommendedAmountMin, recommendedAmountMax, scheduledAt.
+  //
+  // Media is NOT updated here — the post screen handles media upload
+  // separately and passes the final URL lists in [updatedFields].
+  //
+  // Usage:
+  //   await jobService.updateJob(jobId: id, updatedFields: job.toJson());
+
+  Future<void> updateJob({
+    required String jobId,
+    required Map<String, dynamic> updatedFields,
+  }) async {
+    try {
+      // Always stamp an updatedAt so listeners can react
+      updatedFields['updatedAt'] = FieldValue.serverTimestamp();
+
+      await _firestore.collection('jobs').doc(jobId).update(updatedFields);
+
+      debugPrint('Phase 1: job $jobId updated');
+    } catch (e) {
+      throw Exception('Failed to update job: $e');
+    }
+  }
+
   // ── Progress-update request (worker → client) ────────────────────
-  //
-  // Writes a `progressRequest` sub-map onto the job document and sends
-  // a notification to the client. The client then accepts or rejects it.
-  //
-  // Fields written:
-  //   progressRequest: {
-  //     workerId:    <id of the requesting worker>
-  //     requestedAt: <server timestamp>
-  //     note:        <optional message from the worker>   (may be null)
-  //     status:      'pending'
-  //   }
 
   Future<void> requestProgressUpdate({
     required String jobId,
@@ -114,7 +132,6 @@ class JobService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // Notify the client
       try {
         await _notificationService.sendProgressRequestNotification(
           jobId:    jobId,
@@ -133,15 +150,6 @@ class JobService {
   }
 
   // ── Respond to progress request (client) ────────────────────────
-  //
-  // [accepted]:
-  //   • job status → 'completed'
-  //   • progressRequest cleared
-  //   • notifies worker
-  //
-  // [rejected]:
-  //   • progressRequest cleared (job stays 'in-progress')
-  //   • notifies worker
 
   Future<void> respondToProgressRequest({
     required String jobId,
@@ -161,7 +169,6 @@ class JobService {
 
       await _firestore.collection('jobs').doc(jobId).update(update);
 
-      // Notify the worker of the outcome
       try {
         await _notificationService.sendProgressResponseNotification(
           jobId:    jobId,
@@ -182,10 +189,6 @@ class JobService {
   }
 
   // ── Alter job progress (client) ──────────────────────────────────
-  //
-  // Lets the client manually change the progress status (e.g. set it
-  // back to 'in-progress' if it was completed prematurely, or cancel).
-  // Also clears any pending progress request from the worker.
 
   Future<void> alterJobProgress({
     required String jobId,
@@ -194,7 +197,7 @@ class JobService {
     try {
       await _firestore.collection('jobs').doc(jobId).update({
         'status':          newStatus,
-        'progressRequest': FieldValue.delete(),   // clear any pending request
+        'progressRequest': FieldValue.delete(),
         'updatedAt':       FieldValue.serverTimestamp(),
       });
 
@@ -252,7 +255,7 @@ class JobService {
     }
   }
 
-  // ── Standard queries (unchanged) ─────────────────────────────────
+  // ── Standard queries ─────────────────────────────────────────────
 
   Future<List<JobModel>> getJobsByClient(String clientId) async {
     try {

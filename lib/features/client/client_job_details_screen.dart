@@ -9,9 +9,12 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
+import 'package:intl/intl.dart';
+
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/models/bid_model.dart';
+import '../client/post_job_screen.dart' show PostJobScreen;
 import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/chat_service.dart';
@@ -28,6 +31,7 @@ import '../payment/payment_screen.dart';
 import '../payment/extra_charges_sheet.dart';
 import '../../core/services/payment_service.dart';
 import '../../shared/widgets/job_media_gallery.dart';
+import 'client_live_bidding_screen.dart';
 
 class ClientJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -47,7 +51,6 @@ class _ClientJobDetailsScreenState
   final _paymentService = PaymentService();
 
   bool    _jobPaid         = false;
-  String? _acceptingBidId;
   late String _jobStatus;
   String _clientId         = '';
   bool   _isDeleting       = false;
@@ -63,11 +66,15 @@ class _ClientJobDetailsScreenState
 
   // Extra charges notification
   bool _hasPendingExtras = false;
-
-  // ── FIX: track approved extras total from the live job stream ──────
-  // Used to show the correct total on the Pay button before opening
-  // PaymentScreen (which streams its own copy independently).
   double _approvedExtrasTotal = 0.0;
+
+  // ── Start agreement (10‑minute window, 60s grace) ──────────────────
+  DateTime? _agreedStartTime;
+  DateTime? _startAgreementExpiry;
+  DateTime? _startAgreementCreatedAt;
+  String? _startAgreementStatus;
+  Timer? _countdownTimer;
+  int _remainingSeconds = 0;
 
   StreamSubscription<DocumentSnapshot>? _jobSub;
 
@@ -94,11 +101,11 @@ class _ClientJobDetailsScreenState
         .snapshots()
         .listen((snap) {
       if (!mounted || !snap.exists) return;
-      final data     = snap.data() as Map<String, dynamic>;
-      final status   = (data['status'] as String?)?.trim().toLowerCase() ?? _jobStatus;
-      final request  = data['progressRequest'] as Map<String, dynamic>?;
-      final reviewed = data['reviewSubmitted']  as bool? ?? false;
-      final rawExtras = data['extraCharges']    as List<dynamic>? ?? [];
+      final data = snap.data() as Map<String, dynamic>;
+      final status = (data['status'] as String?)?.trim().toLowerCase() ?? _jobStatus;
+      final request = data['progressRequest'] as Map<String, dynamic>?;
+      final reviewed = data['reviewSubmitted'] as bool? ?? false;
+      final rawExtras = data['extraCharges'] as List<dynamic>? ?? [];
 
       final charges = rawExtras
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -107,24 +114,121 @@ class _ClientJobDetailsScreenState
       final hasPending = charges
           .any((c) => c['status'] == 'pending' && c['requestedBy'] != 'client');
 
-      // ── FIX: sum only the approved charges ───────────────────────
       final approvedTotal = charges
           .where((c) => c['status'] == 'approved')
           .fold<double>(0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
 
+      // Start agreement fields
+      final agreedTime = data['agreedStartTime'] as Timestamp?;
+      final expiry = data['startAgreementExpiry'] as Timestamp?;
+      final createdAt = data['startAgreementCreatedAt'] as Timestamp?;
+      final agreementStatus = data['startAgreementStatus'] as String?;
+
       setState(() {
-        _jobStatus              = status;
+        _jobStatus = status;
         _pendingProgressRequest = request;
-        _reviewSubmitted        = reviewed;
-        _hasPendingExtras       = hasPending;
-        _approvedExtrasTotal    = approvedTotal; // ← FIX
+        _reviewSubmitted = reviewed;
+        _hasPendingExtras = hasPending;
+        _approvedExtrasTotal = approvedTotal;
+        _agreedStartTime = agreedTime?.toDate();
+        _startAgreementExpiry = expiry?.toDate();
+        _startAgreementCreatedAt = createdAt?.toDate();
+        _startAgreementStatus = agreementStatus;
       });
+
+      _updateStartAgreementTimer();
     });
+  }
+
+  void _updateStartAgreementTimer() {
+    _countdownTimer?.cancel();
+    if (_jobStatus == 'pending_start_agreement' && _startAgreementExpiry != null) {
+      final now = DateTime.now();
+      if (now.isAfter(_startAgreementExpiry!)) {
+        _autoCancelStartAgreement();
+      } else {
+        final remaining = _startAgreementExpiry!.difference(now).inSeconds;
+        setState(() => _remainingSeconds = remaining);
+        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (!mounted) {
+            timer.cancel();
+            return;
+          }
+          final newRemaining = _startAgreementExpiry!.difference(DateTime.now()).inSeconds;
+          if (newRemaining <= 0) {
+            timer.cancel();
+            _autoCancelStartAgreement();
+          } else {
+            setState(() => _remainingSeconds = newRemaining);
+          }
+        });
+      }
+    } else {
+      setState(() => _remainingSeconds = 0);
+    }
+  }
+
+  Future<void> _autoCancelStartAgreement() async {
+    try {
+      await _bidService.cancelStartAgreement(widget.job.id!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Start time agreement expired. Job reverted to open.'),
+          backgroundColor: CColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      debugPrint('Auto-cancel error: $e');
+    }
+  }
+
+  Future<void> _cancelStartAgreement() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Job?'),
+        content: const Text(
+          'If you cancel now, the job will be reverted to open and all bids will become pending again. You can accept a different bid.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('common.cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
+            child: const Text('Cancel & Revert', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _bidService.cancelStartAgreement(widget.job.id!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Job reverted to open. You can now accept another bid.'),
+          backgroundColor: CColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to cancel: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
   }
 
   @override
   void dispose() {
     _jobSub?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -152,68 +256,7 @@ class _ClientJobDetailsScreenState
     } catch (_) {}
   }
 
-  // ── Accept bid — status auto-moves to in-progress ──────────────────
-  Future<void> _acceptBid(BidModel bid) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Accept Bid?'),
-        content: Text(
-          'Accept this bid for Rs. ${bid.amount.toStringAsFixed(0)}?\n'
-              'All other bids will be rejected and the job moves to In Progress.',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.primary),
-            child: Text('bid.accept'.tr(),
-                style: const TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    setState(() => _acceptingBidId = bid.id);
-    try {
-      await _bidService.acceptBid(bid.id!);
-
-      await _chatService.createOrGetChat(
-        jobId:      widget.job.id!,
-        jobTitle:   widget.job.title,
-        clientId:   bid.clientId,
-        workerId:   bid.workerId,
-        workerName: await _getWorkerName(bid.workerId),
-        clientName: await _getClientName(bid.clientId),
-      );
-
-      if (mounted) {
-        setState(() {
-          _jobStatus        = 'in-progress';
-          _acceptedWorkerId = bid.workerId;
-          _acceptingBidId   = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content:         Text('Bid accepted! Job is now In Progress.'),
-          backgroundColor: CColors.success,
-          behavior:        SnackBarBehavior.floating,
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _acceptingBidId = null);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:         Text('Failed to accept bid: $e'),
-          backgroundColor: CColors.error,
-          behavior:        SnackBarBehavior.floating,
-        ));
-      }
-    }
-  }
-
-  // ── Cancel job (client side) ────────────────────────────────────────
+  // ── Cancel job (client side, for non-agreement states) ─────────────
   Future<void> _cancelJob() async {
     final reasonController = TextEditingController();
     final confirmed = await showDialog<bool>(
@@ -318,6 +361,19 @@ class _ClientJobDetailsScreenState
     }
   }
 
+  // ── Open edit screen (only while job is open) ──────────────────────
+  void _openEditScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostJobScreen(
+          existingJob: widget.job,
+          onJobPosted: () => Navigator.pop(context),
+        ),
+      ),
+    );
+  }
+
   // ── Respond to worker's progress/completion request ─────────────────
   Future<void> _respondToProgressRequest(bool accepted) async {
     if (_acceptedWorkerId == null) return;
@@ -398,15 +454,21 @@ class _ClientJobDetailsScreenState
                     _buildExtraChargesCard(isDark, isUrdu),
                   ],
 
+                  // ── Start agreement banner (10‑minute window) ───
+                  if (_jobStatus == 'pending_start_agreement' && _agreedStartTime != null) ...[
+                    const SizedBox(height: CSizes.spaceBtwItems),
+                    _buildStartAgreementBanner(isDark, isUrdu),
+                  ],
+
                   // ── Map ────────────────────────────────────────
                   if (widget.job.hasLocation) ...[
                     const SizedBox(height: CSizes.spaceBtwItems),
                     _buildMiniMap(isDark),
                   ],
 
-                  // ── Bids ───────────────────────────────────────
+                  // ── Live Bidding button ─────────────────────────
                   const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildBidsList(isDark, isUrdu),
+                  _buildLiveBiddingButton(isDark, isUrdu),
 
                   // ── Dispute banner ─────────────────────────────
                   if (_acceptedWorkerId != null) ...[
@@ -440,7 +502,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Job info card ───────────────────────────────────────────────────
+  // ── Job info card (with urgent badge) ──────────────────────────────
   Widget _buildJobInfoCard(bool isDark, bool isUrdu) {
     final statusColor = _statusColor(_jobStatus);
     final statusText  = _statusText(_jobStatus);
@@ -459,6 +521,8 @@ class _ClientJobDetailsScreenState
         children: [
           Wrap(spacing: 8, children: [
             _badge(statusText, statusColor),
+            if (widget.job.isUrgent)
+              _badge('URGENT / ASAP', CColors.error, icon: Icons.flash_on, small: false),
             if (_jobPaid)
               _badge('Paid', CColors.success,
                   icon: Icons.check_circle_outline, small: true),
@@ -479,8 +543,10 @@ class _ClientJobDetailsScreenState
                       : CColors.darkerGrey,
                   height: 1.5,
                   fontSize: isUrdu ? 16 : 14)),
-
-          // ── Job Media ──────────────────────────────────────────
+          if (widget.job.hasBudget || widget.job.hasSchedule) ...[
+            const SizedBox(height: 12),
+            _buildBudgetScheduleRow(isDark, isUrdu),
+          ],
           if (widget.job.hasMedia) ...[
             const SizedBox(height: CSizes.spaceBtwItems),
             JobMediaGallery(
@@ -489,7 +555,6 @@ class _ClientJobDetailsScreenState
               mediaBase64: widget.job.mediaBase64,
             ),
           ],
-
           const SizedBox(height: 16),
           Row(children: [
             Icon(Icons.access_time_outlined,
@@ -516,11 +581,65 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Status lifecycle banner ─────────────────────────────────────────
+  Widget _buildBudgetScheduleRow(bool isDark, bool isUrdu) {
+    final textColor = isDark
+        ? CColors.textWhite.withOpacity(0.8)
+        : CColors.darkerGrey;
+    final labelStyle = TextStyle(
+      fontSize:   isUrdu ? 13 : 11,
+      fontWeight: FontWeight.w500,
+      color:      isDark ? CColors.textWhite.withOpacity(0.5) : CColors.darkGrey,
+    );
+    final valueStyle = TextStyle(
+      fontSize:   isUrdu ? 15 : 13,
+      fontWeight: FontWeight.w600,
+      color:      textColor,
+    );
+
+    return Wrap(
+      spacing:   16,
+      runSpacing: 8,
+      children: [
+        if (widget.job.hasBudget)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.account_balance_wallet_outlined,
+                size: 16, color: CColors.primary),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Budget', style: labelStyle),
+                Text(widget.job.budgetDisplay, style: valueStyle),
+              ],
+            ),
+          ]),
+        if (widget.job.hasSchedule)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.event_available_rounded,
+                size: 16, color: CColors.primary),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Start By', style: labelStyle),
+                Text(
+                  DateFormat('d MMM yyyy, hh:mm a')
+                      .format(widget.job.scheduledAt!.toDate()),
+                  style: valueStyle,
+                ),
+              ],
+            ),
+          ]),
+      ],
+    );
+  }
+
+  // ── Status lifecycle banner (supports pending_start_agreement) ──────
   Widget _buildStatusBanner(bool isDark, bool isUrdu) {
     final steps  = ['open', 'in-progress', 'completed'];
     final labels = ['Open', 'In Progress', 'Completed'];
-    final idx    = steps.indexOf(_jobStatus);
+    int idx = steps.indexOf(_jobStatus);
+    if (_jobStatus == 'pending_start_agreement') idx = 0;
 
     if (_jobStatus == 'cancelled' || _jobStatus == 'deleted') {
       return Container(
@@ -596,7 +715,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Progress request banner ─────────────────────────────────────────
+  // ── Progress request banner (unchanged) ─────────────────────────────
   Widget _buildProgressRequestBanner(bool isDark, bool isUrdu) {
     final note = _pendingProgressRequest?['note'] as String?;
     return Container(
@@ -663,7 +782,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Extra charges card ──────────────────────────────────────────────
+  // ── Extra charges card (unchanged) ──────────────────────────────────
   Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
@@ -720,7 +839,63 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Mini map ────────────────────────────────────────────────────────
+  // ── Start agreement banner (10‑minute window with 60s grace) ────────
+  Widget _buildStartAgreementBanner(bool isDark, bool isUrdu) {
+    if (_agreedStartTime == null) return const SizedBox.shrink();
+    final now = DateTime.now();
+    final isGracePeriod = _startAgreementCreatedAt != null &&
+        now.isBefore(_startAgreementCreatedAt!.add(const Duration(seconds: 60)));
+    final minutes = (_remainingSeconds / 60).floor();
+    final seconds = _remainingSeconds % 60;
+    final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+    return Container(
+      padding: const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color: CColors.warning.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: CColors.warning.withOpacity(0.5)),
+      ),
+      child: Column(children: [
+        Row(children: [
+          Icon(Icons.timer_outlined, color: CColors.warning),
+          const SizedBox(width: 8),
+          Expanded(child: Text(
+            'Start time agreement in progress',
+            style: const TextStyle(fontWeight: FontWeight.bold, color: CColors.warning),
+          )),
+        ]),
+        const SizedBox(height: 8),
+        Text(
+          'Agreed start: ${DateFormat('d MMM yyyy, hh:mm a').format(_agreedStartTime!)}',
+          style: const TextStyle(fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Time remaining: $timeStr',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: CColors.warning),
+        ),
+        const SizedBox(height: 8),
+        if (isGracePeriod)
+          const Text(
+            'Grace period: you can cancel (worker cannot confirm yet)',
+            style: TextStyle(fontSize: 12, color: CColors.darkGrey),
+          ),
+        const SizedBox(height: 12),
+        ElevatedButton.icon(
+          onPressed: _cancelStartAgreement,
+          icon: const Icon(Icons.cancel_outlined),
+          label: const Text('Cancel & Revert to Open'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: CColors.error,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ── Mini map (unchanged) ────────────────────────────────────────────
   Widget _buildMiniMap(bool isDark) {
     final ll = LatLng(widget.job.latitude!, widget.job.longitude!);
     return Container(
@@ -775,321 +950,123 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ── Bids list ───────────────────────────────────────────────────────
-  Widget _buildBidsList(bool isDark, bool isUrdu) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('bids')
-          .where('jobId', isEqualTo: widget.job.id)
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-              child: Text('bid.no_bids'.tr(),
-                  style: TextStyle(fontSize: isUrdu ? 16 : 14)));
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('bid.bids_received'.tr(),
-                style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize:   isUrdu ? 22 : 20)),
-            const SizedBox(height: CSizes.md),
-            ListView.builder(
-              shrinkWrap: true,
-              physics:    const NeverScrollableScrollPhysics(),
-              itemCount:  snapshot.data!.docs.length,
-              itemBuilder: (context, index) {
-                final doc = snapshot.data!.docs[index];
-                final bid = BidModel.fromSnapshot(
-                    doc as DocumentSnapshot<Map<String, dynamic>>);
-                return _buildBidCard(bid, isDark, isUrdu);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ── Bid card ────────────────────────────────────────────────────────
-  Widget _buildBidCard(BidModel bid, bool isDark, bool isUrdu) {
-    final isAccepted  = bid.status == 'accepted';
-    final isRejected  = bid.status == 'rejected';
-    final isAccepting = _acceptingBidId == bid.id;
-    final canAccept   = _jobStatus == 'open' && !isRejected && !isAccepted;
-
-    // ── FIX: include approved extras in the displayed Pay total ───────
-    final displayTotal = bid.amount + _approvedExtrasTotal;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: CSizes.sm),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        side: isAccepted
-            ? const BorderSide(color: CColors.success, width: 1.5)
-            : BorderSide.none,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(CSizes.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Rs. ${bid.amount.toStringAsFixed(0)}',
-                      style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize:   isUrdu ? 20 : 18,
-                          color:      CColors.primary)),
-                  _bidStatusBadge(bid.status, isUrdu),
-                ]),
-            const SizedBox(height: CSizes.sm),
-
-            // View worker profile
-            InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) =>
-                        WorkerBidProfileScreen(workerId: bid.workerId)),
-              ),
-              borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color:        CColors.primary.withOpacity(0.06),
-                  borderRadius:
-                  BorderRadius.circular(CSizes.borderRadiusMd),
-                  border: Border.all(
-                      color: CColors.primary.withOpacity(0.2)),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.person_outline_rounded,
-                      color: CColors.primary, size: 16),
-                  const SizedBox(width: 6),
-                  Text('View Worker Profile',
-                      style: TextStyle(
-                          color:      CColors.primary,
-                          fontSize:   isUrdu ? 13 : 12,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_forward_ios_rounded,
-                      color: CColors.primary, size: 12),
-                ]),
+  // ── Live Bidding button (navigates to client live bidding screen) ───
+  Widget _buildLiveBiddingButton(bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ClientLiveBiddingScreen(
+                job: widget.job,
+                clientId: _clientId,
               ),
             ),
-
-            if (bid.message != null && bid.message!.isNotEmpty) ...[
-              const SizedBox(height: CSizes.sm),
-              Text(bid.message!,
-                  style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                      fontSize: isUrdu ? 15 : 13,
-                      color:    isDark
-                          ? CColors.textWhite.withOpacity(0.7)
-                          : CColors.darkerGrey)),
-            ],
-
-            // Accepted bid actions
-            if (isAccepted) ...[
-              const SizedBox(height: CSizes.md),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _openChat(bid),
-                  icon:  const Icon(Icons.chat_outlined, size: 18),
-                  label: Text('chat.open_chat'.tr(),
-                      style: const TextStyle(fontSize: 14)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CColors.secondary,
-                    foregroundColor: CColors.primary,
-                    padding:
-                    const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            CSizes.borderRadiusMd)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: CSizes.sm),
-              SizedBox(
-                width: double.infinity,
-                child: _jobPaid
-                    ? Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: CColors.success.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(
-                        CSizes.borderRadiusMd),
-                    border: Border.all(
-                        color: CColors.success.withOpacity(0.4)),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle_rounded,
-                          color: CColors.success, size: 18),
-                      SizedBox(width: 8),
-                      Text('Payment Completed',
-                          style: TextStyle(
-                              color:      CColors.success,
-                              fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                )
-                    : ElevatedButton.icon(
-                  onPressed: () => _openPaymentScreen(bid),
-                  icon:  const Icon(
-                      Icons.account_balance_wallet_rounded,
-                      size: 18),
-                  // ── FIX: show total incl. approved extras ─────
-                  label: Text(
-                    _approvedExtrasTotal > 0
-                        ? 'Pay Rs. ${displayTotal.toStringAsFixed(0)}'
-                        ' (incl. extras)'
-                        : 'Pay Rs. ${bid.amount.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                        fontSize:   14,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            CSizes.borderRadiusMd)),
-                  ),
-                ),
-              ),
-              // Review button
-              if (_jobStatus == 'completed' && !_reviewSubmitted) ...[
-                const SizedBox(height: CSizes.sm),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _openReviewDialog,
-                    icon:  const Icon(Icons.star_outline),
-                    label: const Text('Leave a Review'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: CColors.primary,
-                      side: const BorderSide(color: CColors.primary),
-                      padding:
-                      const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-
-            // Accept button
-            if (canAccept) ...[
-              const SizedBox(height: CSizes.md),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed:
-                  isAccepting ? null : () => _acceptBid(bid),
-                  icon: isAccepting
-                      ? const SizedBox(
-                      width:  16,
-                      height: 16,
-                      child:  CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                      : const Icon(
-                      Icons.check_circle_outline_rounded,
-                      size: 18),
-                  label: Text(
-                    isAccepting
-                        ? 'common.loading'.tr()
-                        : 'bid.accept'.tr(),
-                    style: TextStyle(fontSize: isUrdu ? 16 : 14),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CColors.primary,
-                    foregroundColor: Colors.white,
-                    padding:
-                    const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            CSizes.borderRadiusMd)),
-                  ),
-                ),
-              ),
-            ],
-          ],
+          );
+        },
+        icon: const Icon(Icons.gavel_rounded, size: 18),
+        label: Text(
+          'View Live Bidding',
+          style: TextStyle(fontSize: isUrdu ? 16 : 14),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: CColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+          ),
         ),
       ),
     );
   }
 
-  // ── Action buttons (cancel / delete) ──────────────────────────────
+  // ── Action buttons (edit / cancel / delete) ──────────────────────────
   Widget _buildActionButtons(bool isDark, bool isUrdu) {
+    final canEdit   = _jobStatus == 'open';
     final canDelete = _jobStatus == 'open';
-    final canCancel = _jobStatus == 'open' || _jobStatus == 'in-progress';
+    final canCancel = _jobStatus == 'open' || _jobStatus == 'in-progress' || _jobStatus == 'pending_start_agreement';
 
-    if (!canDelete && !canCancel) return const SizedBox.shrink();
+    if (!canEdit && !canDelete && !canCancel) return const SizedBox.shrink();
 
-    return Row(children: [
-      if (canDelete)
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _isDeleting ? null : _deleteJob,
-            icon:  const Icon(Icons.delete_outline, color: CColors.error),
-            label: _isDeleting
-                ? const SizedBox(
-                width:  16,
-                height: 16,
-                child:  CircularProgressIndicator(
-                    color: CColors.error, strokeWidth: 2))
-                : const Text('Delete Job',
-                style: TextStyle(color: CColors.error)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: CColors.error),
-              padding:
-              const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                      CSizes.borderRadiusLg)),
+    return Column(
+      children: [
+        if (canEdit) ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openEditScreen,
+              icon:  Icon(Icons.edit_outlined, color: CColors.primary),
+              label: Text('Edit Job',
+                  style: TextStyle(color: CColors.primary)),
+              style: OutlinedButton.styleFrom(
+                side:    BorderSide(color: CColors.primary),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape:   RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(CSizes.borderRadiusLg)),
+              ),
             ),
           ),
-        ),
-      if (canDelete && canCancel) const SizedBox(width: 12),
-      if (canCancel)
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _isCancelling ? null : _cancelJob,
-            icon:  const Icon(Icons.cancel_outlined,
-                color: CColors.warning),
-            label: _isCancelling
-                ? const SizedBox(
-                width:  16,
-                height: 16,
-                child:  CircularProgressIndicator(
-                    color: CColors.warning, strokeWidth: 2))
-                : const Text('Cancel Job',
-                style: TextStyle(color: CColors.warning)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: CColors.warning),
-              padding:
-              const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                      CSizes.borderRadiusLg)),
+          const SizedBox(height: 8),
+        ],
+        Row(children: [
+          if (canDelete)
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isDeleting ? null : _deleteJob,
+                icon:  const Icon(Icons.delete_outline, color: CColors.error),
+                label: _isDeleting
+                    ? const SizedBox(
+                    width:  16,
+                    height: 16,
+                    child:  CircularProgressIndicator(
+                        color: CColors.error, strokeWidth: 2))
+                    : const Text('Delete Job',
+                    style: TextStyle(color: CColors.error)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: CColors.error),
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                          CSizes.borderRadiusLg)),
+                ),
+              ),
             ),
-          ),
-        ),
-    ]);
+          if (canDelete && canCancel) const SizedBox(width: 12),
+          if (canCancel)
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isCancelling ? null : _cancelJob,
+                icon:  const Icon(Icons.cancel_outlined,
+                    color: CColors.warning),
+                label: _isCancelling
+                    ? const SizedBox(
+                    width:  16,
+                    height: 16,
+                    child:  CircularProgressIndicator(
+                        color: CColors.warning, strokeWidth: 2))
+                    : const Text('Cancel Job',
+                    style: TextStyle(color: CColors.warning)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: CColors.warning),
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                          CSizes.borderRadiusLg)),
+                ),
+              ),
+            ),
+        ]),
+      ],
+    );
   }
 
-  // ── Raise dispute button ───────────────────────────────────────────
+  // ── Raise dispute button (unchanged) ────────────────────────────────
   Widget _buildRaiseDisputeButton(bool isDark, bool isUrdu) {
     return SizedBox(
       width: double.infinity,
@@ -1148,35 +1125,10 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  Widget _bidStatusBadge(String status, bool isUrdu) {
-    Color  color;
-    String label;
-    switch (status) {
-      case 'accepted':
-        color = CColors.success; label = 'Accepted'; break;
-      case 'rejected':
-        color = CColors.error;   label = 'Rejected';  break;
-      default:
-        color = CColors.warning; label = 'Pending';
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color:        color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
-        border:       Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color:      color,
-              fontWeight: FontWeight.bold,
-              fontSize:   isUrdu ? 12 : 10)),
-    );
-  }
-
   Color  _statusColor(String s) {
     switch (s) {
-      case 'open':        return CColors.success;
+      case 'open': return CColors.success;
+      case 'pending_start_agreement': return CColors.success;
       case 'in-progress': return CColors.warning;
       case 'completed':   return CColors.info;
       case 'cancelled':
@@ -1188,6 +1140,7 @@ class _ClientJobDetailsScreenState
   String _statusText(String s) {
     switch (s) {
       case 'open':        return 'Open';
+      case 'pending_start_agreement': return 'Agreement Pending';
       case 'in-progress': return 'In Progress';
       case 'completed':   return 'Completed';
       case 'cancelled':   return 'Cancelled';
@@ -1243,8 +1196,6 @@ class _ClientJobDetailsScreenState
           jobTitle: widget.job.title,
           clientId: _clientId,
           workerId: bid.workerId,
-          // Pass base bid amount only — PaymentScreen streams
-          // its own approved extras from Firestore in real time.
           amount:   bid.amount,
         ),
       ),

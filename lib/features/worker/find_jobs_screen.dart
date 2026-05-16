@@ -152,26 +152,7 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
             widget.showAppBar ? () => Navigator.pop(context) : null,
           ),
 
-          // ── Category label banner ──────────────────────────────
-          if (_workerCategoryName.isNotEmpty)
-            Container(
-              width:   double.infinity,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: CSizes.defaultSpace, vertical: CSizes.sm),
-              color: CColors.primary.withOpacity(0.08),
-              child: Row(children: [
-                const Icon(Icons.filter_list_rounded,
-                    size: 16, color: CColors.primary),
-                const SizedBox(width: 6),
-                Text(
-                  'Showing: $_workerCategoryName jobs only',
-                  style: const TextStyle(
-                      fontSize:   13,
-                      color:      CColors.primary,
-                      fontWeight: FontWeight.w600),
-                ),
-              ]),
-            ),
+
 
           Expanded(child: _buildJobsList()),
         ],
