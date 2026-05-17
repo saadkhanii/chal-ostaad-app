@@ -150,11 +150,11 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
           begin:  Alignment.topLeft,
           end:    Alignment.bottomRight,
           colors: [
-            config.color.withOpacity(0.12),
-            config.color.withOpacity(0.05),
+            config.color.withValues(alpha: 0.12),
+            config.color.withValues(alpha: 0.05),
           ],
         ),
-        border: Border.all(color: config.color.withOpacity(0.4)),
+        border: Border.all(color: config.color.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,7 +167,7 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color:        config.color.withOpacity(0.15),
+                    color:        config.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(config.icon, color: config.color, size: 18),
@@ -203,10 +203,10 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color:        config.color.withOpacity(0.15),
+                    color:        config.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: config.color.withOpacity(0.4)),
+                        color: config.color.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     config.badge,
@@ -273,11 +273,11 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
                     width:   double.infinity,
                     padding: const EdgeInsets.all(CSizes.md),
                     decoration: BoxDecoration(
-                      color: CColors.success.withOpacity(0.08),
+                      color: CColors.success.withValues(alpha: 0.08),
                       borderRadius:
                       BorderRadius.circular(CSizes.borderRadiusMd),
                       border: Border.all(
-                          color: CColors.success.withOpacity(0.3)),
+                          color: CColors.success.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,7 +305,7 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
                             style: TextStyle(
                               fontSize: isUrdu ? 13 : 11.5,
                               color:    isDark
-                                  ? CColors.textWhite.withOpacity(0.8)
+                                  ? CColors.textWhite.withValues(alpha: 0.8)
                                   : CColors.darkerGrey,
                               height: 1.4,
                             ),
@@ -418,7 +418,7 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
                     decoration: BoxDecoration(
                       borderRadius:
                       BorderRadius.circular(CSizes.borderRadiusMd),
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                     ),
                     child: const Center(
                       child: Icon(Icons.zoom_in_rounded,
@@ -453,7 +453,7 @@ class _DisputeStatusBannerState extends State<DisputeStatusBanner> {
               BorderRadius.circular(CSizes.borderRadiusMd),
               border: Border.all(
                 color: canUpload
-                    ? CColors.primary.withOpacity(0.4)
+                    ? CColors.primary.withValues(alpha: 0.4)
                     : CColors.borderPrimary,
               ),
             ),

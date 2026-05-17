@@ -169,7 +169,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: CColors.primary.withOpacity(0.1),
+                        color: CColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -267,7 +267,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
           key: ValueKey(bid.id ?? 'bid_${bid.workerId}_${bid.jobId}'),
           margin: const EdgeInsets.only(bottom: CSizes.sm),
           elevation: 2,
-          shadowColor: CColors.secondary.withOpacity(0.18),
+          shadowColor: CColors.secondary.withValues(alpha: 0.18),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
           ),
@@ -280,7 +280,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [CColors.secondary, CColors.secondary.withOpacity(0.75)],
+                    colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
@@ -305,7 +305,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -370,7 +370,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: CColors.primary.withOpacity(0.1),
+                              color: CColors.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -399,7 +399,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
       key: ValueKey(bid.id ?? 'my_bid_${bid.workerId}'),
       margin: const EdgeInsets.only(bottom: CSizes.sm),
       elevation: 3,
-      shadowColor: CColors.primary.withOpacity(0.25),
+      shadowColor: CColors.primary.withValues(alpha: 0.25),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
       ),
@@ -411,7 +411,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
             padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [CColors.primary, CColors.primary.withOpacity(0.75)],
+                colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
@@ -433,7 +433,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -498,7 +498,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: CColors.primary.withOpacity(0.1),
+                          color: CColors.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -570,7 +570,7 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
               style: TextStyle(
                 fontStyle: FontStyle.italic,
                 fontSize: isUrdu ? 15 : 13,
-                color: isDark ? CColors.textWhite.withOpacity(0.7) : CColors.darkerGrey,
+                color: isDark ? CColors.textWhite.withValues(alpha: 0.7) : CColors.darkerGrey,
               ),
             ),
           ),

@@ -56,7 +56,7 @@ class HelpSupportScreen extends StatelessWidget {
                       Text(
                         'Reach out anytime at chalostaad@gmail.com',
                         style: TextStyle(
-                          color:    Colors.white.withOpacity(0.9),
+                          color:    Colors.white.withValues(alpha: 0.9),
                           fontSize: isUrdu ? 14 : 12,
                         ),
                       ),
@@ -192,7 +192,7 @@ class HelpSupportScreen extends StatelessWidget {
         leading: Container(
           padding:    const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color:        CColors.primary.withOpacity(0.1),
+            color:        CColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: CColors.primary, size: 20),

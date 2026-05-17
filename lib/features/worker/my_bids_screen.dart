@@ -354,7 +354,7 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: _getStatusColor(bid.status).withOpacity(0.1),
+                                  color: _getStatusColor(bid.status).withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: _getStatusColor(bid.status)),
                                 ),
@@ -519,7 +519,7 @@ class _MyBidsScreenState extends ConsumerState<MyBidsScreen> {
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: CColors.primary.withOpacity(0.1),
+                                      color: CColors.primary.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(color: CColors.primary),
                                     ),

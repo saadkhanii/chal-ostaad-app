@@ -154,9 +154,9 @@ class _EditBidScreenState extends State<EditBidScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: CColors.warning.withOpacity(0.1),
+          color: CColors.warning.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: CColors.warning.withOpacity(0.3)),
+          border: Border.all(color: CColors.warning.withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,7 +187,7 @@ class _EditBidScreenState extends State<EditBidScreen> {
       return Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: CColors.primary.withOpacity(0.1),
+          color: CColors.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: const Row(children: [
@@ -202,9 +202,9 @@ class _EditBidScreenState extends State<EditBidScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: CColors.primary.withOpacity(0.1),
+        color: CColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: CColors.primary.withOpacity(0.2)),
+        border: Border.all(color: CColors.primary.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +249,7 @@ class _EditBidScreenState extends State<EditBidScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: CColors.primary.withOpacity(0.1),
+                color: CColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: CColors.primary),
               ),
@@ -328,7 +328,7 @@ class _EditBidScreenState extends State<EditBidScreen> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: CColors.primary.withOpacity(0.1),
+                color: CColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: CColors.primary),
               ),

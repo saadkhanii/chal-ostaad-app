@@ -355,7 +355,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(job.status).withOpacity(0.1),
+                      color: _getStatusColor(job.status).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                           color: _getStatusColor(job.status)),

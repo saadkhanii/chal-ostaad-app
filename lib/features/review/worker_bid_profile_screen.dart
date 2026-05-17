@@ -152,7 +152,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
                         style: TextStyle(
                           fontSize: isUrdu ? 14 : 13,
                           color:    isDark
-                              ? CColors.textWhite.withOpacity(0.85)
+                              ? CColors.textWhite.withValues(alpha: 0.85)
                               : CColors.textPrimary,
                           height:   1.5,
                         ),
@@ -199,7 +199,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.06),
+            color:      Colors.black.withValues(alpha: 0.06),
             blurRadius: 8,
             offset:     const Offset(0, 2),
           ),
@@ -210,7 +210,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
           // Avatar
           CircleAvatar(
             radius:          40,
-            backgroundColor: CColors.primary.withOpacity(0.15),
+            backgroundColor: CColors.primary.withValues(alpha: 0.15),
             backgroundImage: img,
             child: img == null
                 ? Text(
@@ -316,7 +316,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.05),
+            color:      Colors.black.withValues(alpha: 0.05),
             blurRadius: 6,
             offset:     const Offset(0, 2),
           ),
@@ -364,7 +364,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.05),
+            color:      Colors.black.withValues(alpha: 0.05),
             blurRadius: 6,
             offset:     const Offset(0, 2),
           ),
@@ -397,9 +397,9 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color:        CColors.primary.withOpacity(0.1),
+        color:        CColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border:       Border.all(color: CColors.primary.withOpacity(0.3)),
+        border:       Border.all(color: CColors.primary.withValues(alpha: 0.3)),
       ),
       child: Text(
         skill,
@@ -422,7 +422,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.05),
+            color:      Colors.black.withValues(alpha: 0.05),
             blurRadius: 6,
             offset:     const Offset(0, 2),
           ),
@@ -522,7 +522,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
             children: [
               CircleAvatar(
                 radius:          14,
-                backgroundColor: CColors.primary.withOpacity(0.15),
+                backgroundColor: CColors.primary.withValues(alpha: 0.15),
                 child: Text(
                   review.clientName.isNotEmpty
                       ? review.clientName[0].toUpperCase()
@@ -558,7 +558,7 @@ class _WorkerBidProfileScreenState extends State<WorkerBidProfileScreen> {
                 style: TextStyle(
                   fontSize: isUrdu ? 13 : 12,
                   color:    isDark
-                      ? CColors.textWhite.withOpacity(0.7)
+                      ? CColors.textWhite.withValues(alpha: 0.7)
                       : CColors.darkerGrey,
                 ),
               ),

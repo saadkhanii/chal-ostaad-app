@@ -241,7 +241,7 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: CColors.primary.withOpacity(0.1),
+                        color: CColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -344,7 +344,7 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
                 padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [CColors.secondary, CColors.secondary.withOpacity(0.75)],
+                    colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
@@ -367,7 +367,7 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -436,7 +436,7 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: CColors.primary.withOpacity(0.1),
+                            color: CColors.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -455,7 +455,7 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
                           style: TextStyle(
                             fontStyle: FontStyle.italic,
                             fontSize: isUrdu ? 15 : 13,
-                            color: isDark ? CColors.textWhite.withOpacity(0.7) : CColors.darkerGrey,
+                            color: isDark ? CColors.textWhite.withValues(alpha: 0.7) : CColors.darkerGrey,
                           ),
                         ),
                       ),

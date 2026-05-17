@@ -238,7 +238,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Container(
             padding:    const EdgeInsets.all(10),
             decoration: BoxDecoration(
-                color:        CColors.primary.withOpacity(0.1),
+                color:        CColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10)),
             child: const Icon(Icons.receipt_long_rounded,
                 color: CColors.primary, size: 22),
@@ -397,10 +397,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         padding:     const EdgeInsets.all(14),
         decoration:  BoxDecoration(
           color:        selected
-              ? CColors.primary.withOpacity(0.08)
+              ? CColors.primary.withValues(alpha: 0.08)
               : isDark
-              ? CColors.darkContainer.withOpacity(0.4)
-              : Colors.grey.withOpacity(0.06),
+              ? CColors.darkContainer.withValues(alpha: 0.4)
+              : Colors.grey.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
           border:       Border.all(
             color: selected
@@ -435,9 +435,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       width:   double.infinity,
       padding: const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
-        color:        Colors.amber.withOpacity(0.1),
+        color:        Colors.amber.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        border:       Border.all(color: Colors.amber.withOpacity(0.4)),
+        border:       Border.all(color: Colors.amber.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,9 +467,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       width:   double.infinity,
       padding: const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
-        color:        CColors.info.withOpacity(0.08),
+        color:        CColors.info.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        border:       Border.all(color: CColors.info.withOpacity(0.3)),
+        border:       Border.all(color: CColors.info.withValues(alpha: 0.3)),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,9 +499,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
-        color:        CColors.success.withOpacity(0.08),
+        color:        CColors.success.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        border:       Border.all(color: CColors.success.withOpacity(0.3)),
+        border:       Border.all(color: CColors.success.withValues(alpha: 0.3)),
       ),
       child: const Row(children: [
         Icon(Icons.lock_rounded, color: CColors.success, size: 18),
@@ -530,7 +530,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor:         CColors.primary,
           foregroundColor:         Colors.white,
-          disabledBackgroundColor: CColors.primary.withOpacity(0.6),
+          disabledBackgroundColor: CColors.primary.withValues(alpha: 0.6),
           shape: RoundedRectangleBorder(
               borderRadius:
               BorderRadius.circular(CSizes.borderRadiusLg)),
@@ -570,7 +570,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ? []
             : [
           BoxShadow(
-              color:      Colors.black.withOpacity(0.06),
+              color:      Colors.black.withValues(alpha: 0.06),
               blurRadius: 12,
               offset:     const Offset(0, 4))
         ],
@@ -588,7 +588,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             Text(label,
                 style: TextStyle(
                     color: isDark
-                        ? CColors.textWhite.withOpacity(0.7)
+                        ? CColors.textWhite.withValues(alpha: 0.7)
                         : CColors.darkGrey)),
             if (note != null)
               Text(note,

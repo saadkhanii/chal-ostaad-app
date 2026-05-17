@@ -143,12 +143,12 @@ class _WalletScreenState extends State<WalletScreen>
             gradient: LinearGradient(
               begin:  Alignment.topLeft,
               end:    Alignment.bottomRight,
-              colors: [CColors.primary, CColors.primary.withOpacity(0.75)],
+              colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
             ),
             borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
             boxShadow: [
               BoxShadow(
-                color:      CColors.primary.withOpacity(0.3),
+                color:      CColors.primary.withValues(alpha: 0.3),
                 blurRadius: 12,
                 offset:     const Offset(0, 4),
               )
@@ -175,7 +175,7 @@ class _WalletScreenState extends State<WalletScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color:        Colors.white.withOpacity(0.2),
+                    color:        Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(children: [
@@ -295,7 +295,7 @@ class _WalletScreenState extends State<WalletScreen>
           Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
-              color:        CColors.primary.withOpacity(0.1),
+              color:        CColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Center(
@@ -324,7 +324,7 @@ class _WalletScreenState extends State<WalletScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color:        statusColor.withOpacity(0.12),
+                color:        statusColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(statusLabel,
@@ -346,7 +346,7 @@ class _WalletScreenState extends State<WalletScreen>
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
       leading: CircleAvatar(
-        backgroundColor: CColors.primary.withOpacity(0.1),
+        backgroundColor: CColors.primary.withValues(alpha: 0.1),
         child: const Icon(Icons.payment_rounded, color: CColors.primary, size: 20),
       ),
       title: Text(payment.jobTitle,

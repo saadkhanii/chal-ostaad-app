@@ -719,7 +719,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           style: TextStyle(
             fontSize: 11,
             color:    isDark
-                ? CColors.textWhite.withOpacity(0.45)
+                ? CColors.textWhite.withValues(alpha: 0.45)
                 : CColors.darkGrey,
           ),
         ),
@@ -848,7 +848,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
               Container(
                 padding:    const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color:        CColors.primary.withOpacity(0.1),
+                  color:        CColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -875,7 +875,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                     color: hasSchedule
                         ? CColors.primary
                         : (isDark
-                        ? CColors.textWhite.withOpacity(0.5)
+                        ? CColors.textWhite.withValues(alpha: 0.5)
                         : CColors.darkGrey),
                   ),
                 ),
@@ -998,7 +998,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           style: TextStyle(
             fontSize: 11,
             color:    isDark
-                ? CColors.textWhite.withOpacity(0.4)
+                ? CColors.textWhite.withValues(alpha: 0.4)
                 : CColors.darkGrey,
           ),
         ),
@@ -1014,7 +1014,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       height: 90,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        border: Border.all(color: CColors.primary.withOpacity(0.4)),
+        border: Border.all(color: CColors.primary.withValues(alpha: 0.4)),
         color:  isDark ? CColors.darkContainer : CColors.lightGrey,
       ),
       child: Stack(children: [
@@ -1076,7 +1076,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       height: 90,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-        border: Border.all(color: CColors.primary.withOpacity(0.4)),
+        border: Border.all(color: CColors.primary.withValues(alpha: 0.4)),
         color:  isDark ? CColors.darkContainer : CColors.lightGrey,
       ),
       child: Stack(children: [
@@ -1145,7 +1145,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
               Container(
                 padding:    const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color:        CColors.primary.withOpacity(0.1),
+                  color:        CColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -1173,7 +1173,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                         color: hasLocation
                             ? CColors.primary
                             : (isDark
-                            ? CColors.textWhite.withOpacity(0.5)
+                            ? CColors.textWhite.withValues(alpha: 0.5)
                             : CColors.darkGrey),
                       ),
                     ),
@@ -1184,7 +1184,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                         style: TextStyle(
                           fontSize: isUrdu ? 13 : 11,
                           color:    isDark
-                              ? CColors.textWhite.withOpacity(0.6)
+                              ? CColors.textWhite.withValues(alpha: 0.6)
                               : CColors.darkerGrey,
                         ),
                         maxLines: 2,
@@ -1347,15 +1347,15 @@ class _UploadProgressDialog extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          CColors.primary.withOpacity(0.15),
-                          CColors.secondary.withOpacity(0.08),
+                          CColors.primary.withValues(alpha: 0.15),
+                          CColors.secondary.withValues(alpha: 0.08),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: CColors.primary.withOpacity(0.3),
+                        color: CColors.primary.withValues(alpha: 0.3),
                         width: 1.5,
                       ),
                     ),

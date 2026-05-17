@@ -539,7 +539,7 @@ class _ClientJobDetailsScreenState
           Text(widget.job.description,
               style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                   color:  isDark
-                      ? CColors.textWhite.withOpacity(0.8)
+                      ? CColors.textWhite.withValues(alpha: 0.8)
                       : CColors.darkerGrey,
                   height: 1.5,
                   fontSize: isUrdu ? 16 : 14)),
@@ -583,12 +583,12 @@ class _ClientJobDetailsScreenState
 
   Widget _buildBudgetScheduleRow(bool isDark, bool isUrdu) {
     final textColor = isDark
-        ? CColors.textWhite.withOpacity(0.8)
+        ? CColors.textWhite.withValues(alpha: 0.8)
         : CColors.darkerGrey;
     final labelStyle = TextStyle(
       fontSize:   isUrdu ? 13 : 11,
       fontWeight: FontWeight.w500,
-      color:      isDark ? CColors.textWhite.withOpacity(0.5) : CColors.darkGrey,
+      color:      isDark ? CColors.textWhite.withValues(alpha: 0.5) : CColors.darkGrey,
     );
     final valueStyle = TextStyle(
       fontSize:   isUrdu ? 15 : 13,
@@ -645,9 +645,9 @@ class _ClientJobDetailsScreenState
       return Container(
         padding:    const EdgeInsets.all(CSizes.md),
         decoration: BoxDecoration(
-          color:        CColors.error.withOpacity(0.08),
+          color:        CColors.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-          border:       Border.all(color: CColors.error.withOpacity(0.3)),
+          border:       Border.all(color: CColors.error.withValues(alpha: 0.3)),
         ),
         child: Row(children: [
           const Icon(Icons.cancel_outlined, color: CColors.error),
@@ -721,9 +721,9 @@ class _ClientJobDetailsScreenState
     return Container(
       padding:    const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
-        color:        CColors.info.withOpacity(0.08),
+        color:        CColors.info.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border:       Border.all(color: CColors.info.withOpacity(0.3)),
+        border:       Border.all(color: CColors.info.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -791,7 +791,7 @@ class _ClientJobDetailsScreenState
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         border:       Border.all(
             color: _hasPendingExtras
-                ? CColors.warning.withOpacity(0.5)
+                ? CColors.warning.withValues(alpha: 0.5)
                 : (isDark ? CColors.darkerGrey : CColors.borderPrimary)),
       ),
       child: Row(children: [
@@ -852,9 +852,9 @@ class _ClientJobDetailsScreenState
     return Container(
       padding: const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
-        color: CColors.warning.withOpacity(0.1),
+        color: CColors.warning.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(color: CColors.warning.withOpacity(0.5)),
+        border: Border.all(color: CColors.warning.withValues(alpha: 0.5)),
       ),
       child: Column(children: [
         Row(children: [
@@ -1107,9 +1107,9 @@ class _ClientJobDetailsScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color:        color.withOpacity(0.12),
+        color:        color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
-        border:       Border.all(color: color.withOpacity(0.4)),
+        border:       Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[

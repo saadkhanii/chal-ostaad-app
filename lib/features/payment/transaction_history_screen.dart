@@ -200,7 +200,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           padding:    const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: (isWorker ? CColors.success : CColors.primary)
-                .withOpacity(0.1),
+                .withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -253,7 +253,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color:        CColors.success.withOpacity(0.1),
+              color:        CColors.success.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Text('Paid',

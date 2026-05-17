@@ -412,7 +412,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             color:        isDark ? CColors.darkContainer : CColors.white,
             borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
             boxShadow: isDark ? [] : [
-              BoxShadow(color: Colors.black.withOpacity(0.06),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: 12, offset: const Offset(0, 4))
             ],
           ),
@@ -428,7 +428,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
               padding: const EdgeInsets.all(CSizes.md),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [CColors.primary, CColors.primary.withOpacity(0.75)],
+                  colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
                 ),
                 borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
               ),
@@ -493,7 +493,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         Container(
           padding:    const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color:        color.withOpacity(0.1),
+              color:        color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: color, size: 18),
         ),
@@ -502,7 +502,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             style: TextStyle(
                 fontSize: 13,
                 color:    isDark
-                    ? CColors.textWhite.withOpacity(0.8)
+                    ? CColors.textWhite.withValues(alpha: 0.8)
                     : CColors.textPrimary))),
         Text(value,
             style: TextStyle(
@@ -574,9 +574,9 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       decoration: BoxDecoration(
         color:        isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border:       Border.all(color: color.withOpacity(0.25)),
+        border:       Border.all(color: color.withValues(alpha: 0.25)),
         boxShadow: isDark ? [] : [
-          BoxShadow(color: Colors.black.withOpacity(0.04),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 6, offset: const Offset(0, 2)),
         ],
       ),
@@ -584,7 +584,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         Container(
           padding:    const EdgeInsets.all(10),
           decoration: BoxDecoration(
-              color:        color.withOpacity(0.1),
+              color:        color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10)),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -624,9 +624,9 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
     return Container(
       padding:    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-          color:        color.withOpacity(0.1),
+          color:        color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(6),
-          border:       Border.all(color: color.withOpacity(0.3))),
+          border:       Border.all(color: color.withValues(alpha: 0.3))),
       child: Text(label,
           style: TextStyle(
               color: color, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -700,7 +700,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         color:        isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
-          BoxShadow(color: color.withOpacity(0.08),
+          BoxShadow(color: color.withValues(alpha: 0.08),
               blurRadius: 12, offset: const Offset(0, 4)),
         ],
       ),
@@ -709,7 +709,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
           Container(
             padding:    const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color:        color.withOpacity(0.1),
+                color:        color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, color: color, size: 20),
           ),
@@ -749,7 +749,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                 ? CColors.darkContainer : CColors.white,
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
@@ -896,7 +896,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 4, offset: const Offset(0, 2)),
         ],
       ),
@@ -904,7 +904,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         Container(
           padding:    const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color:  color.withOpacity(0.1), shape: BoxShape.circle),
+              color:  color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: Icon(icon, color: color, size: 20),
         ),
         const SizedBox(width: 12),
@@ -951,11 +951,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+          colors: [CColors.primary, CColors.primary.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
-          BoxShadow(color: CColors.primary.withOpacity(0.3),
+          BoxShadow(color: CColors.primary.withValues(alpha: 0.3),
               blurRadius: 20, offset: const Offset(0, 8)),
         ],
       ),
@@ -965,7 +965,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
           children: [
             Text('${_getGreeting()},',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: CColors.white.withOpacity(0.9),
+                    color: CColors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w400)),
             Text(_userName.split(' ').first,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -976,11 +976,11 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                  color:        CColors.white.withOpacity(0.2),
+                  color:        CColors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.format_quote,
-                    size: 14, color: CColors.white.withOpacity(0.8)),
+                    size: 14, color: CColors.white.withValues(alpha: 0.8)),
                 const SizedBox(width: 4),
                 Expanded(child: Text(_getMotivationalQuote(),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -995,7 +995,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
           width: 80, height: 80,
           decoration: BoxDecoration(
               shape:  BoxShape.circle,
-              color:  CColors.white.withOpacity(0.2),
+              color:  CColors.white.withValues(alpha: 0.2),
               border: Border.all(color: CColors.white, width: 2)),
           child: const Icon(Icons.emoji_events,
               color: CColors.white, size: 40),
@@ -1048,7 +1048,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             color:        isDark ? CColors.darkContainer : CColors.white,
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
@@ -1056,7 +1056,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
             Container(
               padding:    const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color:  color.withOpacity(0.1), shape: BoxShape.circle),
+                  color:  color.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(height: 8),
@@ -1076,12 +1076,12 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [CColors.primary.withOpacity(0.95),
-            CColors.secondary.withOpacity(0.95)],
+          colors: [CColors.primary.withValues(alpha: 0.95),
+            CColors.secondary.withValues(alpha: 0.95)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
-          BoxShadow(color: CColors.primary.withOpacity(0.4),
+          BoxShadow(color: CColors.primary.withValues(alpha: 0.4),
               blurRadius: 25, offset: const Offset(0, 10)),
         ],
       ),
@@ -1089,9 +1089,9 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-              color:        CColors.white.withOpacity(0.25),
+              color:        CColors.white.withValues(alpha: 0.25),
               borderRadius: BorderRadius.circular(24),
-              border:       Border.all(color: CColors.white.withOpacity(0.3))),
+              border:       Border.all(color: CColors.white.withValues(alpha: 0.3))),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.business_center_rounded,
                 size: 16, color: CColors.white),
@@ -1113,7 +1113,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         const SizedBox(height: 12),
         Text('dashboard.find_workers'.tr(),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                color:    CColors.white.withOpacity(0.95),
+                color:    CColors.white.withValues(alpha: 0.95),
                 height:   1.6,
                 fontSize: isUrdu ? 16 : 15),
             maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -1174,16 +1174,16 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+          colors: [color.withValues(alpha: 0.1), color.withValues(alpha: 0.05)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border:       Border.all(color: color.withOpacity(0.3)),
+        border:       Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding:    const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color:  color.withOpacity(0.2), shape: BoxShape.circle),
+              color:  color.withValues(alpha: 0.2), shape: BoxShape.circle),
           child: Icon(icon, color: color, size: 20),
         ),
         const SizedBox(height: 12),
@@ -1272,7 +1272,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
               Container(
                 padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                    color:        statusColor.withOpacity(0.1),
+                    color:        statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                     border:       Border.all(color: statusColor)),
                 child: Text(statusText,
@@ -1379,13 +1379,13 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         decoration: BoxDecoration(
           color:        isDark ? CColors.darkContainer : CColors.white,
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          border:       Border.all(color: statusColor.withOpacity(0.3)),
+          border:       Border.all(color: statusColor.withValues(alpha: 0.3)),
         ),
         child: Row(children: [
           Container(
             padding:    const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color:        statusColor.withOpacity(0.1),
+                color:        statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8)),
             child: Icon(statusIcon, color: statusColor, size: 18),
           ),
@@ -1410,7 +1410,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
           Container(
             padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-                color:        statusColor.withOpacity(0.1),
+                color:        statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20)),
             child: Text(dispute.status.toUpperCase(),
                 style: TextStyle(

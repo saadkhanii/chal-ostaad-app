@@ -191,7 +191,7 @@ class CTextField extends StatelessWidget {
             ),
             disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-              borderSide: BorderSide(color: CColors.borderPrimary.withOpacity(0.5)),
+              borderSide: BorderSide(color: CColors.borderPrimary.withValues(alpha: 0.5)),
             ),
             filled: true,
             fillColor: isDark ? CColors.darkContainer : CColors.lightContainer,

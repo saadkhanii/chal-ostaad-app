@@ -175,7 +175,7 @@ class _RaiseDisputeDialogState extends State<RaiseDisputeDialog> {
                   width:  40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color:        CColors.grey.withOpacity(0.4),
+                    color:        CColors.grey.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -188,7 +188,7 @@ class _RaiseDisputeDialogState extends State<RaiseDisputeDialog> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color:        CColors.error.withOpacity(0.1),
+                      color:        CColors.error.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.flag_rounded,
@@ -229,10 +229,10 @@ class _RaiseDisputeDialogState extends State<RaiseDisputeDialog> {
               Container(
                 padding: const EdgeInsets.all(CSizes.md),
                 decoration: BoxDecoration(
-                  color:        CColors.warning.withOpacity(0.08),
+                  color:        CColors.warning.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
                   border: Border.all(
-                      color: CColors.warning.withOpacity(0.3)),
+                      color: CColors.warning.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,7 +273,7 @@ class _RaiseDisputeDialogState extends State<RaiseDisputeDialog> {
                   border: Border.all(
                     color: _selectedReason == null
                         ? CColors.borderPrimary
-                        : CColors.primary.withOpacity(0.5),
+                        : CColors.primary.withValues(alpha: 0.5),
                   ),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -340,7 +340,7 @@ class _RaiseDisputeDialogState extends State<RaiseDisputeDialog> {
                     borderRadius:
                     BorderRadius.circular(CSizes.borderRadiusMd),
                     borderSide:
-                    BorderSide(color: CColors.primary.withOpacity(0.6)),
+                    BorderSide(color: CColors.primary.withValues(alpha: 0.6)),
                   ),
                   contentPadding: const EdgeInsets.all(14),
                 ),

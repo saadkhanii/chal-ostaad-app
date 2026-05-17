@@ -61,7 +61,7 @@ class WorkerDashboardHeader extends ConsumerWidget {
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
-                        color: CColors.secondary.withOpacity(0.8),
+                        color: CColors.secondary.withValues(alpha: 0.8),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -135,7 +135,7 @@ class WorkerDashboardHeader extends ConsumerWidget {
                                   ? LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
-                                colors: [CColors.secondary, CColors.secondary.withOpacity(0.9)],
+                                colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.9)],
                               )
                                   : null,
                               image: img != null

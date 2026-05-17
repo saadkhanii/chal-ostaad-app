@@ -161,7 +161,7 @@ class _SubmitReviewDialogState extends State<SubmitReviewDialog> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: CColors.primary,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: CColors.primary.withOpacity(0.4),
+                disabledBackgroundColor: CColors.primary.withValues(alpha: 0.4),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),

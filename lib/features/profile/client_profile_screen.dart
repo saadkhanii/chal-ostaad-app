@@ -506,7 +506,7 @@ class _ClientProfileScreenState
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: [
                 BoxShadow(
-                  color:      Colors.black.withOpacity(0.15),
+                  color:      Colors.black.withValues(alpha: 0.15),
                   blurRadius: 8,
                   offset:     const Offset(0, 4),
                 ),
@@ -650,7 +650,7 @@ class _ClientProfileScreenState
               prefixIcon:  const Icon(Icons.email_outlined),
               filled:      true,
               fillColor:   isDark
-                  ? CColors.darkerGrey.withOpacity(0.3)
+                  ? CColors.darkerGrey.withValues(alpha: 0.3)
                   : CColors.lightGrey,
               border:      OutlineInputBorder(
                   borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
@@ -716,7 +716,7 @@ class _ClientProfileScreenState
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.05),
+            color:      Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset:     const Offset(0, 2),
           ),
@@ -757,7 +757,7 @@ class _ClientProfileScreenState
               color:      tileColor,
               fontWeight: FontWeight.w500)),
       trailing:       Icon(Icons.arrow_forward_ios,
-          size: 14, color: tileColor.withOpacity(0.5)),
+          size: 14, color: tileColor.withValues(alpha: 0.5)),
       onTap:          onTap,
     );
   }

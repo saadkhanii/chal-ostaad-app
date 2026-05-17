@@ -114,7 +114,7 @@ class _ExtraChargesSheetState extends State<ExtraChargesSheet> {
             width:      40,
             height:     4,
             decoration: BoxDecoration(
-              color:        Colors.grey.withOpacity(0.4),
+              color:        Colors.grey.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -280,7 +280,7 @@ class _ExtraChargesSheetState extends State<ExtraChargesSheet> {
         color:        isDark ? CColors.darkContainer : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         border:       Border.all(
-            color: statusColor.withOpacity(0.3)),
+            color: statusColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,9 +342,9 @@ class _ExtraChargesSheetState extends State<ExtraChargesSheet> {
     return Container(
       padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color:        color.withOpacity(0.12),
+        color:        color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border:       Border.all(color: color.withOpacity(0.4)),
+        border:       Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(label,
           style: TextStyle(

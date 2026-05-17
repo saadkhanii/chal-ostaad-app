@@ -126,7 +126,7 @@ class WorkerReviewsScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.06),
+            color:      Colors.black.withValues(alpha: 0.06),
             blurRadius: 8,
             offset:     const Offset(0, 2),
           ),
@@ -215,7 +215,7 @@ class WorkerReviewsScreen extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius:          18,
-                      backgroundColor: CColors.primary.withOpacity(0.15),
+                      backgroundColor: CColors.primary.withValues(alpha: 0.15),
                       child: Text(
                         review.clientName.isNotEmpty
                             ? review.clientName[0].toUpperCase()
@@ -258,7 +258,7 @@ class WorkerReviewsScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: isUrdu ? 14 : 13,
                   color:    isDark
-                      ? CColors.textWhite.withOpacity(0.85)
+                      ? CColors.textWhite.withValues(alpha: 0.85)
                       : CColors.textPrimary,
                   height:   1.4,
                 ),

@@ -291,7 +291,7 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color:        CColors.info.withOpacity(0.1),
+                      color:        CColors.info.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border:       Border.all(color: CColors.info),
                     ),
@@ -377,7 +377,7 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color:        CColors.primary.withOpacity(0.1),
+                      color:        CColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(

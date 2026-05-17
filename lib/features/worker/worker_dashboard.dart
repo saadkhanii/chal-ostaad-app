@@ -487,7 +487,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             color: isDark ? CColors.darkContainer : CColors.white,
             borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
             boxShadow: isDark ? [] : [
-              BoxShadow(color: Colors.black.withOpacity(0.06),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: 12, offset: const Offset(0, 4))
             ],
           ),
@@ -504,7 +504,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
               padding: const EdgeInsets.all(CSizes.md),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [CColors.primary, CColors.primary.withOpacity(0.75)],
+                  colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
                 ),
                 borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
               ),
@@ -577,7 +577,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         Container(
           padding:    const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color:        color.withOpacity(0.1),
+              color:        color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: color, size: 18),
         ),
@@ -585,7 +585,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         Expanded(child: Text(label,
             style: TextStyle(
                 fontSize:   13,
-                color:      isDark ? CColors.textWhite.withOpacity(0.8) : CColors.textPrimary))),
+                color:      isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.textPrimary))),
         Text(value,
             style: TextStyle(
                 fontWeight: FontWeight.bold,
@@ -658,9 +658,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       decoration: BoxDecoration(
         color:        isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border:       Border.all(color: color.withOpacity(0.25)),
+        border:       Border.all(color: color.withValues(alpha: 0.25)),
         boxShadow: isDark ? [] : [
-          BoxShadow(color: Colors.black.withOpacity(0.04),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 6, offset: const Offset(0, 2)),
         ],
       ),
@@ -668,7 +668,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         Container(
           padding:    const EdgeInsets.all(10),
           decoration: BoxDecoration(
-              color:        color.withOpacity(0.1),
+              color:        color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10)),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -708,9 +708,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
     return Container(
       padding:    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-          color:        color.withOpacity(0.1),
+          color:        color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(6),
-          border:       Border.all(color: color.withOpacity(0.3))),
+          border:       Border.all(color: color.withValues(alpha: 0.3))),
       child: Text(label,
           style: TextStyle(
               color: color, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -774,7 +774,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         color:        isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
@@ -782,7 +782,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         Container(
           padding:    const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color:        color.withOpacity(0.12),
+              color:        color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: color, size: 22),
         ),
@@ -817,11 +817,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [CColors.primary, CColors.primary.withOpacity(0.8)],
+          colors: [CColors.primary, CColors.primary.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
-          BoxShadow(color: CColors.primary.withOpacity(0.3),
+          BoxShadow(color: CColors.primary.withValues(alpha: 0.3),
               blurRadius: 20, offset: const Offset(0, 8)),
         ],
       ),
@@ -831,7 +831,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           children: [
             Text('${_getGreeting()},',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: CColors.white.withOpacity(0.9),
+                    color: CColors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w400)),
             Text(_userName.split(' ').first,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -842,11 +842,11 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                  color:        CColors.white.withOpacity(0.2),
+                  color:        CColors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.format_quote, size: 14,
-                    color: CColors.white.withOpacity(0.8)),
+                    color: CColors.white.withValues(alpha: 0.8)),
                 const SizedBox(width: 4),
                 Expanded(child: Text(_getMotivationalQuote(),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -861,7 +861,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           width:  80, height: 80,
           decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: CColors.white.withOpacity(0.2),
+              color: CColors.white.withValues(alpha: 0.2),
               border: Border.all(color: CColors.white, width: 2)),
           child: const Icon(Icons.handyman_rounded,
               color: CColors.white, size: 40),
@@ -920,7 +920,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             color:        isDark ? CColors.darkContainer : CColors.white,
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
@@ -928,7 +928,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             Container(
               padding:    const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color:  color.withOpacity(0.1), shape: BoxShape.circle),
+                  color:  color.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(height: 8),
@@ -949,12 +949,12 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [CColors.primary.withOpacity(0.95),
-            CColors.secondary.withOpacity(0.95)],
+          colors: [CColors.primary.withValues(alpha: 0.95),
+            CColors.secondary.withValues(alpha: 0.95)],
         ),
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
-          BoxShadow(color: CColors.primary.withOpacity(0.4),
+          BoxShadow(color: CColors.primary.withValues(alpha: 0.4),
               blurRadius: 25, offset: const Offset(0, 10)),
         ],
       ),
@@ -962,9 +962,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-              color:        CColors.white.withOpacity(0.25),
+              color:        CColors.white.withValues(alpha: 0.25),
               borderRadius: BorderRadius.circular(24),
-              border:       Border.all(color: CColors.white.withOpacity(0.3))),
+              border:       Border.all(color: CColors.white.withValues(alpha: 0.3))),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.rocket_launch_rounded,
                 size: 16, color: CColors.white),
@@ -987,7 +987,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         const SizedBox(height: 12),
         Text('dashboard.bidding_description'.tr(),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                color:    CColors.white.withOpacity(0.95),
+                color:    CColors.white.withValues(alpha: 0.95),
                 height:   1.6,
                 fontSize: isUrdu ? 16 : 15),
             maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -1096,13 +1096,13 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         decoration: BoxDecoration(
           color:        isDark ? CColors.darkContainer : CColors.white,
           borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          border:       Border.all(color: statusColor.withOpacity(0.3)),
+          border:       Border.all(color: statusColor.withValues(alpha: 0.3)),
         ),
         child: Row(children: [
           Container(
             padding:    const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color:        statusColor.withOpacity(0.1),
+                color:        statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8)),
             child: Icon(statusIcon, color: statusColor, size: 18),
           ),
@@ -1127,7 +1127,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           Container(
             padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-                color:        statusColor.withOpacity(0.1),
+                color:        statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20)),
             child: Text(dispute.status.toUpperCase(),
                 style: TextStyle(
@@ -1239,7 +1239,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
               Container(
                 padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                    color:        CColors.info.withOpacity(0.1),
+                    color:        CColors.info.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                     border:       Border.all(color: CColors.info)),
                 child: Text(job.category,
@@ -1348,7 +1348,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
               Container(
                 width:      44, height: 44,
                 decoration: BoxDecoration(
-                    color:  statusColor.withOpacity(0.12),
+                    color:  statusColor.withValues(alpha: 0.12),
                     shape:  BoxShape.circle),
                 child: Icon(_getBidStatusIcon(bid.status),
                     color: statusColor, size: 22),
@@ -1367,9 +1367,9 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                     Container(
                       padding:    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                          color:        statusColor.withOpacity(0.1),
+                          color:        statusColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border:       Border.all(color: statusColor.withOpacity(0.4))),
+                          border:       Border.all(color: statusColor.withValues(alpha: 0.4))),
                       child: Text(_getBidStatusText(bid.status),
                           style: TextStyle(
                               color:      statusColor,
@@ -1416,7 +1416,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
             color:        isDark ? CColors.darkContainer : CColors.white,
             borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.04),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 8, offset: const Offset(0, 2)),
             ],
           ),
@@ -1435,7 +1435,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
                 leading: Container(
                   width: 40, height: 40,
                   decoration: BoxDecoration(
-                      color:  statusColor.withOpacity(0.12),
+                      color:  statusColor.withValues(alpha: 0.12),
                       shape:  BoxShape.circle),
                   child: Icon(_getBidStatusIcon(bid.status),
                       color: statusColor, size: 20),
@@ -1492,7 +1492,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         color:        isDark ? CColors.darkContainer : CColors.white,
         borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
@@ -1529,7 +1529,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           Container(
             padding:    const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color:        color.withOpacity(0.12),
+                color:        color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, color: color, size: 20),
           ),

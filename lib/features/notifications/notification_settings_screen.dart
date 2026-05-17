@@ -67,7 +67,7 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
+                      color: Colors.grey.withValues(alpha: 0.1),
                       spreadRadius: 1,
                       blurRadius: 5,
                       offset: const Offset(0, 2),
@@ -114,7 +114,7 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
+                        color: Colors.grey.withValues(alpha: 0.1),
                         spreadRadius: 1,
                         blurRadius: 5,
                         offset: const Offset(0, 2),
@@ -262,7 +262,7 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: value
-              ? Theme.of(context).primaryColor.withOpacity(0.1)
+              ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
               : (isDarkMode ? Colors.grey[800] : Colors.grey[100]),
           borderRadius: BorderRadius.circular(10),
         ),

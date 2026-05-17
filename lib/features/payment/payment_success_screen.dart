@@ -82,9 +82,9 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                     height: 120,
                     decoration: BoxDecoration(
                       shape:  BoxShape.circle,
-                      color:  CColors.success.withOpacity(0.12),
+                      color:  CColors.success.withValues(alpha: 0.12),
                       border: Border.all(
-                          color: CColors.success.withOpacity(0.4),
+                          color: CColors.success.withValues(alpha: 0.4),
                           width: 3),
                     ),
                     child: const Icon(Icons.check_circle_rounded,
@@ -117,7 +117,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                     style: TextStyle(
                         fontSize: 14,
                         color: isDark
-                            ? CColors.textWhite.withOpacity(0.7)
+                            ? CColors.textWhite.withValues(alpha: 0.7)
                             : CColors.darkGrey),
                   ),
                 ]),
@@ -141,7 +141,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                         ? []
                         : [
                       BoxShadow(
-                          color:      Colors.black.withOpacity(0.06),
+                          color:      Colors.black.withValues(alpha: 0.06),
                           blurRadius: 12,
                           offset:     const Offset(0, 4)),
                     ],
@@ -152,10 +152,10 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color:        CColors.primary.withOpacity(0.1),
+                        color:        CColors.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                            color: CColors.primary.withOpacity(0.3)),
+                            color: CColors.primary.withValues(alpha: 0.3)),
                       ),
                       child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -288,7 +288,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
                   style: TextStyle(
                       fontSize: 13,
                       color: isDark
-                          ? CColors.textWhite.withOpacity(0.6)
+                          ? CColors.textWhite.withValues(alpha: 0.6)
                           : CColors.darkGrey))),
           Expanded(
               flex: 3,

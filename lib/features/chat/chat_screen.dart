@@ -285,7 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 width: 40, height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: CColors.grey.withOpacity(0.4),
+                  color: CColors.grey.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -332,7 +332,7 @@ class _ChatScreenState extends State<ChatScreen> {
       leading: Container(
         width: 44, height: 44,
         decoration: BoxDecoration(
-          color:        color.withOpacity(0.1),
+          color:        color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(icon, color: color, size: 22),
@@ -488,7 +488,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Container(
                 width: 40, height: 4,
                 decoration: BoxDecoration(
-                  color: CColors.grey.withOpacity(0.4),
+                  color: CColors.grey.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -535,7 +535,7 @@ class _ChatScreenState extends State<ChatScreen> {
       leading: Container(
         width: 44, height: 44,
         decoration: BoxDecoration(
-          color:        color.withOpacity(0.12),
+          color:        color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(icon, color: color, size: 22),
@@ -814,8 +814,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           widget.jobTitle.trim().split(' ').take(2).join(' '),
                           style: TextStyle(
                             color:    isDark
-                                ? Colors.white.withOpacity(0.85)
-                                : CColors.secondary.withOpacity(0.8),
+                                ? Colors.white.withValues(alpha: 0.85)
+                                : CColors.secondary.withValues(alpha: 0.8),
                             fontSize: 12,
                           ),
                           maxLines: 1,
@@ -923,7 +923,7 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          Expanded(child: Divider(color: CColors.grey.withOpacity(0.3))),
+          Expanded(child: Divider(color: CColors.grey.withValues(alpha: 0.3))),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Container(
@@ -931,7 +931,7 @@ class _ChatScreenState extends State<ChatScreen> {
               decoration: BoxDecoration(
                 color:        isDark
                     ? CColors.darkContainer
-                    : Colors.white.withOpacity(0.8),
+                    : Colors.white.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -944,7 +944,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          Expanded(child: Divider(color: CColors.grey.withOpacity(0.3))),
+          Expanded(child: Divider(color: CColors.grey.withValues(alpha: 0.3))),
         ],
       ),
     );
@@ -1001,7 +1001,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color:      Colors.black.withOpacity(0.07),
+                        color:      Colors.black.withValues(alpha: 0.07),
                         blurRadius: 6,
                         offset:     const Offset(0, 2),
                       ),
@@ -1028,10 +1028,10 @@ class _ChatScreenState extends State<ChatScreen> {
                             fontSize: 10,
                             fontStyle: FontStyle.italic,
                             color: isMine
-                                ? Colors.white.withOpacity(0.65)
+                                ? Colors.white.withValues(alpha: 0.65)
                                 : (isDark
                                 ? CColors.darkGrey
-                                : Colors.white.withOpacity(0.65)),
+                                : Colors.white.withValues(alpha: 0.65)),
                           ),
                         ),
                       ],
@@ -1252,7 +1252,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color:      Colors.black.withOpacity(0.07),
+                        color:      Colors.black.withValues(alpha: 0.07),
                         blurRadius: 6,
                         offset:     const Offset(0, 2),
                       ),
@@ -1268,10 +1268,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           height: 40,
                           decoration: BoxDecoration(
                             color: isMine
-                                ? Colors.white.withOpacity(0.2)
+                                ? Colors.white.withValues(alpha: 0.2)
                                 : (isDark
-                                ? CColors.primary.withOpacity(0.15)
-                                : Colors.white.withOpacity(0.25)),
+                                ? CColors.primary.withValues(alpha: 0.15)
+                                : Colors.white.withValues(alpha: 0.25)),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -1301,18 +1301,18 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ? Colors.white
                                     : (isDark ? CColors.primary : Colors.white),
                                 inactiveTrackColor: isMine
-                                    ? Colors.white.withOpacity(0.35)
+                                    ? Colors.white.withValues(alpha: 0.35)
                                     : (isDark
-                                    ? CColors.primary.withOpacity(0.2)
-                                    : Colors.white.withOpacity(0.4)),
+                                    ? CColors.primary.withValues(alpha: 0.2)
+                                    : Colors.white.withValues(alpha: 0.4)),
                                 thumbColor: isMine
                                     ? Colors.white
                                     : (isDark ? CColors.primary : Colors.white),
                                 overlayColor: isMine
-                                    ? Colors.white.withOpacity(0.15)
+                                    ? Colors.white.withValues(alpha: 0.15)
                                     : (isDark
-                                    ? CColors.primary.withOpacity(0.15)
-                                    : Colors.white.withOpacity(0.15)),
+                                    ? CColors.primary.withValues(alpha: 0.15)
+                                    : Colors.white.withValues(alpha: 0.15)),
                               ),
                               child: Slider(
                                 value: sliderVal,
@@ -1333,10 +1333,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: isMine
-                                      ? Colors.white.withOpacity(0.8)
+                                      ? Colors.white.withValues(alpha: 0.8)
                                       : (isDark
                                       ? CColors.darkGrey
-                                      : Colors.white.withOpacity(0.8)),
+                                      : Colors.white.withValues(alpha: 0.8)),
                                 ),
                               ),
                             ),
@@ -1419,7 +1419,7 @@ class _ChatScreenState extends State<ChatScreen> {
         color: isDark ? CColors.darkContainer : Colors.white,
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.06),
+            color:      Colors.black.withValues(alpha: 0.06),
             blurRadius: 10,
             offset:     const Offset(0, -3),
           ),
@@ -1494,7 +1494,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 shape:  BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color:      CColors.primary.withOpacity(0.35),
+                    color:      CColors.primary.withValues(alpha: 0.35),
                     blurRadius: 10,
                     offset:     const Offset(0, 3),
                   ),
@@ -1540,7 +1540,7 @@ class _ChatScreenState extends State<ChatScreen> {
         color: isDark ? CColors.darkContainer : Colors.white,
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.06),
+            color:      Colors.black.withValues(alpha: 0.06),
             blurRadius: 10,
             offset:     const Offset(0, -3),
           ),
@@ -1553,7 +1553,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Container(
               width: 42, height: 42,
               decoration: BoxDecoration(
-                color: CColors.error.withOpacity(0.1),
+                color: CColors.error.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.delete_outline_rounded,
@@ -1603,7 +1603,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color:      CColors.primary.withOpacity(0.35),
+                    color:      CColors.primary.withValues(alpha: 0.35),
                     blurRadius: 10,
                     offset:     const Offset(0, 3),
                   ),
@@ -1736,7 +1736,7 @@ class _BetterVideoDialogState extends State<_BetterVideoDialog> {
                     Text(
                       'Tap outside to close',
                       style: TextStyle(
-                          color: Colors.white.withOpacity(0.5), fontSize: 12),
+                          color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
                     ),
                     const SizedBox(height: 10),
                     ClipRRect(

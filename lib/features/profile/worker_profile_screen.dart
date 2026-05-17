@@ -514,7 +514,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
         border: Border.all(color: Colors.white, width: 3),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.15),
+            color:      Colors.black.withValues(alpha: 0.15),
             blurRadius: 8,
             offset:     const Offset(0, 4),
           ),
@@ -601,7 +601,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color:        badgeColor.withOpacity(0.1),
+              color:        badgeColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
               border:       Border.all(color: badgeColor),
             ),
@@ -646,7 +646,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
           borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
           boxShadow: [
             BoxShadow(
-              color:      Colors.black.withOpacity(0.05),
+              color:      Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset:     const Offset(0, 2),
             ),
@@ -726,10 +726,10 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color:        CColors.primary.withOpacity(0.1),
+                            color:        CColors.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                             border:       Border.all(
-                                color: CColors.primary.withOpacity(0.3)),
+                                color: CColors.primary.withValues(alpha: 0.3)),
                           ),
                           child: Text(skill,
                               style: TextStyle(
@@ -802,7 +802,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
         borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.05),
+            color:      Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset:     const Offset(0, 2),
           ),
@@ -841,7 +841,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
           style: TextStyle(
               fontSize: 15, color: tileColor, fontWeight: FontWeight.w500)),
       trailing: Icon(Icons.arrow_forward_ios,
-          size: 14, color: tileColor.withOpacity(0.5)),
+          size: 14, color: tileColor.withValues(alpha: 0.5)),
       onTap: onTap,
     );
   }

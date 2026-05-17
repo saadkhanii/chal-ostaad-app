@@ -298,7 +298,7 @@ class _ChatInboxScreenState extends ConsumerState<ChatInboxScreen> {
       onLongPress: () => _confirmDeleteChat(chat, otherName),
       child: Container(
         color: isUnread
-            ? CColors.primary.withOpacity(0.05)
+            ? CColors.primary.withValues(alpha: 0.05)
             : Colors.transparent,
         padding: const EdgeInsets.symmetric(
             horizontal: CSizes.defaultSpace, vertical: 12),
