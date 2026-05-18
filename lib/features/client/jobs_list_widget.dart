@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:easy_localization/easy_localization.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/sizes.dart';
@@ -12,18 +13,13 @@ import '../../core/routes/app_routes.dart';
 import 'client_job_details_screen.dart';
 import '../../../shared/widgets/job_media_gallery.dart';
 
-final bidCountProvider =
-FutureProvider.family<int, String>((ref, jobId) async {
-  try {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('bids')
-        .where('jobId', isEqualTo: jobId)
-        .get();
-    return snapshot.docs.length;
-  } catch (e) {
-    debugPrint('Error getting bid count: $e');
-    return 0;
-  }
+// ✅ Real‑time bid count provider
+final bidCountProvider = StreamProvider.family<int, String>((ref, jobId) {
+  return FirebaseFirestore.instance
+      .collection('bids')
+      .where('jobId', isEqualTo: jobId)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.length);
 });
 
 class JobsListWidget extends ConsumerStatefulWidget {
@@ -39,7 +35,7 @@ class JobsListWidget extends ConsumerStatefulWidget {
     super.key,
     required this.clientId,
     this.scrollController,
-    this.showFilters   = true,
+    this.showFilters = true,
     this.showMapButton = true,
     this.limit,
     this.onJobTap,
@@ -52,27 +48,71 @@ class JobsListWidget extends ConsumerStatefulWidget {
 
 class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
   String _selectedFilter = 'all';
-
-  // Track which job IDs are currently being deleted to show a spinner
   final Set<String> _deletingIds = {};
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
+  GlobalKey<RefreshIndicatorState>();
 
   Color _getStatusColor(String status) {
     switch (status.trim().toLowerCase()) {
-      case 'open':        return CColors.success;
-      case 'in-progress': return CColors.warning;
-      case 'completed':   return CColors.info;
-      case 'cancelled':   return CColors.error;
-      default:            return CColors.grey;
+      case 'open':
+        return CColors.success;
+      case 'in-progress':
+        return CColors.warning;
+      case 'completed':
+        return CColors.info;
+      case 'cancelled':
+        return CColors.error;
+      case 'scheduled':
+        return CColors.secondary;
+      case 'active':
+        return const Color(0xFFF59E0B);
+      case 'grace_period':
+        return const Color(0xFFF97316);
+      default:
+        return CColors.grey;
     }
   }
 
   String _getStatusText(String status) {
     switch (status.trim().toLowerCase()) {
-      case 'open':        return 'job.status_open'.tr();
-      case 'in-progress': return 'job.status_in_progress'.tr();
-      case 'completed':   return 'job.status_completed'.tr();
-      case 'cancelled':   return 'job.status_cancelled'.tr();
-      default:            return status;
+      case 'open':
+        return 'job.status_open'.tr();
+      case 'in-progress':
+        return 'job.status_in_progress'.tr();
+      case 'completed':
+        return 'job.status_completed'.tr();
+      case 'cancelled':
+        return 'job.status_cancelled'.tr();
+      case 'scheduled':
+        return 'Scheduled';
+      case 'active':
+        return 'Active';
+      case 'grace_period':
+        return 'Grace Period';
+      default:
+        return status;
+    }
+  }
+
+  LinearGradient _getHeaderGradient(JobModel job) {
+    if (job.isUrgent) {
+      return LinearGradient(
+        colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    } else if (job.hasSchedule) {
+      return LinearGradient(
+        colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    } else {
+      return LinearGradient(
+        colors: [Colors.grey.shade700, Colors.grey.shade600],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
     }
   }
 
@@ -82,8 +122,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     } else {
       Navigator.push(
         context,
-        MaterialPageRoute(
-            builder: (_) => ClientJobDetailsScreen(job: job)),
+        MaterialPageRoute(builder: (_) => ClientJobDetailsScreen(job: job)),
       );
     }
   }
@@ -96,8 +135,6 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     );
   }
 
-  /// Deletes a job directly from Firestore.
-  /// Only open jobs can be deleted — confirmed via dialog.
   Future<void> _deleteJob(JobModel job) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -111,8 +148,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: CColors.error),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
             child: Text(
               'common.delete'.tr(),
               style: const TextStyle(color: Colors.white),
@@ -126,22 +162,22 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
 
     setState(() => _deletingIds.add(job.id!));
     try {
-      await FirebaseFirestore.instance
-          .collection('jobs')
-          .doc(job.id)
-          .delete();
-      // Stream auto-removes the card — no manual setState needed.
+      await FirebaseFirestore.instance.collection('jobs').doc(job.id).delete();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:         Text('Failed to delete job: $e'),
+          content: Text('Failed to delete job: $e'),
           backgroundColor: CColors.error,
-          behavior:        SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.floating,
         ));
       }
     } finally {
       if (mounted) setState(() => _deletingIds.remove(job.id!));
     }
+  }
+
+  Future<void> _onRefresh() async {
+    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   @override
@@ -153,13 +189,18 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
       children: [
         if (widget.showFilters)
           _buildFilterChips(context, isDark, isUrdu),
-        Expanded(child: _buildJobsList(context, isDark, isUrdu)),
+        Expanded(
+          child: RefreshIndicator(
+            key: _refreshIndicatorKey,
+            onRefresh: _onRefresh,
+            child: _buildJobsList(context, isDark, isUrdu),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildFilterChips(
-      BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildFilterChips(BuildContext context, bool isDark, bool isUrdu) {
     final filters = [
       'common.all'.tr(),
       'job.status_open'.tr(),
@@ -174,8 +215,8 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: filters.asMap().entries.map((entry) {
-            final index     = entry.key;
-            final filter    = entry.value;
+            final index = entry.key;
+            final filter = entry.value;
             final filterKey =
             ['all', 'open', 'in-progress', 'completed'][index];
             final isSelected = _selectedFilter == filterKey;
@@ -188,20 +229,17 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                       fontSize: isUrdu ? 14 : 12,
                       color: isSelected
                           ? Colors.white
-                          : (isDark
-                          ? Colors.white
-                          : CColors.textPrimary),
+                          : (isDark ? Colors.white : CColors.textPrimary),
                     )),
-                selected:        isSelected,
+                selected: isSelected,
                 onSelected: (selected) {
                   if (selected) {
                     setState(() => _selectedFilter = filterKey);
                   }
                 },
-                selectedColor:   CColors.primary,
-                backgroundColor: isDark
-                    ? CColors.darkContainer
-                    : CColors.lightContainer,
+                selectedColor: CColors.primary,
+                backgroundColor:
+                isDark ? CColors.darkContainer : CColors.lightContainer,
               ),
             );
           }).toList(),
@@ -210,8 +248,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     );
   }
 
-  Widget _buildJobsList(
-      BuildContext context, bool isDark, bool isUrdu) {
+  Widget _buildJobsList(BuildContext context, bool isDark, bool isUrdu) {
     if (widget.clientId.isEmpty) {
       return Center(
         child: Text('job.login_to_view'.tr(),
@@ -242,12 +279,10 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.work_outline,
-                    size: 64, color: Colors.grey),
+                const Icon(Icons.work_outline, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
                 Text('job.no_jobs_found'.tr(),
-                    style: const TextStyle(
-                        fontSize: 16, color: Colors.grey)),
+                    style: const TextStyle(fontSize: 16, color: Colors.grey)),
               ],
             ),
           );
@@ -259,12 +294,10 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
         }
 
         final allJobs = snapshot.data!.docs.map((doc) {
-          return JobModel.fromMap(
-              doc.data() as Map<String, dynamic>, doc.id);
+          return JobModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
         }).toList();
 
-        final jobsWithLocation =
-        allJobs.where((j) => j.hasLocation).toList();
+        final jobsWithLocation = allJobs.where((j) => j.hasLocation).toList();
 
         return Stack(
           children: [
@@ -275,28 +308,21 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
               itemCount: itemCount,
               itemBuilder: (context, index) {
                 final job = allJobs[index];
-                return Consumer(
-                  builder: (context, ref, _) {
-                    final bidCountAsync =
-                    ref.watch(bidCountProvider(job.id!));
-                    return _buildJobCard(
-                        context, isDark, isUrdu, job, bidCountAsync);
-                  },
-                );
+                // 🟢 Each card watches its own bid count stream
+                final bidCountAsync = ref.watch(bidCountProvider(job.id!));
+                return _buildJobCard(
+                    context, isDark, isUrdu, job, bidCountAsync);
               },
             ),
-
-            // ── Map view FAB ────────────────────────────────────
             if (widget.showMapButton && jobsWithLocation.isNotEmpty)
               Positioned(
                 bottom: 16,
-                right:  16,
+                right: 16,
                 child: FloatingActionButton.extended(
-                  heroTag:         'jobs_list_map',
-                  onPressed:       () => _openMapView(allJobs),
+                  heroTag: 'jobs_list_map',
+                  onPressed: () => _openMapView(allJobs),
                   backgroundColor: CColors.primary,
-                  icon: const Icon(Icons.map_rounded,
-                      color: Colors.white),
+                  icon: const Icon(Icons.map_rounded, color: Colors.white),
                   label: const Text('Map View',
                       style: TextStyle(color: Colors.white)),
                 ),
@@ -315,84 +341,79 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
       AsyncValue<int> bidCountAsync,
       ) {
     final statusNorm = job.status.trim().toLowerCase();
-    final isOpen     = statusNorm == 'open' || statusNorm == 'cancelled';
+    final isOpen = statusNorm == 'open' || statusNorm == 'cancelled';
     final isDeleting = _deletingIds.contains(job.id);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: CSizes.md),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
-      elevation: 2,
-      child: InkWell(
-        onTap:        () => _handleJobTap(job),
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(CSizes.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Title + status badge + delete button ─────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return GestureDetector(
+      onTap: () => _handleJobTap(job),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: CSizes.md),
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        ),
+        clipBehavior: Clip.antiAlias,
+        color: isDark ? CColors.darkContainer : Colors.white,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: CSizes.md, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: _getHeaderGradient(job),
+              ),
+              child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       job.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium!
-                          .copyWith(
+                      style: const TextStyle(
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
-                        fontSize:   isUrdu ? 18 : 16,
+                        fontSize: 15,
                       ),
-                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Status badge
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(job.status).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: _getStatusColor(job.status)),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       _getStatusText(job.status),
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall!
-                          .copyWith(
-                        color:      _getStatusColor(job.status),
+                      style: TextStyle(
+                        color: _getStatusColor(job.status),
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        fontSize:   isUrdu ? 12 : 10,
                       ),
                     ),
                   ),
-                  // ── Delete button (only for open jobs) ────────
                   if (isOpen) ...[
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 8),
                     SizedBox(
-                      width:  32,
+                      width: 32,
                       height: 32,
                       child: isDeleting
-                          ? const Padding(
-                        padding: EdgeInsets.all(6),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: CColors.error,
+                          ? const Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         ),
                       )
                           : IconButton(
                         padding: EdgeInsets.zero,
-                        icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          color: CColors.error,
-                          size: 20,
-                        ),
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            color: Colors.white, size: 20),
                         tooltip: 'job.delete_job'.tr(),
                         onPressed: () => _deleteJob(job),
                       ),
@@ -400,101 +421,130 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
                   ],
                 ],
               ),
-              const SizedBox(height: CSizes.sm),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(CSizes.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    job.description,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium!
+                        .copyWith(
+                      fontSize: isUrdu ? 16 : 14,
+                      color: isDark
+                          ? CColors.textWhite.withValues(alpha: 0.8)
+                          : CColors.darkerGrey,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: CSizes.sm),
 
-              // ── Description ──────────────────────────────────
-              Text(
-                job.description,
-                style:
-                Theme.of(context).textTheme.bodyMedium!.copyWith(
-                  fontSize: isUrdu ? 16 : 14,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: CSizes.sm),
+                  if (job.hasMedia) ...[
+                    JobMediaGallery(
+                      mediaUrls: job.mediaUrls,
+                      mediaTypes: job.mediaTypes,
+                      mediaBase64: job.mediaBase64,
+                    ),
+                    const SizedBox(height: CSizes.sm),
+                  ],
 
-              // ── Media thumbnails ──────────────────────────────
-              if (job.hasMedia) ...[
-                JobMediaGallery(
-                  mediaUrls:   job.mediaUrls,
-                  mediaTypes:  job.mediaTypes,
-                  mediaBase64: job.mediaBase64,
-                ),
-                const SizedBox(height: CSizes.sm),
-              ],
+                  if (job.hasLocation)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: CSizes.sm),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_on_outlined,
+                              size: 14, color: CColors.darkGrey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              job.displayLocation,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall!
+                                  .copyWith(
+                                fontSize: isUrdu ? 13 : 11,
+                                color: CColors.darkGrey,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-              // ── Location row ─────────────────────────────────
-              if (job.hasLocation)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: CSizes.sm),
-                  child: Row(
+                  if (job.hasSchedule)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: CSizes.sm),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event_available_rounded,
+                              size: 14, color: CColors.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Scheduled: ${DateFormat('d MMM yyyy, hh:mm a').format(job.scheduledAt!.toDate())}',
+                            style: TextStyle(
+                              fontSize: isUrdu ? 13 : 11,
+                              color: CColors.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  Row(
                     children: [
-                      Icon(Icons.location_on_outlined,
+                      Icon(Icons.access_time,
                           size: 14, color: CColors.darkGrey),
                       const SizedBox(width: 4),
-                      Expanded(
+                      Flexible( // ✅ Prevents overflow
                         child: Text(
-                          job.displayLocation,
+                          timeago.format(job.createdAt.toDate()),
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall!
-                              .copyWith(
-                            fontSize: isUrdu ? 13 : 11,
-                            color:    CColors.darkGrey,
-                          ),
-                          maxLines: 1,
+                              .copyWith(fontSize: isUrdu ? 14 : 12),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const Spacer(),
+                      bidCountAsync.when(
+                        data: (count) =>
+                            _buildBidCount(context, isUrdu, count),
+                        loading: () =>
+                            _buildBidCount(context, isUrdu, '...'),
+                        error: (_, __) =>
+                            _buildBidCount(context, isUrdu, '0'),
+                      ),
                     ],
-                  ),
-                ),
-
-              // ── Time + bid count ─────────────────────────────
-              Row(
-                children: [
-                  Icon(Icons.access_time,
-                      size: 16, color: CColors.darkGrey),
-                  const SizedBox(width: 4),
-                  Text(
-                    timeago.format(job.createdAt.toDate()),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall!
-                        .copyWith(fontSize: isUrdu ? 14 : 12),
-                  ),
-                  const Spacer(),
-                  bidCountAsync.when(
-                    data:    (count) =>
-                        _buildBidCount(context, isUrdu, count.toString()),
-                    loading: () =>
-                        _buildBidCount(context, isUrdu, '...'),
-                    error:   (_, __) =>
-                        _buildBidCount(context, isUrdu, '0'),
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildBidCount(
-      BuildContext context, bool isUrdu, String count) {
+  Widget _buildBidCount(BuildContext context, bool isUrdu, dynamic count) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.gavel, size: 16, color: CColors.primary),
+        Icon(Icons.gavel, size: 14, color: CColors.primary),
         const SizedBox(width: 4),
         Text(
           '${'bid.total_bids'.tr()}: $count',
           style: Theme.of(context).textTheme.labelMedium!.copyWith(
-            color:      CColors.primary,
+            color: CColors.primary,
             fontWeight: FontWeight.bold,
-            fontSize:   isUrdu ? 14 : 12,
+            fontSize: isUrdu ? 14 : 12,
           ),
         ),
       ],

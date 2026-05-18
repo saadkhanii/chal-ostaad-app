@@ -26,6 +26,7 @@ import '../dispute/dispute_status_banner.dart';
 import '../payment/extra_charges_sheet.dart';
 import '../../../shared/widgets/job_media_gallery.dart';
 import 'worker_live_bidding_screen.dart';
+import '../../shared/widgets/propose_new_time_dialog.dart';
 
 class WorkerJobDetailsScreen extends ConsumerStatefulWidget {
   final JobModel job;
@@ -74,19 +75,17 @@ class _WorkerJobDetailsScreenState
   String? _pendingPaymentId;
 
   StreamSubscription<DocumentSnapshot>? _jobSub;
+  StreamSubscription<QuerySnapshot>? _bidsSub; // ← new for bidding detection
 
   String _clientFullName = '';
   String _workerName = '';
 
-  // ── Start time negotiation ─────────────────────────────────
   bool _acceptClientTime = true;
   DateTime? _workerProposedStartTime;
+  Map<String, dynamic>? _pendingTimeProposal;
 
-  // ── Start agreement fields from job stream ─────────────────
-  DateTime? _agreedStartTime;
-  DateTime? _startAgreementExpiry;
-  DateTime? _startAgreementCreatedAt;
-  String? _startAgreementStatus;
+  bool _workerReachedLocation = false;
+  bool _hasAnyBid = false; // ← new
 
   @override
   void initState() {
@@ -97,6 +96,7 @@ class _WorkerJobDetailsScreenState
     _loadWorkerName();
     _loadDistanceToJob();
     _subscribeToJob();
+    _listenToBids(); // ← start listening to bids
     _loadPendingPayment();
   }
 
@@ -111,6 +111,7 @@ class _WorkerJobDetailsScreenState
       final status = data['status'] as String? ?? _liveJobStatus;
       final request = data['progressRequest'] as Map<String, dynamic>?;
       final rawExtras = data['extraCharges'] as List<dynamic>? ?? [];
+      final reachedLocation = data['workerReachedLocation'] as bool? ?? false;
 
       final charges = rawExtras
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -123,27 +124,37 @@ class _WorkerJobDetailsScreenState
           .where((c) => c['status'] == 'approved')
           .fold<double>(0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
 
-      final agreed = data['agreedStartTime'] as Timestamp?;
-      final expiry = data['startAgreementExpiry'] as Timestamp?;
-      final createdAt = data['startAgreementCreatedAt'] as Timestamp?;
-      final agreementStatus = data['startAgreementStatus'] as String?;
+      final timeProposal = data['pendingTimeProposal'] as Map<String, dynamic>?;
 
       setState(() {
         _liveJobStatus = status;
         _pendingProgressRequest = request;
         _hasPendingExtras = hasPending;
         _approvedExtrasTotal = approvedTotal;
-        _agreedStartTime = agreed?.toDate();
-        _startAgreementExpiry = expiry?.toDate();
-        _startAgreementCreatedAt = createdAt?.toDate();
-        _startAgreementStatus = agreementStatus;
+        _pendingTimeProposal = timeProposal;
+        _workerReachedLocation = reachedLocation;
       });
+    });
+  }
+
+  void _listenToBids() {
+    _bidsSub = FirebaseFirestore.instance
+        .collection('bids')
+        .where('jobId', isEqualTo: widget.job.id)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _hasAnyBid = snapshot.docs.isNotEmpty;
+        });
+      }
     });
   }
 
   @override
   void dispose() {
     _jobSub?.cancel();
+    _bidsSub?.cancel();
     _amountController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -240,65 +251,138 @@ class _WorkerJobDetailsScreenState
     } catch (_) {}
   }
 
-  Future<void> _cancelJob() async {
+  Future<void> _startJob() async {
+    if (!widget.job.isUrgent && widget.job.scheduledAt != null) {
+      final now = DateTime.now();
+      if (now.isBefore(widget.job.scheduledAt!.toDate())) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Job cannot start before scheduled time.'),
+          backgroundColor: CColors.warning,
+        ));
+        return;
+      }
+    }
+
+    final shareLocation = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Share Live Location?'),
+        content: const Text('The client will be able to see your live location while you work. Do you agree?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes')),
+        ],
+      ),
+    );
+    if (shareLocation == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await _bidService.startJob(widget.job.id!, widget.workerId, shareLocation: shareLocation);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Job started! Client can now see your location.'),
+          backgroundColor: CColors.success,
+        ));
+        setState(() => _liveJobStatus = 'in-progress');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _cancelJobAsWorker() async {
     final reasonController = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel Job?'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Are you sure you want to cancel this job? '
-              'The client will be notified.'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: reasonController,
-            decoration: const InputDecoration(
-                labelText: 'Reason (optional)', border: OutlineInputBorder()),
-          ),
-        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('If you cancel, the job will be reopened as urgent and you will be banned from rebidding.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(labelText: 'Reason (optional)'),
+            ),
+          ],
+        ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
-            child:
-            const Text('Cancel Job', style: TextStyle(color: Colors.white)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: CColors.error), child: const Text('Yes, Cancel')),
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    setState(() => _isCancelling = true);
+    if (confirmed != true) return;
+    setState(() => _isLoading = true);
     try {
-      await _bidService.cancelJob(
-        jobId: widget.job.id!,
-        cancelledBy: 'worker',
-        reason: reasonController.text.trim().isEmpty
-            ? null
-            : reasonController.text.trim(),
-      );
+      await _bidService.workerCancelJob(widget.job.id!, widget.workerId, reason: reasonController.text.trim());
       if (mounted) {
-        setState(() {
-          _liveJobStatus = 'cancelled';
-          _isCancelling = false;
-        });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Job cancelled.'),
+          content: Text('Job cancelled. You cannot rebid on this job.'),
           backgroundColor: CColors.warning,
-          behavior: SnackBarBehavior.floating,
         ));
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isCancelling = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to cancel: $e'),
-          backgroundColor: CColors.error,
-          behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: CColors.error));
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _proposeNewTime() async {
+    await ProposeNewTimeDialog.show(
+      context,
+      title: 'Propose New Start Time',
+      hint: 'Suggest a new date and time for this job.',
+      onPropose: (newTime) async {
+        await _bidService.proposeNewTime(widget.job.id!, widget.workerId, newTime);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Proposal sent to client.'),
+            backgroundColor: CColors.success,
+          ));
+        }
+      },
+    );
+  }
+
+  Future<void> _respondToClientTimeProposal(bool accept) async {
+    if (_pendingTimeProposal == null) return;
+    setState(() => _isLoading = true);
+    try {
+      await _bidService.respondToTimeProposal(widget.job.id!, widget.workerId, accept);
+      if (mounted) {
+        if (accept) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('You accepted the proposal. New start time set.'),
+            backgroundColor: CColors.success,
+          ));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('You rejected the proposal. Job reopened as urgent and you cannot rebid.'),
+            backgroundColor: CColors.warning,
+          ));
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: CColors.error));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -320,14 +404,8 @@ class _WorkerJobDetailsScreenState
               '${_approvedExtrasTotal > 0 ? '\n(includes Rs. ${_approvedExtrasTotal.toStringAsFixed(0)} in approved extra charges)' : ''}',
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.success),
-            child: const Text('Confirm', style: TextStyle(color: Colors.white)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('common.cancel'.tr())),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: CColors.success), child: const Text('Confirm', style: TextStyle(color: Colors.white))),
         ],
       ),
     );
@@ -353,27 +431,6 @@ class _WorkerJobDetailsScreenState
     } catch (e) {
       if (mounted) {
         setState(() => _confirmingCash = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: CColors.error,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    }
-  }
-
-  Future<void> _confirmStartTime() async {
-    try {
-      await _bidService.confirmStartTime(widget.job.id!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Start time confirmed! Job is now in progress.'),
-          backgroundColor: CColors.success,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Error: $e'),
           backgroundColor: CColors.error,
@@ -463,9 +520,93 @@ class _WorkerJobDetailsScreenState
     setState(() => _workerProposedStartTime = chosen);
   }
 
+  Future<void> _openPreBidChat() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      if (_workerName.isEmpty) await _loadWorkerName();
+      final chatId = await _chatService.createOrGetChat(
+        jobId: widget.job.id!,
+        jobTitle: widget.job.title,
+        clientId: widget.job.clientId,
+        workerId: widget.workerId,
+        workerName: _workerName.isNotEmpty ? _workerName : widget.workerCategory,
+        clientName: _clientFullName.isNotEmpty ? _clientFullName : _clientName,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId: chatId,
+            jobTitle: widget.job.title,
+            otherName: _clientName,
+            currentUserId: widget.workerId,
+            otherUserId: widget.job.clientId,
+            otherRole: 'client',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not open chat: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _openChat() async {
+    if (_acceptedBid == null || !mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      if (_workerName.isEmpty) await _loadWorkerName();
+      final chatId = await _chatService.createOrGetChat(
+        jobId: widget.job.id!,
+        jobTitle: widget.job.title,
+        clientId: _acceptedBid!.clientId,
+        workerId: widget.workerId,
+        workerName: _workerName.isNotEmpty ? _workerName : widget.workerCategory,
+        clientName: _clientFullName.isNotEmpty ? _clientFullName : _clientName,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId: chatId,
+            jobTitle: widget.job.title,
+            otherName: _clientName,
+            currentUserId: widget.workerId,
+            otherUserId: _acceptedBid!.clientId,
+            otherRole: 'client',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not open chat: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── Helper methods for UI ─────────────────────────────────────────
   Color _getStatusColor(String s) {
     switch (s) {
       case 'open': return CColors.success;
+      case 'grace_period': return CColors.warning;
+      case 'active': return CColors.warning;
+      case 'scheduled': return CColors.info;
       case 'in-progress': return CColors.warning;
       case 'completed': return CColors.info;
       case 'cancelled': return CColors.error;
@@ -475,223 +616,304 @@ class _WorkerJobDetailsScreenState
 
   String _getStatusText(String s) {
     switch (s) {
-      case 'open': return 'job.status_open'.tr();
-      case 'in-progress': return 'job.status_in_progress'.tr();
-      case 'completed': return 'job.status_completed'.tr();
-      case 'cancelled': return 'job.status_cancelled'.tr();
+      case 'open': return 'Open';
+      case 'grace_period': return 'Grace Period';
+      case 'active': return 'Active';
+      case 'scheduled': return 'Scheduled';
+      case 'in-progress': return 'In Progress';
+      case 'completed': return 'Completed';
+      case 'cancelled': return 'Cancelled';
       default: return s;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isUrdu = context.locale.languageCode == 'ur';
+  Widget _badge(String label, Color color, {IconData? icon, bool small = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[
+          Icon(icon, color: color, size: small ? 12 : 14),
+          const SizedBox(width: 4),
+        ],
+        Text(label,
+            style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: small ? 10 : 11)),
+      ]),
+    );
+  }
 
-    return Scaffold(
-      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
-      body: SingleChildScrollView(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          CommonHeader(
-            title: 'job.job_details'.tr(),
-            showBackButton: true,
-            onBackPressed: () => Navigator.pop(context),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(CSizes.defaultSpace),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildJobDetailsCard(isDark, isUrdu),
+  // ── Status Card (Worker view) ─────────────────────────────────
+  List<Map<String, String>> _getStatusSteps() {
+    if (widget.job.isUrgent) {
+      return [
+        {'key': 'open', 'label': 'Open'},
+        {'key': 'bidding', 'label': 'Bidding'},
+        {'key': 'grace_period', 'label': 'Grace Period'},
+        {'key': 'waiting', 'label': 'Waiting'},
+        {'key': 'started', 'label': 'Started'},
+        {'key': 'in_progress', 'label': 'In Progress'},
+        {'key': 'completed', 'label': 'Completed'},
+      ];
+    } else {
+      return [
+        {'key': 'open', 'label': 'Open'},
+        {'key': 'bidding', 'label': 'Bidding'},
+        {'key': 'grace_period', 'label': 'Grace Period'},
+        {'key': 'scheduled', 'label': 'Scheduled'},
+        {'key': 'waiting', 'label': 'Waiting'},
+        {'key': 'started', 'label': 'Started'},
+        {'key': 'in_progress', 'label': 'In Progress'},
+        {'key': 'completed', 'label': 'Completed'},
+      ];
+    }
+  }
 
-                if (widget.job.hasLocation) ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildMiniMap(isDark, isUrdu),
-                ],
+  String _mapStatusToStepKey(String firestoreStatus) {
+    if (firestoreStatus == 'open' && _hasAnyBid) return 'bidding';
+    switch (firestoreStatus) {
+      case 'open': return 'open';
+      case 'grace_period': return 'grace_period';
+      case 'active': return 'waiting';
+      case 'scheduled': return 'scheduled';
+      case 'in-progress':
+        return _workerReachedLocation ? 'in_progress' : 'started';
+      case 'completed': return 'completed';
+      default: return 'bidding';
+    }
+  }
 
-                if (_acceptedBid != null &&
-                    (_liveJobStatus == 'in-progress' ||
-                        _liveJobStatus == 'completed')) ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildExtraChargesCard(isDark, isUrdu),
-                ],
+  int _getCurrentStepIndex() {
+    final steps = _getStatusSteps();
+    String currentKey = _mapStatusToStepKey(_liveJobStatus);
+    for (int i = 0; i < steps.length; i++) {
+      if (steps[i]['key'] == currentKey) return i;
+    }
+    return 0;
+  }
 
-                if (_pendingPaymentId != null &&
-                    _liveJobStatus == 'in-progress') ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildCashConfirmBanner(isDark, isUrdu),
-                ],
-
-                if (_liveJobStatus == 'pending_start_agreement') ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildStartAgreementBanner(isDark, isUrdu),
-                ],
-
-                const SizedBox(height: CSizes.spaceBtwSections),
-                _buildBidForm(isDark, isUrdu),
-
-                if (_acceptedBid != null && _liveJobStatus == 'completed') ...[
-                  const SizedBox(height: CSizes.spaceBtwSections),
-                  _buildCompletedBanner(isDark, isUrdu),
-                ],
-
-                if (_acceptedBid != null) ...[
-                  const SizedBox(height: CSizes.spaceBtwSections),
-                  DisputeStatusBanner(
-                    jobId: widget.job.id!,
-                    currentUserId: widget.workerId,
-                    currentUserRole: 'worker',
-                  ),
-                ],
-
-                if (_acceptedBid != null &&
-                    (_liveJobStatus == 'in-progress' ||
-                        _liveJobStatus == 'completed')) ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildRaiseDisputeButton(isDark, isUrdu),
-                ],
-
-                if (_acceptedBid != null &&
-                    _liveJobStatus == 'in-progress') ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  _buildCancelButton(isDark, isUrdu),
-                ],
-              ],
+  Widget _buildStatusCard(bool isDark, bool isUrdu) {
+    final steps = _getStatusSteps();
+    final currentIndex = _getCurrentStepIndex();
+    return Container(
+      padding: const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color: isDark ? CColors.darkContainer : CColors.white,
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Job Progress',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: isUrdu ? 16 : 14,
+              color: isDark ? CColors.textWhite : CColors.textPrimary,
             ),
           ),
-        ]),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(steps.length, (i) {
+                final step = steps[i];
+                final isCompleted = i < currentIndex;
+                final isActive = i == currentIndex;
+                final isLast = i == steps.length - 1;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isCompleted
+                                ? CColors.success
+                                : (isActive
+                                ? CColors.primary
+                                : (isDark ? CColors.darkerGrey : Colors.grey.shade300)),
+                            border: isActive ? Border.all(color: CColors.primary, width: 2) : null,
+                          ),
+                          child: Icon(
+                            isCompleted ? Icons.check : Icons.circle,
+                            size: isCompleted ? 18 : 12,
+                            color: (isCompleted || isActive)
+                                ? Colors.white
+                                : (isDark ? CColors.textWhite : CColors.darkGrey),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          step['label']!,
+                          style: TextStyle(
+                            fontSize: isUrdu ? 11 : 10,
+                            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                            color: isActive
+                                ? CColors.primary
+                                : (isCompleted
+                                ? CColors.success
+                                : (isDark ? CColors.textWhite.withValues(alpha: 0.6) : CColors.darkGrey)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (!isLast)
+                      Container(
+                        width: 40,
+                        height: 2,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        color: i < currentIndex
+                            ? CColors.success
+                            : (isDark ? CColors.darkerGrey : Colors.grey.shade300),
+                      ),
+                  ],
+                );
+              }),
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  // ── Gradient Header for Job Info Card ──────────────────────────
+  LinearGradient _getHeaderGradient() {
+    if (widget.job.isUrgent) {
+      return LinearGradient(
+        colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    } else if (widget.job.hasSchedule) {
+      return LinearGradient(
+        colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    } else {
+      return LinearGradient(
+        colors: [Colors.grey.shade700, Colors.grey.shade600],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    }
+  }
+
+  // ── Job Details Card (with gradient header) ────────────────────
   Widget _buildJobDetailsCard(bool isDark, bool isUrdu) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(CSizes.lg),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        color: isDark ? CColors.darkContainer : CColors.white,
-        border: Border.all(
-            color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(spacing: 8, children: [
+    final statusColor = _getStatusColor(_liveJobStatus);
+    final statusText = _getStatusText(_liveJobStatus);
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusLg)),
+      clipBehavior: Clip.antiAlias,
+      color: isDark ? CColors.darkContainer : CColors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: _getStatusColor(_liveJobStatus).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(_getStatusText(_liveJobStatus),
-                style: TextStyle(
-                    color: _getStatusColor(_liveJobStatus),
-                    fontWeight: FontWeight.w600,
-                    fontSize: isUrdu ? 12 : 10)),
-          ),
-          if (_distanceLabel != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: CColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.near_me_rounded,
-                    size: 12, color: CColors.primary),
-                const SizedBox(width: 4),
-                Text(_distanceLabel!,
-                    style: const TextStyle(
-                        color: CColors.primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 10)),
-              ]),
-            ),
-          if (_hasPendingExtras)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: CColors.warning.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.warning_amber_rounded,
-                    size: 12, color: CColors.warning),
-                SizedBox(width: 4),
-                Text('Extras Pending',
-                    style: TextStyle(
-                        color: CColors.warning,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 10)),
-              ]),
-            ),
-        ]),
-
-        const SizedBox(height: 16),
-
-        Text(widget.job.title,
-            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-                fontWeight: FontWeight.w700, fontSize: isUrdu ? 24 : 22)),
-        const SizedBox(height: 8),
-
-        Text(widget.job.description,
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                color: isDark
-                    ? CColors.textWhite.withValues(alpha: 0.8)
-                    : CColors.darkerGrey,
-                height: 1.5,
-                fontSize: isUrdu ? 16 : 14)),
-
-        if (widget.job.hasBudget || widget.job.hasSchedule) ...[
-          const SizedBox(height: 12),
-          _buildBudgetScheduleRow(isDark, isUrdu),
-        ],
-
-        if (widget.job.hasMedia) ...[
-          const SizedBox(height: CSizes.spaceBtwItems),
-          JobMediaGallery(
-            mediaUrls: widget.job.mediaUrls,
-            mediaTypes: widget.job.mediaTypes,
-            mediaBase64: widget.job.mediaBase64,
-          ),
-        ],
-
-        const SizedBox(height: 16),
-
-        Wrap(spacing: 16, runSpacing: 8, children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
-            const SizedBox(width: 6),
-            Flexible(
-                child: Text('${'job.posted_by'.tr()}: $_clientName',
-                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                        color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
+            padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 12),
+            decoration: BoxDecoration(gradient: _getHeaderGradient()),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.job.title,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                     overflow: TextOverflow.ellipsis,
-                    maxLines: 1)),
-          ]),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.access_time_outlined,
-                size: 16, color: CColors.darkGrey),
-            const SizedBox(width: 6),
-            Text(timeago.format(widget.job.createdAt.toDate()),
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                    color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12)),
-          ]),
-        ]),
-        if (widget.job.hasLocation) ...[
-          const SizedBox(height: 12),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.location_on_outlined,
-                size: 16, color: CColors.darkGrey),
-            const SizedBox(width: 6),
-            Flexible(
-                child: Text(widget.job.displayLocation,
-                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                        color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis)),
-          ]),
+                    maxLines: 1,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                  child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(CSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(spacing: 8, children: [
+                  if (widget.job.isUrgent) _badge('URGENT / ASAP', CColors.error, icon: Icons.flash_on),
+                  if (_hasPendingExtras) _badge('Extras Pending', CColors.warning, icon: Icons.warning_amber_rounded, small: true),
+                ]),
+                const SizedBox(height: 16),
+                Text(widget.job.description,
+                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                        color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+                        height: 1.5,
+                        fontSize: isUrdu ? 16 : 14)),
+                if (widget.job.hasBudget || widget.job.hasSchedule) ...[
+                  const SizedBox(height: 12),
+                  _buildBudgetScheduleRow(isDark, isUrdu),
+                ],
+                if (widget.job.hasMedia) ...[
+                  const SizedBox(height: CSizes.spaceBtwItems),
+                  JobMediaGallery(
+                    mediaUrls: widget.job.mediaUrls,
+                    mediaTypes: widget.job.mediaTypes,
+                    mediaBase64: widget.job.mediaBase64,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Wrap(spacing: 16, runSpacing: 8, children: [
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
+                    const SizedBox(width: 6),
+                    Flexible(
+                        child: Text('${'job.posted_by'.tr()}: $_clientName',
+                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                                color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1)),
+                  ]),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.access_time_outlined,
+                        size: 16, color: CColors.darkGrey),
+                    const SizedBox(width: 6),
+                    Text(timeago.format(widget.job.createdAt.toDate()),
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                            color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12)),
+                  ]),
+                ]),
+                if (widget.job.hasLocation) ...[
+                  const SizedBox(height: 12),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.location_on_outlined,
+                        size: 16, color: CColors.darkGrey),
+                    const SizedBox(width: 6),
+                    Flexible(
+                        child: Text(widget.job.displayLocation,
+                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                                color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis)),
+                  ]),
+                ],
+              ],
+            ),
+          ),
         ],
-      ]),
+      ),
     );
   }
 
@@ -743,6 +965,66 @@ class _WorkerJobDetailsScreenState
             ),
           ]),
       ],
+    );
+  }
+
+  Widget _buildMiniMap(bool isDark, bool isUrdu) {
+    final jobLatLng = LatLng(widget.job.latitude!, widget.job.longitude!);
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          border: Border.all(
+              color: isDark ? CColors.darkerGrey : CColors.borderPrimary)),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        FlutterMap(
+          options: MapOptions(
+            initialCenter: jobLatLng,
+            initialZoom: 15.0,
+            interactionOptions:
+            const InteractionOptions(flags: InteractiveFlag.none),
+          ),
+          children: [
+            _mapService.osmTileLayer(),
+            _mapService.selectedPinLayer(jobLatLng),
+          ],
+        ),
+        Positioned(
+          bottom: 10,
+          right: 10,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              try {
+                final pos = await _locationService.getCurrentPosition();
+                await _mapService.openDirections(
+                  from: _locationService
+                      .latLngToGeoPoint(LatLng(pos.latitude, pos.longitude)),
+                  to: widget.job.location!,
+                  destinationLabel: widget.job.title,
+                );
+              } catch (e) {
+                await _mapService.openDirections(
+                  from: widget.job.location!,
+                  to: widget.job.location!,
+                  destinationLabel: widget.job.title,
+                );
+              }
+            },
+            icon: const Icon(Icons.directions_rounded, size: 16),
+            label: Text('job.get_directions'.tr(),
+                style: TextStyle(fontSize: isUrdu ? 14 : 12)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              elevation: 3,
+            ),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -854,71 +1136,11 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  Widget _buildMiniMap(bool isDark, bool isUrdu) {
-    final jobLatLng = LatLng(widget.job.latitude!, widget.job.longitude!);
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          border: Border.all(
-              color: isDark ? CColors.darkerGrey : CColors.borderPrimary)),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        FlutterMap(
-          options: MapOptions(
-            initialCenter: jobLatLng,
-            initialZoom: 15.0,
-            interactionOptions:
-            const InteractionOptions(flags: InteractiveFlag.none),
-          ),
-          children: [
-            _mapService.osmTileLayer(),
-            _mapService.selectedPinLayer(jobLatLng),
-          ],
-        ),
-        Positioned(
-          bottom: 10,
-          right: 10,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              try {
-                final pos = await _locationService.getCurrentPosition();
-                await _mapService.openDirections(
-                  from: _locationService
-                      .latLngToGeoPoint(LatLng(pos.latitude, pos.longitude)),
-                  to: widget.job.location!,
-                  destinationLabel: widget.job.title,
-                );
-              } catch (e) {
-                await _mapService.openDirections(
-                  from: widget.job.location!,
-                  to: widget.job.location!,
-                  destinationLabel: widget.job.title,
-                );
-              }
-            },
-            icon: const Icon(Icons.directions_rounded, size: 16),
-            label: Text('job.get_directions'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 14 : 12)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              elevation: 3,
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildStartAgreementBanner(bool isDark, bool isUrdu) {
-    if (_agreedStartTime == null) return const SizedBox.shrink();
-    final now = DateTime.now();
-    final canConfirm = _startAgreementCreatedAt != null &&
-        now.isAfter(_startAgreementCreatedAt!.add(const Duration(seconds: 60)));
+  Widget _buildTimeProposalBanner(bool isDark, bool isUrdu) {
+    final proposal = _pendingTimeProposal!;
+    final proposedBy = proposal['proposedBy'] as String;
+    if (proposedBy != 'client') return const SizedBox.shrink();
+    final proposedTime = (proposal['proposedTime'] as Timestamp).toDate();
     return Container(
       padding: const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
@@ -930,32 +1152,38 @@ class _WorkerJobDetailsScreenState
         Row(children: [
           Icon(Icons.event_available_rounded, color: CColors.info),
           const SizedBox(width: 8),
-          Expanded(child: Text('Start time agreement pending',
+          Expanded(child: Text('Client proposed a new start time',
               style: const TextStyle(fontWeight: FontWeight.bold, color: CColors.info))),
         ]),
         const SizedBox(height: 8),
-        Text('Agreed start: ${DateFormat('d MMM yyyy, hh:mm a').format(_agreedStartTime!)}',
+        Text(DateFormat('d MMM yyyy, hh:mm a').format(proposedTime),
             style: const TextStyle(fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        if (!canConfirm)
-          Text('You can confirm the start time after the 60-second client grace period.',
-              style: TextStyle(fontSize: 12, color: CColors.darkGrey))
-        else
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _confirmStartTime,
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('Confirm Start Time'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: CColors.success, foregroundColor: Colors.white),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => _respondToClientTimeProposal(false),
+              style: OutlinedButton.styleFrom(foregroundColor: CColors.error),
+              child: const Text('Reject'),
             ),
           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _respondToClientTimeProposal(true),
+              style: ElevatedButton.styleFrom(backgroundColor: CColors.success),
+              child: const Text('Accept'),
+            ),
+          ),
+        ]),
       ]),
     );
   }
 
   Widget _buildBidForm(bool isDark, bool isUrdu) {
+    final isAccepted = _acceptedBid != null;
+    final isJobOpenForBidding = widget.job.status == 'open' && !isAccepted && !_hasExistingBid;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -991,11 +1219,11 @@ class _WorkerJobDetailsScreenState
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
 
-        if (_acceptedBid != null)
+        if (isAccepted)
           _buildAcceptedPanel(isDark, isUrdu)
         else if (_hasExistingBid)
           _buildAlreadyPlacedMessage(isDark, isUrdu)
-        else if (widget.job.status != 'open')
+        else if (!isJobOpenForBidding)
             _buildJobClosedMessage(isDark, isUrdu)
           else
             _buildPlaceBidForm(isDark, isUrdu),
@@ -1003,7 +1231,222 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Client start time info (professional, bold, prominent) ─────────
+  Widget _buildAcceptedPanel(bool isDark, bool isUrdu) {
+    final baseAmount = _acceptedBid!.amount;
+    final totalAmount = baseAmount + _approvedExtrasTotal;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(CSizes.lg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CColors.success.withValues(alpha: 0.12),
+            CColors.primary.withValues(alpha: 0.08),
+          ],
+        ),
+        border: Border.all(color: CColors.success.withValues(alpha: 0.4)),
+      ),
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+              color: Color(0x2643A047), shape: BoxShape.circle),
+          child: const Icon(Icons.emoji_events_rounded,
+              size: 40, color: CColors.success),
+        ),
+        const SizedBox(height: 16),
+        Text('bid.bid_accepted_congrats'.tr(),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                fontWeight: FontWeight.w800,
+                color: CColors.success,
+                fontSize: isUrdu ? 22 : 20)),
+        const SizedBox(height: 8),
+        Text('bid.bid_accepted_message'.tr(),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                color: isDark
+                    ? CColors.textWhite.withValues(alpha: 0.75)
+                    : CColors.darkerGrey,
+                fontSize: isUrdu ? 15 : 13,
+                height: 1.5)),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: CColors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: CColors.primary.withValues(alpha: 0.3)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Rs. ${totalAmount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                    color: CColors.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
+            if (_approvedExtrasTotal > 0)
+              Text(
+                'Base Rs. ${baseAmount.toStringAsFixed(0)}'
+                    ' + Extras Rs. ${_approvedExtrasTotal.toStringAsFixed(0)}',
+                style: const TextStyle(color: CColors.darkGrey, fontSize: 10),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _openChat,
+            icon: const Icon(Icons.chat_rounded, size: 20),
+            label: Text('chat.open_chat'.tr(),
+                style: TextStyle(
+                    fontSize: isUrdu ? 17 : 15, fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+              elevation: 3,
+              shadowColor: CColors.primary.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildPlaceBidForm(bool isDark, bool isUrdu) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'bid.place_your_bid'.tr(),
+          style: Theme.of(context).textTheme.titleLarge!.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: isUrdu ? 22 : 20,
+          ),
+        ),
+        const SizedBox(height: CSizes.spaceBtwItems),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _openPreBidChat,
+            icon: const Icon(Icons.chat_rounded, size: 20, color: Colors.white),
+            label: Text(
+              'Ask Client Before Bidding',
+              style: TextStyle(
+                fontSize: isUrdu ? 16 : 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+              ),
+              elevation: 3,
+              shadowColor: CColors.primary.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: CSizes.spaceBtwItems),
+
+        _buildClientStartTimeInfo(isDark, isUrdu),
+        const SizedBox(height: CSizes.spaceBtwInputFields),
+
+        _buildWorkerStartTimeChoice(isDark, isUrdu),
+        const SizedBox(height: CSizes.spaceBtwInputFields),
+
+        Container(
+          padding: const EdgeInsets.all(CSizes.lg),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+            color: isDark ? CColors.darkContainer : CColors.white,
+            border: Border.all(
+              color: isDark ? CColors.darkerGrey : CColors.borderPrimary,
+            ),
+          ),
+          child: Column(
+            children: [
+              TextField(
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'bid.amount_label'.tr(),
+                  hintText: 'bid.amount_hint'.tr(),
+                  prefixText: 'Rs. ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(
+                      color: isDark ? CColors.darkerGrey : CColors.borderPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: CSizes.spaceBtwInputFields),
+
+              TextField(
+                controller: _messageController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'bid.message_label'.tr(),
+                  hintText: 'bid.message_hint'.tr(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
+                    borderSide: BorderSide(
+                      color: isDark ? CColors.darkerGrey : CColors.borderPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: CSizes.spaceBtwSections),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _placeBid,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: CSizes.md),
+                    backgroundColor: CColors.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                    ),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                      : Text(
+                    'bid.submit_bid'.tr(),
+                    style: TextStyle(fontSize: isUrdu ? 18 : 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildClientStartTimeInfo(bool isDark, bool isUrdu) {
     if (widget.job.isUrgent) {
       return Container(
@@ -1118,10 +1561,9 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Worker start time choice (only show if not urgent) ─────────────
   Widget _buildWorkerStartTimeChoice(bool isDark, bool isUrdu) {
     if (widget.job.isUrgent) {
-      return const SizedBox.shrink(); // No time choice for urgent jobs
+      return const SizedBox.shrink();
     }
 
     return Column(
@@ -1276,133 +1718,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  Widget _buildPlaceBidForm(bool isDark, bool isUrdu) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'bid.place_your_bid'.tr(),
-          style: Theme.of(context).textTheme.titleLarge!.copyWith(
-            fontWeight: FontWeight.w700,
-            fontSize: isUrdu ? 22 : 20,
-          ),
-        ),
-        const SizedBox(height: CSizes.spaceBtwItems),
-
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _openPreBidChat,
-            icon: const Icon(Icons.chat_rounded, size: 20, color: Colors.white),
-            label: Text(
-              'Ask Client Before Bidding',
-              style: TextStyle(
-                fontSize: isUrdu ? 16 : 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-              ),
-              elevation: 3,
-              shadowColor: CColors.primary.withValues(alpha: 0.4),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: CSizes.spaceBtwItems),
-
-        _buildClientStartTimeInfo(isDark, isUrdu),
-        const SizedBox(height: CSizes.spaceBtwInputFields),
-
-        _buildWorkerStartTimeChoice(isDark, isUrdu),
-        const SizedBox(height: CSizes.spaceBtwInputFields),
-
-        Container(
-          padding: const EdgeInsets.all(CSizes.lg),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-            color: isDark ? CColors.darkContainer : CColors.white,
-            border: Border.all(
-              color: isDark ? CColors.darkerGrey : CColors.borderPrimary,
-            ),
-          ),
-          child: Column(
-            children: [
-              TextField(
-                controller: _amountController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'bid.amount_label'.tr(),
-                  hintText: 'bid.amount_hint'.tr(),
-                  prefixText: 'Rs. ',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                    borderSide: BorderSide(
-                      color: isDark ? CColors.darkerGrey : CColors.borderPrimary,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: CSizes.spaceBtwInputFields),
-
-              TextField(
-                controller: _messageController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'bid.message_label'.tr(),
-                  hintText: 'bid.message_hint'.tr(),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(CSizes.borderRadiusMd),
-                    borderSide: BorderSide(
-                      color: isDark ? CColors.darkerGrey : CColors.borderPrimary,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: CSizes.spaceBtwSections),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _placeBid,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: CSizes.md),
-                    backgroundColor: CColors.primary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                      : Text(
-                    'bid.submit_bid'.tr(),
-                    style: TextStyle(fontSize: isUrdu ? 18 : 16),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildCompletedBanner(bool isDark, bool isUrdu) {
     return Container(
       width: double.infinity,
@@ -1445,122 +1760,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  Widget _buildAcceptedPanel(bool isDark, bool isUrdu) {
-    final baseAmount = _acceptedBid!.amount;
-    final totalAmount = baseAmount + _approvedExtrasTotal;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(CSizes.lg),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            CColors.success.withValues(alpha: 0.12),
-            CColors.primary.withValues(alpha: 0.08),
-          ],
-        ),
-        border: Border.all(color: CColors.success.withValues(alpha: 0.4)),
-      ),
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(
-              color: Color(0x2643A047), shape: BoxShape.circle),
-          child: const Icon(Icons.emoji_events_rounded,
-              size: 40, color: CColors.success),
-        ),
-        const SizedBox(height: 16),
-        Text('bid.bid_accepted_congrats'.tr(),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                fontWeight: FontWeight.w800,
-                color: CColors.success,
-                fontSize: isUrdu ? 22 : 20)),
-        const SizedBox(height: 8),
-        Text('bid.bid_accepted_message'.tr(),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                color: isDark
-                    ? CColors.textWhite.withValues(alpha: 0.75)
-                    : CColors.darkerGrey,
-                fontSize: isUrdu ? 15 : 13,
-                height: 1.5)),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: BoxDecoration(
-            color: CColors.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: CColors.primary.withValues(alpha: 0.3)),
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Rs. ${totalAmount.toStringAsFixed(0)}',
-                style: const TextStyle(
-                    color: CColors.primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14)),
-            if (_approvedExtrasTotal > 0)
-              Text(
-                'Base Rs. ${baseAmount.toStringAsFixed(0)}'
-                    ' + Extras Rs. ${_approvedExtrasTotal.toStringAsFixed(0)}',
-                style: const TextStyle(color: CColors.darkGrey, fontSize: 10),
-              ),
-          ]),
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _openChat,
-            icon: const Icon(Icons.chat_rounded, size: 20),
-            label: Text('chat.open_chat'.tr(),
-                style: TextStyle(
-                    fontSize: isUrdu ? 17 : 15, fontWeight: FontWeight.w600)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
-              elevation: 3,
-              shadowColor: CColors.primary.withValues(alpha: 0.4),
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildCancelButton(bool isDark, bool isUrdu) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _isCancelling ? null : _cancelJob,
-        icon: _isCancelling
-            ? const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-                color: CColors.warning, strokeWidth: 2))
-            : const Icon(Icons.cancel_outlined, color: CColors.warning),
-        label: Text('Cancel Job',
-            style: TextStyle(
-                color: CColors.warning,
-                fontWeight: FontWeight.w600,
-                fontSize: isUrdu ? 15 : 13)),
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: CColors.warning),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
-        ),
-      ),
-    );
-  }
-
   Widget _buildRaiseDisputeButton(bool isDark, bool isUrdu) {
     return SizedBox(
       width: double.infinity,
@@ -1572,7 +1771,7 @@ class _WorkerJobDetailsScreenState
           clientId: widget.job.clientId,
           clientName: _clientFullName,
           workerId: widget.workerId,
-          workerName: widget.workerCategory,
+          workerName: _workerName,
           currentUserId: widget.workerId,
           currentUserRole: 'worker',
           onDisputeRaised: () => setState(() {}),
@@ -1593,83 +1792,123 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  Future<void> _openPreBidChat() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    try {
-      if (_workerName.isEmpty) await _loadWorkerName();
-      final chatId = await _chatService.createOrGetChat(
-        jobId: widget.job.id!,
-        jobTitle: widget.job.title,
-        clientId: widget.job.clientId,
-        workerId: widget.workerId,
-        workerName: _workerName.isNotEmpty ? _workerName : widget.workerCategory,
-        clientName: _clientFullName.isNotEmpty ? _clientFullName : _clientName,
-      );
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            chatId: chatId,
-            jobTitle: widget.job.title,
-            otherName: _clientName,
-            currentUserId: widget.workerId,
-            otherUserId: widget.job.clientId,
-            otherRole: 'client',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not open chat: $e'),
-          backgroundColor: CColors.error,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrdu = context.locale.languageCode == 'ur';
 
-  Future<void> _openChat() async {
-    if (_acceptedBid == null || !mounted) return;
-    setState(() => _isLoading = true);
-    try {
-      if (_workerName.isEmpty) await _loadWorkerName();
-      final chatId = await _chatService.createOrGetChat(
-        jobId: widget.job.id!,
-        jobTitle: widget.job.title,
-        clientId: _acceptedBid!.clientId,
-        workerId: widget.workerId,
-        workerName: _workerName.isNotEmpty ? _workerName : widget.workerCategory,
-        clientName: _clientFullName.isNotEmpty ? _clientFullName : _clientName,
-      );
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            chatId: chatId,
-            jobTitle: widget.job.title,
-            otherName: _clientName,
-            currentUserId: widget.workerId,
-            otherUserId: _acceptedBid!.clientId,
-            otherRole: 'client',
+    bool showStartButton = (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled') && _acceptedBid != null;
+    bool showCancelButton = (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled') && _acceptedBid != null;
+    bool showProposeTimeButton = _liveJobStatus == 'scheduled' && _acceptedBid != null && !widget.job.isUrgent;
+    bool showCashConfirm = _pendingPaymentId != null && _liveJobStatus == 'in-progress';
+
+    return Scaffold(
+      backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
+      body: RefreshIndicator(
+        onRefresh: () async => Future.delayed(const Duration(milliseconds: 500)),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CommonHeader(
+                title: 'job.job_details'.tr(),
+                showBackButton: true,
+                onBackPressed: () => Navigator.pop(context),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(CSizes.defaultSpace),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildJobDetailsCard(isDark, isUrdu),
+                    const SizedBox(height: CSizes.spaceBtwItems),
+                    _buildStatusCard(isDark, isUrdu),
+                    if (widget.job.hasLocation) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildMiniMap(isDark, isUrdu),
+                    ],
+                    if (_acceptedBid != null &&
+                        (_liveJobStatus == 'in-progress' ||
+                            _liveJobStatus == 'completed')) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildExtraChargesCard(isDark, isUrdu),
+                    ],
+                    if (showCashConfirm) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildCashConfirmBanner(isDark, isUrdu),
+                    ],
+                    if (_pendingTimeProposal != null && _pendingTimeProposal!['status'] == 'pending') ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildTimeProposalBanner(isDark, isUrdu),
+                    ],
+                    const SizedBox(height: CSizes.spaceBtwSections),
+                    _buildBidForm(isDark, isUrdu),
+                    if (showStartButton || showCancelButton || showProposeTimeButton) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (showStartButton)
+                            ElevatedButton.icon(
+                              onPressed: _isLoading ? null : _startJob,
+                              icon: const Icon(Icons.play_arrow_rounded),
+                              label: const Text('Start Job'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: CColors.success,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              ),
+                            ),
+                          if (showProposeTimeButton)
+                            OutlinedButton.icon(
+                              onPressed: _isLoading ? null : _proposeNewTime,
+                              icon: const Icon(Icons.event_available_rounded),
+                              label: const Text('Propose New Time'),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: CColors.primary),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              ),
+                            ),
+                          if (showCancelButton)
+                            OutlinedButton.icon(
+                              onPressed: _isLoading ? null : _cancelJobAsWorker,
+                              icon: const Icon(Icons.cancel_outlined, color: CColors.error),
+                              label: const Text('Cancel Job', style: TextStyle(color: CColors.error)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: CColors.error),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                    if (_acceptedBid != null && _liveJobStatus == 'completed') ...[
+                      const SizedBox(height: CSizes.spaceBtwSections),
+                      _buildCompletedBanner(isDark, isUrdu),
+                    ],
+                    if (_acceptedBid != null) ...[
+                      const SizedBox(height: CSizes.spaceBtwSections),
+                      DisputeStatusBanner(
+                        jobId: widget.job.id!,
+                        currentUserId: widget.workerId,
+                        currentUserRole: 'worker',
+                      ),
+                    ],
+                    if (_acceptedBid != null &&
+                        (_liveJobStatus == 'in-progress' ||
+                            _liveJobStatus == 'completed')) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildRaiseDisputeButton(isDark, isUrdu),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not open chat: $e'),
-          backgroundColor: CColors.error,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+      ),
+    );
   }
 }

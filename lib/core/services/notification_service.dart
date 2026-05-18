@@ -1,3 +1,4 @@
+// lib/core/services/notification_service.dart
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:intl/intl.dart';
 import 'package:chal_ostaad/shared/widgets/in_app_notification_banner.dart';
 
 @pragma('vm:entry-point')
@@ -28,7 +30,6 @@ class NotificationService {
 
   static const String _notificationsEnabledKey = 'notifications_enabled';
 
-  // Cached OAuth token to avoid generating on every call
   String? _cachedAccessToken;
   DateTime? _tokenExpiry;
 
@@ -49,10 +50,8 @@ class NotificationService {
     await _requestPermissions();
     await _setupLocalNotifications();
     await updateToken();
-
     _fcm.onTokenRefresh.listen((token) => _saveTokenToFirestore(token));
     FirebaseMessaging.onMessage.listen((msg) => _handleForegroundMessage(msg));
-
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
       Future.delayed(const Duration(milliseconds: 500), () => _handleMessage(initialMessage));
@@ -78,20 +77,17 @@ class NotificationService {
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
     );
-
     await _localNotifications.initialize(
       settings: initSettings,
       onDidReceiveNotificationResponse: (res) {
         if (res.payload != null) _handlePayload(res.payload!);
       },
     );
-
     const channel = AndroidNotificationChannel(
       'chal_ostaad_channel',
       'Chal Ostaad Notifications',
       importance: Importance.max,
     );
-
     await _localNotifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
@@ -101,17 +97,14 @@ class NotificationService {
     try {
       final user = _currentUser;
       if (user == null) return;
-
       final batch = _firestore.batch();
       final timestamp = FieldValue.serverTimestamp();
-
       for (final collection in ['users', 'clients', 'workers']) {
         batch.set(_firestore.collection(collection).doc(user.uid), {
           'fcmToken': token,
           'lastTokenUpdate': timestamp,
         }, SetOptions(merge: true));
       }
-
       await batch.commit();
       print("[NotificationService] FCM Token updated for ${user.uid}");
     } catch (e) {
@@ -119,45 +112,26 @@ class NotificationService {
     }
   }
 
-  // ============== FCM V1 API OAUTH TOKEN ==============
-
   Future<String?> _getAccessToken() async {
-    // Return cached token if still valid (with 5 min buffer)
-    if (_cachedAccessToken != null &&
-        _tokenExpiry != null &&
-        DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)))) {
+    if (_cachedAccessToken != null && _tokenExpiry != null && DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)))) {
       return _cachedAccessToken;
     }
-
     try {
-      // Load service account from assets
       final jsonStr = await rootBundle.loadString('assets/service_account.json');
       final serviceAccount = jsonDecode(jsonStr);
-
       final privateKeyPem = serviceAccount['private_key'] as String;
       final clientEmail = serviceAccount['client_email'] as String;
-
       final now = DateTime.now();
       final expiry = now.add(const Duration(hours: 1));
-
-      // Create JWT
-      final jwt = JWT(
-        {
-          'iss': clientEmail,
-          'sub': clientEmail,
-          'aud': 'https://oauth2.googleapis.com/token',
-          'iat': now.millisecondsSinceEpoch ~/ 1000,
-          'exp': expiry.millisecondsSinceEpoch ~/ 1000,
-          'scope': 'https://www.googleapis.com/auth/firebase.messaging',
-        },
-      );
-
-      final token = jwt.sign(
-        RSAPrivateKey(privateKeyPem),
-        algorithm: JWTAlgorithm.RS256,
-      );
-
-      // Exchange JWT for OAuth access token
+      final jwt = JWT({
+        'iss': clientEmail,
+        'sub': clientEmail,
+        'aud': 'https://oauth2.googleapis.com/token',
+        'iat': now.millisecondsSinceEpoch ~/ 1000,
+        'exp': expiry.millisecondsSinceEpoch ~/ 1000,
+        'scope': 'https://www.googleapis.com/auth/firebase.messaging',
+      });
+      final token = jwt.sign(RSAPrivateKey(privateKeyPem), algorithm: JWTAlgorithm.RS256);
       final response = await http.post(
         Uri.parse('https://oauth2.googleapis.com/token'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -166,7 +140,6 @@ class NotificationService {
           'assertion': token,
         },
       );
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _cachedAccessToken = data['access_token'];
@@ -183,8 +156,6 @@ class NotificationService {
     }
   }
 
-  // ============== SEND PUSH VIA FCM V1 ==============
-
   Future<bool> _sendPushNotification({
     required String fcmToken,
     required String title,
@@ -194,44 +165,22 @@ class NotificationService {
     try {
       final accessToken = await _getAccessToken();
       if (accessToken == null) return false;
-
       const projectId = 'chalostaad';
       final url = 'https://fcm.googleapis.com/v1/projects/$projectId/messages:send';
-
       final payload = {
         'message': {
           'token': fcmToken,
-          'notification': {
-            'title': title,
-            'body': body,
-          },
+          'notification': {'title': title, 'body': body},
           'data': data,
-          'android': {
-            'notification': {
-              'channel_id': 'chal_ostaad_channel',
-            },
-            'priority': 'high',
-          },
-          'apns': {
-            'payload': {
-              'aps': {
-                'sound': 'default',
-                'badge': 1,
-              },
-            },
-          },
+          'android': {'notification': {'channel_id': 'chal_ostaad_channel'}, 'priority': 'high'},
+          'apns': {'payload': {'aps': {'sound': 'default', 'badge': 1}}},
         },
       };
-
       final response = await http.post(
         Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $accessToken'},
         body: jsonEncode(payload),
       );
-
       if (response.statusCode == 200) {
         print("[NotificationService] Push sent successfully");
         return true;
@@ -245,7 +194,6 @@ class NotificationService {
     }
   }
 
-  /// Get FCM token for a specific user from Firestore
   Future<String?> _getUserFcmToken(String userId) async {
     try {
       final doc = await _firestore.collection('users').doc(userId).get();
@@ -256,31 +204,22 @@ class NotificationService {
     }
   }
 
-  // ============== MESSAGE HANDLERS ==============
-
+  // ── Internal helpers ──────────────────────────────────────────────
   void _handleForegroundMessage(RemoteMessage message) {
     _areNotificationsEnabled().then((enabled) {
       if (!enabled) return;
       _showLocalNotification(message);
-
-      // Show in-app banner when app is in foreground
       final context = navigatorKey.currentContext;
       if (context != null) {
         final title = message.notification?.title ?? message.data['title'] ?? 'Notification';
         final body = message.notification?.body ?? message.data['body'] ?? '';
-        InAppNotificationBanner.show(
-          context,
-          title: title,
-          body: body,
-          onTap: () => _navigateBasedOnType(message.data),
-        );
+        InAppNotificationBanner.show(context, title: title, body: body, onTap: () => _navigateBasedOnType(message.data));
       }
     });
     _saveNotificationToFirestore(message);
   }
 
   void _handleMessage(RemoteMessage message) => _navigateBasedOnType(message.data);
-
   void _handlePayload(String payload) {
     try {
       _navigateBasedOnType(jsonDecode(payload));
@@ -295,12 +234,7 @@ class NotificationService {
         title: notification.title,
         body: notification.body,
         notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'chal_ostaad_channel',
-            'Chal Ostaad Notifications',
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
+          android: AndroidNotificationDetails('chal_ostaad_channel', 'Chal Ostaad Notifications', importance: Importance.high, priority: Priority.high),
           iOS: DarwinNotificationDetails(),
         ),
         payload: jsonEncode(message.data),
@@ -311,13 +245,8 @@ class NotificationService {
   Future<void> _saveNotificationToFirestore(RemoteMessage message) async {
     final user = _currentUser;
     if (user == null) return;
-
     try {
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('notifications')
-          .add({
+      await _firestore.collection('users').doc(user.uid).collection('notifications').add({
         'title': message.notification?.title ?? message.data['title'] ?? 'Notification',
         'body': message.notification?.body ?? message.data['body'] ?? '',
         'type': message.data['type'] ?? 'general',
@@ -335,20 +264,9 @@ class NotificationService {
   void _navigateBasedOnType(Map<String, dynamic> data) {
     final navigator = navigatorKey.currentState;
     if (navigator == null) return;
-
     final type = data['type'] ?? '';
     final jobId = data['jobId'];
-
-    // job-related types all route to the job details screen
-    const jobTypes = {
-      'new_job',
-      'bid_accepted',
-      'bid_rejected',
-      'progress_request',    // ← worker sent completion request → client reviews
-      'progress_accepted',   // ← client approved → worker sees completed banner
-      'progress_rejected',   // ← client rejected → worker can try again
-    };
-
+    const jobTypes = {'new_job', 'bid_accepted', 'bid_rejected', 'progress_request', 'progress_accepted', 'progress_rejected', 'time_proposal', 'time_proposal_response', 'job_status'};
     if (jobTypes.contains(type) && jobId != null) {
       navigator.pushNamed(AppRoutes.jobDetails, arguments: jobId);
     } else if (type == 'chat_message' && data['chatId'] != null) {
@@ -358,8 +276,7 @@ class NotificationService {
     }
   }
 
-  // ============== SENDING LOGIC ==============
-
+  // ── Public sending methods ───────────────────────────────────────
   Future<void> sendJobPostedNotification({
     required String jobId,
     required String jobTitle,
@@ -370,25 +287,18 @@ class NotificationService {
   }) async {
     try {
       final batch = _firestore.batch();
-
       for (final workerId in workerIds) {
-        // Save to Firestore
-        batch.set(
-          _firestore.collection('users').doc(workerId).collection('notifications').doc(),
-          {
-            'title': 'New Job: $jobTitle',
-            'body': '$clientName posted a job in $category',
-            'type': 'new_job',
-            'jobId': jobId,
-            'isRead': false,
-            'timestamp': FieldValue.serverTimestamp(),
-            'data': {'jobId': jobId, 'type': 'new_job'},
-          },
-        );
+        batch.set(_firestore.collection('users').doc(workerId).collection('notifications').doc(), {
+          'title': 'New Job: $jobTitle',
+          'body': '$clientName posted a job in $category',
+          'type': 'new_job',
+          'jobId': jobId,
+          'isRead': false,
+          'timestamp': FieldValue.serverTimestamp(),
+          'data': {'jobId': jobId, 'type': 'new_job'},
+        });
       }
       await batch.commit();
-
-      // Send actual push notifications
       for (final workerId in workerIds) {
         final fcmToken = await _getUserFcmToken(workerId);
         if (fcmToken != null) {
@@ -400,7 +310,6 @@ class NotificationService {
           );
         }
       }
-
       print("[NotificationService] Job alerts sent to ${workerIds.length} workers");
     } catch (e) {
       print("[NotificationService] Error sending job alerts: $e");
@@ -418,8 +327,6 @@ class NotificationService {
     try {
       const title = 'New Bid Received';
       final body = '$workerName bid Rs. $bidAmount on "$jobTitle"';
-
-      // Save to Firestore
       await _firestore.collection('users').doc(clientId).collection('notifications').add({
         'title': title,
         'body': body,
@@ -429,16 +336,9 @@ class NotificationService {
         'timestamp': FieldValue.serverTimestamp(),
         'data': {'jobId': jobId, 'type': 'bid_received'},
       });
-
-      // Send push
       final fcmToken = await _getUserFcmToken(clientId);
       if (fcmToken != null) {
-        await _sendPushNotification(
-          fcmToken: fcmToken,
-          title: title,
-          body: body,
-          data: {'type': 'bid_received', 'jobId': jobId},
-        );
+        await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': 'bid_received', 'jobId': jobId});
       }
     } catch (e) {
       print("[NotificationService] Error sending bid notification: $e");
@@ -453,14 +353,36 @@ class NotificationService {
     required String status,
   }) async {
     try {
-      final isAccepted = status == 'accepted';
-      final title = isAccepted ? 'Bid Accepted!' : 'Bid Update';
-      final body = isAccepted
-          ? 'Your bid for "$jobTitle" was accepted by $clientName'
-          : 'Your bid for "$jobTitle" was not selected';
-      final type = isAccepted ? 'bid_accepted' : 'bid_rejected';
-
-      // Save to Firestore
+      String title, body, type;
+      switch (status) {
+        case 'accepted':
+          title = 'Bid Accepted!';
+          body = 'Your bid for "$jobTitle" was accepted by $clientName';
+          type = 'bid_accepted';
+          break;
+        case 'rejected':
+          title = 'Bid Update';
+          body = 'Your bid for "$jobTitle" was not selected';
+          type = 'bid_rejected';
+          break;
+        case 'accepted_pending_confirmation':
+          title = 'Bid Accepted (Grace Period)';
+          body = 'Your bid for "$jobTitle" was accepted. The client has 60 seconds to confirm.';
+          type = 'bid_accepted';
+          break;
+        case 'cancelled_during_grace':
+          title = 'Bid Cancelled';
+          body = 'The client cancelled the acceptance during the grace period.';
+          type = 'bid_rejected';
+          break;
+        case 'finalised':
+          title = 'Job Ready to Start!';
+          body = 'Your bid for "$jobTitle" is finalised. Please start the job.';
+          type = 'job_status';
+          break;
+        default:
+          return;
+      }
       await _firestore.collection('users').doc(workerId).collection('notifications').add({
         'title': title,
         'body': body,
@@ -470,16 +392,9 @@ class NotificationService {
         'timestamp': FieldValue.serverTimestamp(),
         'data': {'jobId': jobId, 'type': type},
       });
-
-      // Send push
       final fcmToken = await _getUserFcmToken(workerId);
       if (fcmToken != null) {
-        await _sendPushNotification(
-          fcmToken: fcmToken,
-          title: title,
-          body: body,
-          data: {'type': type, 'jobId': jobId},
-        );
+        await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': type, 'jobId': jobId});
       }
     } catch (e) {
       print("[NotificationService] Error sending bid status notification: $e");
@@ -489,18 +404,13 @@ class NotificationService {
   Future<List<String>> getRelevantWorkersForJob(String categoryId) async {
     try {
       print("[NotificationService] Searching for workers with categoryId: '$categoryId'");
-      final querySnapshot = await _firestore
-          .collection('workers')
-          .where('accountStatus', isEqualTo: 'active')
-          .get();
-
+      final querySnapshot = await _firestore.collection('workers').where('accountStatus', isEqualTo: 'active').get();
       final workers = querySnapshot.docs.where((doc) {
         final data = doc.data();
         final workInfo = data['workInfo'] as Map<String, dynamic>? ?? {};
         final catId = (workInfo['categoryId'] ?? '').toString();
         return catId == categoryId;
       }).map((doc) => doc.id).toList();
-
       print("[NotificationService] Found ${workers.length} matching workers");
       return workers;
     } catch (e) {
@@ -515,15 +425,12 @@ class NotificationService {
   }
 
   Future<bool> areNotificationsEnabled() => _areNotificationsEnabled();
-
   Future<void> setNotificationsEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notificationsEnabledKey, enabled);
   }
 
-  // ============== PROGRESS REQUEST NOTIFICATIONS ==============
-
-  /// Worker -> Client: "I've finished, please approve completion."
+  // ── Progress request notifications (existing) ────────────────────
   Future<void> sendProgressRequestNotification({
     required String jobId,
     required String jobTitle,
@@ -532,82 +439,163 @@ class NotificationService {
   }) async {
     try {
       const title = 'Job Completion Request';
-      final body  = 'Your worker has marked "$jobTitle" as done. '
-          'Tap to review and approve.';
-      const type  = 'progress_request';
-
-      await _firestore
-          .collection('users')
-          .doc(clientId)
-          .collection('notifications')
-          .add({
-        'title':     title,
-        'body':      body,
-        'type':      type,
-        'jobId':     jobId,
-        'isRead':    false,
+      final body = 'Your worker has marked "$jobTitle" as done. Tap to review and approve.';
+      const type = 'progress_request';
+      await _firestore.collection('users').doc(clientId).collection('notifications').add({
+        'title': title,
+        'body': body,
+        'type': type,
+        'jobId': jobId,
+        'isRead': false,
         'timestamp': FieldValue.serverTimestamp(),
-        'data':      {'jobId': jobId, 'type': type},
+        'data': {'jobId': jobId, 'type': type},
       });
-
       final fcmToken = await _getUserFcmToken(clientId);
       if (fcmToken != null) {
-        await _sendPushNotification(
-          fcmToken: fcmToken,
-          title:    title,
-          body:     body,
-          data:     {'type': type, 'jobId': jobId},
-        );
+        await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': type, 'jobId': jobId});
       }
-
       print("[NotificationService] Progress request sent to client $clientId");
     } catch (e) {
       print("[NotificationService] Error sending progress request notification: $e");
     }
   }
 
-  /// Client -> Worker: approval or rejection of completion request.
   Future<void> sendProgressResponseNotification({
     required String jobId,
     required String jobTitle,
     required String workerId,
-    required bool   accepted,
+    required bool accepted,
   }) async {
     try {
       final title = accepted ? 'Job Completed!' : 'Completion Request Rejected';
-      final body  = accepted
+      final body = accepted
           ? 'The client has approved your work on "$jobTitle". Great job!'
-          : 'The client rejected your completion request for "$jobTitle". '
-          'Please continue working and try again.';
-      final type  = accepted ? 'progress_accepted' : 'progress_rejected';
-
-      await _firestore
-          .collection('users')
-          .doc(workerId)
-          .collection('notifications')
-          .add({
-        'title':     title,
-        'body':      body,
-        'type':      type,
-        'jobId':     jobId,
-        'isRead':    false,
+          : 'The client rejected your completion request for "$jobTitle". Please continue working and try again.';
+      final type = accepted ? 'progress_accepted' : 'progress_rejected';
+      await _firestore.collection('users').doc(workerId).collection('notifications').add({
+        'title': title,
+        'body': body,
+        'type': type,
+        'jobId': jobId,
+        'isRead': false,
         'timestamp': FieldValue.serverTimestamp(),
-        'data':      {'jobId': jobId, 'type': type},
+        'data': {'jobId': jobId, 'type': type},
       });
-
       final fcmToken = await _getUserFcmToken(workerId);
       if (fcmToken != null) {
-        await _sendPushNotification(
-          fcmToken: fcmToken,
-          title:    title,
-          body:     body,
-          data:     {'type': type, 'jobId': jobId},
-        );
+        await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': type, 'jobId': jobId});
       }
-
       print("[NotificationService] Progress response ($type) sent to worker $workerId");
     } catch (e) {
       print("[NotificationService] Error sending progress response notification: $e");
+    }
+  }
+
+  // ── NEW: Time proposal notifications ─────────────────────────────
+  Future<void> sendTimeProposalNotification({
+    required String jobId,
+    required String jobTitle,
+    required String? clientId,
+    required String? workerId,
+    required String proposedBy,
+    required DateTime proposedTime,
+  }) async {
+    final title = 'New Time Proposal';
+    final body = '$proposedBy proposed a new start time: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedTime)}';
+    final targetId = proposedBy == 'worker' ? clientId! : workerId!;
+    final type = 'time_proposal';
+    await _firestore.collection('users').doc(targetId).collection('notifications').add({
+      'title': title,
+      'body': body,
+      'type': type,
+      'jobId': jobId,
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+      'data': {'jobId': jobId, 'type': type},
+    });
+    final fcmToken = await _getUserFcmToken(targetId);
+    if (fcmToken != null) {
+      await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': type, 'jobId': jobId});
+    }
+  }
+
+  Future<void> sendTimeProposalResponseNotification({
+    required String jobId,
+    required String jobTitle,
+    required String clientId,
+    required String workerId,
+    required bool accepted,
+  }) async {
+    final title = accepted ? 'Time Proposal Accepted' : 'Time Proposal Rejected';
+    final body = accepted
+        ? 'Your time proposal has been accepted. The job schedule has been updated.'
+        : 'Your time proposal was rejected. The job has been reopened as urgent.';
+    await _firestore.collection('users').doc(workerId).collection('notifications').add({
+      'title': title,
+      'body': body,
+      'type': 'time_proposal_response',
+      'jobId': jobId,
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+      'data': {'jobId': jobId, 'type': 'time_proposal_response'},
+    });
+    final fcmToken = await _getUserFcmToken(workerId);
+    if (fcmToken != null) {
+      await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': 'time_proposal_response', 'jobId': jobId});
+    }
+    if (!accepted) {
+      await _firestore.collection('users').doc(clientId).collection('notifications').add({
+        'title': 'Job Reopened',
+        'body': 'The job has been reopened as urgent due to rejected time proposal.',
+        'type': 'job_reopened',
+        'jobId': jobId,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'data': {'jobId': jobId, 'type': 'job_reopened'},
+      });
+      final clientToken = await _getUserFcmToken(clientId);
+      if (clientToken != null) {
+        await _sendPushNotification(fcmToken: clientToken, title: 'Job Reopened', body: 'The job has been reopened as urgent.', data: {'type': 'job_reopened', 'jobId': jobId});
+      }
+    }
+  }
+
+  // ── NEW: Job status notifications ────────────────────────────────
+  Future<void> sendJobStatusNotification({
+    required String jobId,
+    required String jobTitle,
+    required String clientId,
+    required String status,
+  }) async {
+    String title, body;
+    switch (status) {
+      case 'started':
+        title = 'Job Started';
+        body = 'The worker has started the job. You can now view their live location.';
+        break;
+      case 'cancelled_by_worker':
+        title = 'Job Cancelled';
+        body = 'The worker cancelled the job. It has been reopened as urgent.';
+        break;
+      case 'worker_no_show':
+        title = 'Worker No-Show';
+        body = 'The worker did not start the job within the allowed time. The job has been reopened as urgent.';
+        break;
+      default:
+        return;
+    }
+    await _firestore.collection('users').doc(clientId).collection('notifications').add({
+      'title': title,
+      'body': body,
+      'type': 'job_status',
+      'jobId': jobId,
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+      'data': {'jobId': jobId, 'type': 'job_status', 'status': status},
+    });
+    final fcmToken = await _getUserFcmToken(clientId);
+    if (fcmToken != null) {
+      await _sendPushNotification(fcmToken: fcmToken, title: title, body: body, data: {'type': 'job_status', 'jobId': jobId, 'status': status});
     }
   }
 }

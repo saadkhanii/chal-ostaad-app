@@ -8,11 +8,13 @@ class BidModel {
   final String clientId;
   final double amount;
   final String? message;
-  final String status; // 'pending', 'accepted', 'rejected'
+  final String status;
   final Timestamp createdAt;
   final Timestamp? updatedAt;
-  final DateTime? availableTime;           // worker's availability (used as proposed start time)
-  final DateTime? workerProposedStartTime; // NEW: explicit proposed start time (if different from client's)
+  final DateTime? availableTime;
+  final DateTime? workerProposedStartTime;
+  final DateTime? clientProposedStartTime;
+  final String? timeProposalStatus;
 
   BidModel({
     this.id,
@@ -26,35 +28,34 @@ class BidModel {
     this.updatedAt,
     this.availableTime,
     this.workerProposedStartTime,
+    this.clientProposedStartTime,
+    this.timeProposalStatus,
   });
 
   factory BidModel.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     final data = document.data()!;
-
     double parsedAmount = 0.0;
     final amountValue = data['amount'];
-    if (amountValue is int) {
-      parsedAmount = amountValue.toDouble();
-    } else if (amountValue is double) {
-      parsedAmount = amountValue;
-    } else if (amountValue is String) {
+    if (amountValue is int) parsedAmount = amountValue.toDouble();
+    else if (amountValue is double) parsedAmount = amountValue;
+    else if (amountValue is String) {
       try {
         final cleaned = amountValue.replaceAll(RegExp(r'[^0-9\.]'), '');
         parsedAmount = double.parse(cleaned);
-      } catch (e) {
-        parsedAmount = 0.0;
-      }
-    } else if (amountValue is num) {
-      parsedAmount = amountValue.toDouble();
-    }
+      } catch (_) {}
+    } else if (amountValue is num) parsedAmount = amountValue.toDouble();
 
     DateTime? availableTime;
     final avTime = data['availableTime'];
     if (avTime is Timestamp) availableTime = avTime.toDate();
 
-    DateTime? proposed;
-    final prop = data['workerProposedStartTime'];
-    if (prop is Timestamp) proposed = prop.toDate();
+    DateTime? workerProposed;
+    final wp = data['workerProposedStartTime'];
+    if (wp is Timestamp) workerProposed = wp.toDate();
+
+    DateTime? clientProposed;
+    final cp = data['clientProposedStartTime'];
+    if (cp is Timestamp) clientProposed = cp.toDate();
 
     return BidModel(
       id: document.id,
@@ -67,7 +68,9 @@ class BidModel {
       createdAt: data['createdAt'] ?? Timestamp.now(),
       updatedAt: data['updatedAt'],
       availableTime: availableTime,
-      workerProposedStartTime: proposed,
+      workerProposedStartTime: workerProposed,
+      clientProposedStartTime: clientProposed,
+      timeProposalStatus: data['timeProposalStatus'] as String?,
     );
   }
 
@@ -87,9 +90,13 @@ class BidModel {
     final avTime = data['availableTime'];
     if (avTime is Timestamp) availableTime = avTime.toDate();
 
-    DateTime? proposed;
-    final prop = data['workerProposedStartTime'];
-    if (prop is Timestamp) proposed = prop.toDate();
+    DateTime? workerProposed;
+    final wp = data['workerProposedStartTime'];
+    if (wp is Timestamp) workerProposed = wp.toDate();
+
+    DateTime? clientProposed;
+    final cp = data['clientProposedStartTime'];
+    if (cp is Timestamp) clientProposed = cp.toDate();
 
     return BidModel(
       id: id,
@@ -102,7 +109,9 @@ class BidModel {
       createdAt: data['createdAt'] ?? Timestamp.now(),
       updatedAt: data['updatedAt'],
       availableTime: availableTime,
-      workerProposedStartTime: proposed,
+      workerProposedStartTime: workerProposed,
+      clientProposedStartTime: clientProposed,
+      timeProposalStatus: data['timeProposalStatus'] as String?,
     );
   }
 
@@ -118,6 +127,8 @@ class BidModel {
       if (updatedAt != null) 'updatedAt': updatedAt,
       if (availableTime != null) 'availableTime': Timestamp.fromDate(availableTime!),
       if (workerProposedStartTime != null) 'workerProposedStartTime': Timestamp.fromDate(workerProposedStartTime!),
+      if (clientProposedStartTime != null) 'clientProposedStartTime': Timestamp.fromDate(clientProposedStartTime!),
+      if (timeProposalStatus != null) 'timeProposalStatus': timeProposalStatus,
     };
   }
 }
