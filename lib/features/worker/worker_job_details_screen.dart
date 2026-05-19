@@ -20,6 +20,7 @@ import '../../../core/services/map_service.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../shared/widgets/common_header.dart';
 import '../../../core/services/chat_service.dart';
+import '../../../shared/widgets/app_card.dart';
 import '../chat/chat_screen.dart';
 import '../dispute/raise_dispute_dialog.dart';
 import '../dispute/dispute_status_banner.dart';
@@ -75,7 +76,7 @@ class _WorkerJobDetailsScreenState
   String? _pendingPaymentId;
 
   StreamSubscription<DocumentSnapshot>? _jobSub;
-  StreamSubscription<QuerySnapshot>? _bidsSub; // ← new for bidding detection
+  StreamSubscription<QuerySnapshot>? _bidsSub;
 
   String _clientFullName = '';
   String _workerName = '';
@@ -85,7 +86,7 @@ class _WorkerJobDetailsScreenState
   Map<String, dynamic>? _pendingTimeProposal;
 
   bool _workerReachedLocation = false;
-  bool _hasAnyBid = false; // ← new
+  bool _hasAnyBid = false;
 
   @override
   void initState() {
@@ -96,7 +97,7 @@ class _WorkerJobDetailsScreenState
     _loadWorkerName();
     _loadDistanceToJob();
     _subscribeToJob();
-    _listenToBids(); // ← start listening to bids
+    _listenToBids();
     _loadPendingPayment();
   }
 
@@ -649,7 +650,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Status Card (Worker view) ─────────────────────────────────
+  // ── Status Card using AppCard ─────────────────────────────────
   List<Map<String, String>> _getStatusSteps() {
     if (widget.job.isUrgent) {
       return [
@@ -701,90 +702,80 @@ class _WorkerJobDetailsScreenState
   Widget _buildStatusCard(bool isDark, bool isUrdu) {
     final steps = _getStatusSteps();
     final currentIndex = _getCurrentStepIndex();
-    return Container(
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color: isDark ? CColors.darkContainer : CColors.white,
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
+    return AppCard(
+      margin: EdgeInsets.zero,
+      headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
+      headerTitle: Text(
+        'Job Progress',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: isUrdu ? 16 : 14,
+          color: Colors.white,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Job Progress',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: isUrdu ? 16 : 14,
-              color: isDark ? CColors.textWhite : CColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+      body: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(steps.length, (i) {
+            final step = steps[i];
+            final isCompleted = i < currentIndex;
+            final isActive = i == currentIndex;
+            final isLast = i == steps.length - 1;
+            return Row(
               mainAxisSize: MainAxisSize.min,
-              children: List.generate(steps.length, (i) {
-                final step = steps[i];
-                final isCompleted = i < currentIndex;
-                final isActive = i == currentIndex;
-                final isLast = i == steps.length - 1;
-                return Row(
+              children: [
+                Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isCompleted
-                                ? CColors.success
-                                : (isActive
-                                ? CColors.primary
-                                : (isDark ? CColors.darkerGrey : Colors.grey.shade300)),
-                            border: isActive ? Border.all(color: CColors.primary, width: 2) : null,
-                          ),
-                          child: Icon(
-                            isCompleted ? Icons.check : Icons.circle,
-                            size: isCompleted ? 18 : 12,
-                            color: (isCompleted || isActive)
-                                ? Colors.white
-                                : (isDark ? CColors.textWhite : CColors.darkGrey),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          step['label']!,
-                          style: TextStyle(
-                            fontSize: isUrdu ? 11 : 10,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                            color: isActive
-                                ? CColors.primary
-                                : (isCompleted
-                                ? CColors.success
-                                : (isDark ? CColors.textWhite.withValues(alpha: 0.6) : CColors.darkGrey)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (!isLast)
-                      Container(
-                        width: 40,
-                        height: 2,
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        color: i < currentIndex
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isCompleted
                             ? CColors.success
-                            : (isDark ? CColors.darkerGrey : Colors.grey.shade300),
+                            : (isActive
+                            ? CColors.primary
+                            : (isDark ? CColors.darkerGrey : Colors.grey.shade300)),
+                        border: isActive ? Border.all(color: CColors.primary, width: 2) : null,
                       ),
+                      child: Icon(
+                        isCompleted ? Icons.check : Icons.circle,
+                        size: isCompleted ? 18 : 12,
+                        color: (isCompleted || isActive)
+                            ? Colors.white
+                            : (isDark ? CColors.textWhite : CColors.darkGrey),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      step['label']!,
+                      style: TextStyle(
+                        fontSize: isUrdu ? 11 : 10,
+                        fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                        color: isActive
+                            ? CColors.primary
+                            : (isCompleted
+                            ? CColors.success
+                            : (isDark ? CColors.textWhite.withValues(alpha: 0.6) : CColors.darkGrey)),
+                      ),
+                    ),
                   ],
-                );
-              }),
-            ),
-          ),
-        ],
+                ),
+                if (!isLast)
+                  Container(
+                    width: 40,
+                    height: 2,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    color: i < currentIndex
+                        ? CColors.success
+                        : (isDark ? CColors.darkerGrey : Colors.grey.shade300),
+                  ),
+              ],
+            );
+          }),
+        ),
       ),
     );
   }
@@ -812,106 +803,85 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Job Details Card (with gradient header) ────────────────────
+  // ── Job Details Card using AppCard ────────────────────
   Widget _buildJobDetailsCard(bool isDark, bool isUrdu) {
     final statusColor = _getStatusColor(_liveJobStatus);
     final statusText = _getStatusText(_liveJobStatus);
-    return Card(
+    return AppCard(
       margin: EdgeInsets.zero,
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusLg)),
-      clipBehavior: Clip.antiAlias,
-      color: isDark ? CColors.darkContainer : CColors.white,
-      child: Column(
+      headerGradient: _getHeaderGradient(),
+      headerTitle: Text(
+        widget.job.title,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      ),
+      headerTrailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+      ),
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 12),
-            decoration: BoxDecoration(gradient: _getHeaderGradient()),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.job.title,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                  child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                ),
-              ],
+          Wrap(spacing: 8, children: [
+            if (widget.job.isUrgent) _badge('URGENT / ASAP', CColors.error, icon: Icons.flash_on),
+            if (_hasPendingExtras) _badge('Extras Pending', CColors.warning, icon: Icons.warning_amber_rounded, small: true),
+          ]),
+          const SizedBox(height: 16),
+          Text(widget.job.description,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+                  height: 1.5,
+                  fontSize: isUrdu ? 16 : 14)),
+          if (widget.job.hasBudget || widget.job.hasSchedule) ...[
+            const SizedBox(height: 12),
+            _buildBudgetScheduleRow(isDark, isUrdu),
+          ],
+          if (widget.job.hasMedia) ...[
+            const SizedBox(height: CSizes.spaceBtwItems),
+            JobMediaGallery(
+              mediaUrls: widget.job.mediaUrls,
+              mediaTypes: widget.job.mediaTypes,
+              mediaBase64: widget.job.mediaBase64,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(CSizes.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(spacing: 8, children: [
-                  if (widget.job.isUrgent) _badge('URGENT / ASAP', CColors.error, icon: Icons.flash_on),
-                  if (_hasPendingExtras) _badge('Extras Pending', CColors.warning, icon: Icons.warning_amber_rounded, small: true),
-                ]),
-                const SizedBox(height: 16),
-                Text(widget.job.description,
-                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                        color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
-                        height: 1.5,
-                        fontSize: isUrdu ? 16 : 14)),
-                if (widget.job.hasBudget || widget.job.hasSchedule) ...[
-                  const SizedBox(height: 12),
-                  _buildBudgetScheduleRow(isDark, isUrdu),
-                ],
-                if (widget.job.hasMedia) ...[
-                  const SizedBox(height: CSizes.spaceBtwItems),
-                  JobMediaGallery(
-                    mediaUrls: widget.job.mediaUrls,
-                    mediaTypes: widget.job.mediaTypes,
-                    mediaBase64: widget.job.mediaBase64,
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Wrap(spacing: 16, runSpacing: 8, children: [
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
-                    const SizedBox(width: 6),
-                    Flexible(
-                        child: Text('${'job.posted_by'.tr()}: $_clientName',
-                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                                color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1)),
-                  ]),
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.access_time_outlined,
-                        size: 16, color: CColors.darkGrey),
-                    const SizedBox(width: 6),
-                    Text(timeago.format(widget.job.createdAt.toDate()),
-                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                            color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12)),
-                  ]),
-                ]),
-                if (widget.job.hasLocation) ...[
-                  const SizedBox(height: 12),
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 16, color: CColors.darkGrey),
-                    const SizedBox(width: 6),
-                    Flexible(
-                        child: Text(widget.job.displayLocation,
-                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                                color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis)),
-                  ]),
-                ],
-              ],
-            ),
-          ),
+          ],
+          const SizedBox(height: 16),
+          Wrap(spacing: 16, runSpacing: 8, children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.person_outline, size: 16, color: CColors.darkGrey),
+              const SizedBox(width: 6),
+              Flexible(
+                  child: Text('${'job.posted_by'.tr()}: $_clientName',
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1)),
+            ]),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.access_time_outlined,
+                  size: 16, color: CColors.darkGrey),
+              const SizedBox(width: 6),
+              Text(timeago.format(widget.job.createdAt.toDate()),
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                      color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12)),
+            ]),
+          ]),
+          if (widget.job.hasLocation) ...[
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.location_on_outlined,
+                  size: 16, color: CColors.darkGrey),
+              const SizedBox(width: 6),
+              Flexible(
+                  child: Text(widget.job.displayLocation,
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          color: CColors.darkGrey, fontSize: isUrdu ? 14 : 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis)),
+            ]),
+          ],
         ],
       ),
     );
@@ -968,193 +938,201 @@ class _WorkerJobDetailsScreenState
     );
   }
 
+  // ── Mini Map wrapped in AppCard ─────────────────────────────────
   Widget _buildMiniMap(bool isDark, bool isUrdu) {
     final jobLatLng = LatLng(widget.job.latitude!, widget.job.longitude!);
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-          border: Border.all(
-              color: isDark ? CColors.darkerGrey : CColors.borderPrimary)),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        FlutterMap(
-          options: MapOptions(
-            initialCenter: jobLatLng,
-            initialZoom: 15.0,
-            interactionOptions:
-            const InteractionOptions(flags: InteractiveFlag.none),
+    return AppCard(
+      margin: EdgeInsets.zero,
+      headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
+      headerTitle: const Text('Job Location', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+                border: Border.all(
+                    color: isDark ? CColors.darkerGrey : CColors.borderPrimary)),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(children: [
+              FlutterMap(
+                options: MapOptions(
+                  initialCenter: jobLatLng,
+                  initialZoom: 15.0,
+                  interactionOptions:
+                  const InteractionOptions(flags: InteractiveFlag.none),
+                ),
+                children: [
+                  _mapService.osmTileLayer(),
+                  _mapService.selectedPinLayer(jobLatLng),
+                ],
+              ),
+              Positioned(
+                bottom: 10,
+                right: 10,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final pos = await _locationService.getCurrentPosition();
+                      await _mapService.openDirections(
+                        from: _locationService
+                            .latLngToGeoPoint(LatLng(pos.latitude, pos.longitude)),
+                        to: widget.job.location!,
+                        destinationLabel: widget.job.title,
+                      );
+                    } catch (e) {
+                      await _mapService.openDirections(
+                        from: widget.job.location!,
+                        to: widget.job.location!,
+                        destinationLabel: widget.job.title,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.directions_rounded, size: 16),
+                  label: Text('job.get_directions'.tr(),
+                      style: TextStyle(fontSize: isUrdu ? 14 : 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    elevation: 3,
+                  ),
+                ),
+              ),
+            ]),
           ),
-          children: [
-            _mapService.osmTileLayer(),
-            _mapService.selectedPinLayer(jobLatLng),
-          ],
-        ),
-        Positioned(
-          bottom: 10,
-          right: 10,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              try {
-                final pos = await _locationService.getCurrentPosition();
-                await _mapService.openDirections(
-                  from: _locationService
-                      .latLngToGeoPoint(LatLng(pos.latitude, pos.longitude)),
-                  to: widget.job.location!,
-                  destinationLabel: widget.job.title,
-                );
-              } catch (e) {
-                await _mapService.openDirections(
-                  from: widget.job.location!,
-                  to: widget.job.location!,
-                  destinationLabel: widget.job.title,
-                );
-              }
-            },
-            icon: const Icon(Icons.directions_rounded, size: 16),
-            label: Text('job.get_directions'.tr(),
-                style: TextStyle(fontSize: isUrdu ? 14 : 12)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              elevation: 3,
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
-    return Container(
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color: isDark ? CColors.darkContainer : CColors.white,
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(
-            color: _hasPendingExtras
-                ? CColors.warning.withValues(alpha: 0.5)
-                : (isDark ? CColors.darkerGrey : CColors.borderPrimary)),
+        ],
       ),
-      child: Row(children: [
-        Icon(
-          _hasPendingExtras
-              ? Icons.warning_amber_rounded
-              : Icons.add_circle_outline,
-          color: _hasPendingExtras ? CColors.warning : CColors.primary,
-          size: 22,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child:
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              _hasPendingExtras
-                  ? 'Extra charge awaiting your approval'
-                  : 'Extra Charges',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: _hasPendingExtras
-                      ? CColors.warning
-                      : (isDark ? CColors.textWhite : CColors.textPrimary)),
-            ),
-            const Text('View, approve or propose additional charges',
-                style: TextStyle(fontSize: 12, color: CColors.darkGrey)),
-          ]),
-        ),
-        TextButton(
-          onPressed: () => ExtraChargesSheet.show(
-            context,
-            jobId: widget.job.id!,
-            currentRole: 'worker',
-          ),
-          child: const Text('Manage'),
-        ),
-      ]),
     );
   }
 
+  // ── Extra Charges Card using AppCard ────────────────────────────
+  Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
+    return AppCard(
+      margin: EdgeInsets.zero,
+      headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
+      headerTitle: Row(
+        children: [
+          Icon(
+            _hasPendingExtras
+                ? Icons.warning_amber_rounded
+                : Icons.add_circle_outline,
+            color: _hasPendingExtras ? CColors.warning : Colors.white,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _hasPendingExtras
+                ? 'Extra charge awaiting your approval'
+                : 'Extra Charges',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.white),
+          ),
+        ],
+      ),
+      body: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('View, approve or propose additional charges',
+                    style: TextStyle(fontSize: 12, color: CColors.darkGrey)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => ExtraChargesSheet.show(
+              context,
+              jobId: widget.job.id!,
+              currentRole: 'worker',
+            ),
+            child: const Text('Manage'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Cash Confirm Banner using AppCard ───────────────────────────
   Widget _buildCashConfirmBanner(bool isDark, bool isUrdu) {
     final baseAmount = _acceptedBid?.amount ?? 0;
     final totalAmount = baseAmount + _approvedExtrasTotal;
 
-    return Container(
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color: CColors.warning.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(color: CColors.warning.withValues(alpha: 0.3)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.payments_outlined, color: CColors.warning, size: 20),
-          SizedBox(width: 8),
-          Text('Cash Payment Pending',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: CColors.warning,
-                  fontSize: 15)),
-        ]),
-        const SizedBox(height: 6),
-        Text(
-          _approvedExtrasTotal > 0
-              ? 'The client has chosen to pay Rs. ${totalAmount.toStringAsFixed(0)} in cash '
-              '(Rs. ${baseAmount.toStringAsFixed(0)} base + '
-              'Rs. ${_approvedExtrasTotal.toStringAsFixed(0)} extras). '
-              'Once you receive the cash, confirm below to complete the job.'
-              : 'The client has chosen to pay in cash. '
-              'Once you receive the cash, confirm below to complete the job.',
-          style: const TextStyle(fontSize: 13, color: CColors.darkGrey),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _confirmingCash ? null : _confirmCashReceived,
-            icon: const Icon(Icons.check_circle_outline),
-            label: _confirmingCash
-                ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2))
-                : const Text('Confirm Cash Received'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CColors.success,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+    return AppCard(
+      margin: EdgeInsets.zero,
+      headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
+      headerTitle: const Row(children: [
+        Icon(Icons.payments_outlined, color: Colors.white, size: 20),
+        SizedBox(width: 8),
+        Text('Cash Payment Pending',
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                fontSize: 15)),
+      ]),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 6),
+          Text(
+            _approvedExtrasTotal > 0
+                ? 'The client has chosen to pay Rs. ${totalAmount.toStringAsFixed(0)} in cash '
+                '(Rs. ${baseAmount.toStringAsFixed(0)} base + '
+                'Rs. ${_approvedExtrasTotal.toStringAsFixed(0)} extras). '
+                'Once you receive the cash, confirm below to complete the job.'
+                : 'The client has chosen to pay in cash. '
+                'Once you receive the cash, confirm below to complete the job.',
+            style: const TextStyle(fontSize: 13, color: CColors.darkGrey),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _confirmingCash ? null : _confirmCashReceived,
+              icon: const Icon(Icons.check_circle_outline),
+              label: _confirmingCash
+                  ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2))
+                  : const Text('Confirm Cash Received'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.success,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+              ),
             ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 
+  // ── Time Proposal Banner using AppCard ───────────────────────────
   Widget _buildTimeProposalBanner(bool isDark, bool isUrdu) {
     final proposal = _pendingTimeProposal!;
     final proposedBy = proposal['proposedBy'] as String;
     if (proposedBy != 'client') return const SizedBox.shrink();
     final proposedTime = (proposal['proposedTime'] as Timestamp).toDate();
-    return Container(
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color: CColors.info.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(color: CColors.info.withValues(alpha: 0.5)),
-      ),
-      child: Column(children: [
-        Row(children: [
-          Icon(Icons.event_available_rounded, color: CColors.info),
-          const SizedBox(width: 8),
-          Expanded(child: Text('Client proposed a new start time',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: CColors.info))),
-        ]),
+    return AppCard(
+      margin: EdgeInsets.zero,
+      headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
+      headerTitle: Row(children: [
+        Icon(Icons.event_available_rounded, color: Colors.white),
+        const SizedBox(width: 8),
+        Expanded(child: Text('Client proposed a new start time',
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+      ]),
+      body: Column(children: [
         const SizedBox(height: 8),
         Text(DateFormat('d MMM yyyy, hh:mm a').format(proposedTime),
             style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -1676,6 +1654,31 @@ class _WorkerJobDetailsScreenState
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
               fontSize: isUrdu ? 16 : 14,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openPreBidChat,
+              icon: const Icon(Icons.chat_rounded, size: 20, color: Colors.white),
+              label: Text(
+                'Chat with Client',
+                style: TextStyle(
+                  fontSize: isUrdu ? 16 : 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                ),
+                elevation: 2,
+              ),
             ),
           ),
         ],

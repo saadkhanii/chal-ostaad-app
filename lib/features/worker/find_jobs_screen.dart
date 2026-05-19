@@ -15,6 +15,7 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/worker_service.dart';
 import '../../../shared/widgets/common_header.dart';
 import '../../../shared/widgets/job_media_gallery.dart';
+import '../../../shared/widgets/app_card.dart'; // added
 import '../../core/routes/app_routes.dart';
 import 'worker_job_details_screen.dart';
 
@@ -137,29 +138,6 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
     );
   }
 
-  // ── Gradient helper ──────────────────────────────────────────────
-  LinearGradient _getHeaderGradient(JobModel job) {
-    if (job.isUrgent) {
-      return LinearGradient(
-        colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    } else if (job.hasSchedule) {
-      return LinearGradient(
-        colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    } else {
-      return LinearGradient(
-        colors: [Colors.grey.shade700, Colors.grey.shade600],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    }
-  }
-
   Color _getStatusColor(String status) {
     switch (status.trim().toLowerCase()) {
       case 'open': return CColors.success;
@@ -193,145 +171,122 @@ class _FindJobsScreenState extends ConsumerState<FindJobsScreen> {
     final statusColor = _getStatusColor(job.status);
     final statusText = _getStatusText(job.status);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: CSizes.md),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
-      elevation: 2,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _showJobDetails(job),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Gradient header
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 12),
-              decoration: BoxDecoration(gradient: _getHeaderGradient(job)),
+    return AppCard(
+      onTap: () => _showJobDetails(job),
+      headerGradient: AppCardGradients.fromJob(
+        isUrgent: job.isUrgent,
+        hasSchedule: job.hasSchedule,
+      ),
+      headerTitle: Text(
+        job.title,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      ),
+      headerTrailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            job.description,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+              fontSize: isUrdu ? 16 : 14,
+              color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: CSizes.sm),
+          if (job.hasMedia) ...[
+            JobMediaGallery(
+              mediaUrls: job.mediaUrls,
+              mediaTypes: job.mediaTypes,
+              mediaBase64: job.mediaBase64,
+            ),
+            const SizedBox(height: CSizes.sm),
+          ],
+          if (job.hasLocation)
+            Padding(
+              padding: const EdgeInsets.only(bottom: CSizes.sm),
               child: Row(
                 children: [
+                  Icon(Icons.location_on_outlined, size: 14, color: CColors.darkGrey),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      job.title,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                      overflow: TextOverflow.ellipsis,
+                      job.displayLocation,
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                        fontSize: isUrdu ? 13 : 11,
+                        color: CColors.darkGrey,
+                      ),
                       maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                    child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
             ),
-            // Body
+          if (job.hasSchedule)
             Padding(
-              padding: const EdgeInsets.all(CSizes.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.only(bottom: CSizes.sm),
+              child: Row(
                 children: [
+                  Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
+                  const SizedBox(width: 4),
                   Text(
-                    job.description,
-                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                      fontSize: isUrdu ? 16 : 14,
-                      color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: CSizes.sm),
-                  if (job.hasMedia) ...[
-                    JobMediaGallery(
-                      mediaUrls: job.mediaUrls,
-                      mediaTypes: job.mediaTypes,
-                      mediaBase64: job.mediaBase64,
-                    ),
-                    const SizedBox(height: CSizes.sm),
-                  ],
-                  if (job.hasLocation)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: CSizes.sm),
-                      child: Row(
-                        children: [
-                          Icon(Icons.location_on_outlined, size: 14, color: CColors.darkGrey),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              job.displayLocation,
-                              style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                                fontSize: isUrdu ? 13 : 11,
-                                color: CColors.darkGrey,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (job.hasSchedule)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: CSizes.sm),
-                      child: Row(
-                        children: [
-                          Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Scheduled: ${DateFormat('d MMM yyyy, hh:mm a').format(job.scheduledAt!.toDate())}',
-                            style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.primary, fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Row(
-                    children: [
-                      Icon(Icons.access_time, size: 14, color: CColors.darkGrey),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          timeago.format(job.createdAt.toDate()),
-                          style: Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: isUrdu ? 14 : 12),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (distLabel != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: CColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.near_me_rounded, size: 11, color: CColors.primary),
-                            const SizedBox(width: 3),
-                            Text(distLabel, style: TextStyle(fontSize: isUrdu ? 12 : 10, color: CColors.primary, fontWeight: FontWeight.w600)),
-                          ]),
-                        ),
-                      ],
-                      const Spacer(),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('bids')
-                            .where('jobId', isEqualTo: job.id)
-                            .snapshots(),
-                        builder: (context, bidSnapshot) {
-                          final bidCount = bidSnapshot.data?.docs.length ?? 0;
-                          return Row(children: [
-                            const Icon(Icons.gavel, size: 16, color: CColors.primary),
-                            const SizedBox(width: 4),
-                            Text('$bidCount bids', style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                              color: CColors.primary, fontWeight: FontWeight.bold, fontSize: isUrdu ? 14 : 12,
-                            )),
-                          ]);
-                        },
-                      ),
-                    ],
+                    'Scheduled: ${DateFormat('d MMM yyyy, hh:mm a').format(job.scheduledAt!.toDate())}',
+                    style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.primary, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
+          Row(
+            children: [
+              Icon(Icons.access_time, size: 14, color: CColors.darkGrey),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  timeago.format(job.createdAt.toDate()),
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: isUrdu ? 14 : 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (distLabel != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: CColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.near_me_rounded, size: 11, color: CColors.primary),
+                    const SizedBox(width: 3),
+                    Text(distLabel, style: TextStyle(fontSize: isUrdu ? 12 : 10, color: CColors.primary, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ],
+              const Spacer(),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('bids')
+                    .where('jobId', isEqualTo: job.id)
+                    .snapshots(),
+                builder: (context, bidSnapshot) {
+                  final bidCount = bidSnapshot.data?.docs.length ?? 0;
+                  return Row(children: [
+                    const Icon(Icons.gavel, size: 16, color: CColors.primary),
+                    const SizedBox(width: 4),
+                    Text('$bidCount bids', style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                      color: CColors.primary, fontWeight: FontWeight.bold, fontSize: isUrdu ? 14 : 12,
+                    )),
+                  ]);
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

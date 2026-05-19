@@ -12,6 +12,7 @@ import '../../../core/models/job_model.dart';
 import '../../../core/services/bid_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../shared/widgets/common_header.dart';
+import '../../../shared/widgets/app_card.dart';
 import '../chat/chat_screen.dart';
 import '../profile/worker_profile_preview_sheet.dart';
 
@@ -47,6 +48,7 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
   final ChatService _chatService = ChatService();
   final Map<String, String> _workerNames = {};
   String? _acceptingBidId;
+  bool _isOpeningChat = false;   // ✅ loading state for chat button
 
   Future<String> _getWorkerName(String workerId) async {
     if (_workerNames.containsKey(workerId)) return _workerNames[workerId]!;
@@ -154,21 +156,44 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
     }
   }
 
+  // ✅ FIXED: Always create/get the full chat document before opening
   void _openChat(String workerId, String workerName) async {
-    final chatId = _chatService.getChatId(widget.job.id!, workerId);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          chatId: chatId,
-          jobTitle: widget.job.title,
-          otherName: workerName,
-          currentUserId: widget.clientId,
-          otherUserId: workerId,
-          otherRole: 'worker',
+    if (_isOpeningChat) return;
+    setState(() => _isOpeningChat = true);
+    try {
+      final chatId = await _chatService.createOrGetChat(
+        jobId: widget.job.id!,
+        jobTitle: widget.job.title,
+        clientId: widget.clientId,
+        workerId: workerId,
+        workerName: workerName,
+        clientName: await _getClientName(widget.clientId),
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId: chatId,
+            jobTitle: widget.job.title,
+            otherName: workerName,
+            currentUserId: widget.clientId,
+            otherUserId: workerId,
+            otherRole: 'worker',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not open chat: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isOpeningChat = false);
+    }
   }
 
   void _showWorkerProfile(String workerId) {
@@ -206,9 +231,36 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(widget.job.title, style: Theme.of(context).textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold, fontSize: isUrdu ? 20 : 18)),
-                const SizedBox(height: CSizes.spaceBtwSections),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: isDark ? CColors.secondary : CColors.secondary,
+                    borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                    border: Border.all(
+                      color: isDark ? CColors.borderPrimary : CColors.borderPrimary,
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    widget.job.title,
+                    style: TextStyle(
+                      fontSize: isUrdu ? 20 : 18,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                      color: isDark ? Colors.white : CColors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
               ],
             ),
           ),
@@ -260,107 +312,109 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
       future: _getWorkerName(bid.workerId),
       builder: (context, nameSnapshot) {
         final workerName = nameSnapshot.data ?? 'Worker';
-        return Card(
-          margin: const EdgeInsets.only(bottom: CSizes.sm),
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.cardRadiusMd)),
-          clipBehavior: Clip.antiAlias,
-          color: isDark ? CColors.darkContainer : Colors.white,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return AppCard(
+          headerGradient: AppCardGradients.scheduled(),
+          headerTitle: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
-                decoration: BoxDecoration(gradient: LinearGradient(colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)], begin: Alignment.centerLeft, end: Alignment.centerRight)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.person_outline_rounded, color: Colors.white, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(workerName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
-                      child: Text('Rank #$rank', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                    ),
-                    if (isAccepted) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: CColors.success, borderRadius: BorderRadius.circular(20)),
-                        child: const Text('Accepted ✓', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ],
+              const Icon(Icons.person_outline_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  workerName,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(CSizes.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text('Rs. ${bid.amount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isUrdu ? 22 : 20, color: CColors.secondary)),
-                        const SizedBox(width: 8),
-                        Text('— quoted amount', style: TextStyle(fontSize: 11, color: CColors.darkGrey)),
-                      ],
-                    ),
-                    const SizedBox(height: CSizes.sm),
-                    Row(children: [
-                      Icon(widget.job.isUrgent ? Icons.flash_on : Icons.event_available_rounded, size: 14, color: CColors.primary),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text(widget.job.isUrgent ? 'Start: ASAP / Urgent' : 'Proposed start: $startTimeDisplay', style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey))),
-                      if (!widget.job.isUrgent && bid.workerProposedStartTime == null && widget.job.scheduledAt != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: CColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                          child: Text("Client's time", style: TextStyle(fontSize: 9, color: CColors.primary)),
-                        ),
-                    ]),
-                    const SizedBox(height: CSizes.sm),
-                    if (bid.message != null && bid.message!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: CSizes.sm),
-                        child: Text('"${bid.message}"', style: TextStyle(fontStyle: FontStyle.italic, fontSize: isUrdu ? 15 : 13, color: isDark ? CColors.textWhite.withValues(alpha: 0.7) : CColors.darkerGrey)),
-                      ),
-                    if (bid.availableTime != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: CSizes.sm),
-                        child: Row(
-                          children: [
-                            Icon(Icons.access_time_outlined, size: 16, color: CColors.primary),
-                            const SizedBox(width: 6),
-                            Text('Available: ${DateFormat('d MMM yyyy, hh:mm a').format(bid.availableTime!)}', style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey)),
-                          ],
-                        ),
-                      ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () => _openChat(bid.workerId, workerName),
-                          icon: const Icon(Icons.chat_outlined, size: 16, color: CColors.primary),
-                          label: Text('Chat', style: TextStyle(fontSize: isUrdu ? 12 : 11, color: CColors.primary)),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _showWorkerProfile(bid.workerId),
-                          icon: const Icon(Icons.person_rounded, size: 16, color: CColors.primary),
-                          label: Text('View Profile', style: TextStyle(fontSize: isUrdu ? 12 : 11, color: CColors.primary)),
-                        ),
-                        if (isJobOpen && !isAccepted && hasValidStartTime)
-                          ElevatedButton(
-                            onPressed: isAccepting ? null : () => _acceptBid(bid),
-                            style: ElevatedButton.styleFrom(backgroundColor: CColors.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd))),
-                            child: isAccepting
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Text('Accept'),
-                          ),
-                      ],
-                    ),
-                  ],
+            ],
+          ),
+          headerTrailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
+                child: Text('Rank #$rank', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+              ),
+              if (isAccepted) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: CColors.success, borderRadius: BorderRadius.circular(20)),
+                  child: const Text('Accepted ✓', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                 ),
+              ],
+            ],
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text('Rs. ${bid.amount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isUrdu ? 22 : 20, color: CColors.secondary)),
+                  const SizedBox(width: 8),
+                  Text('— quoted amount', style: TextStyle(fontSize: 11, color: CColors.darkGrey)),
+                ],
+              ),
+              const SizedBox(height: CSizes.sm),
+              Row(children: [
+                Icon(widget.job.isUrgent ? Icons.flash_on : Icons.event_available_rounded, size: 14, color: CColors.primary),
+                const SizedBox(width: 6),
+                Expanded(child: Text(widget.job.isUrgent ? 'Start: ASAP / Urgent' : 'Proposed start: $startTimeDisplay', style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey))),
+                if (!widget.job.isUrgent && bid.workerProposedStartTime == null && widget.job.scheduledAt != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: CColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text("Client's time", style: TextStyle(fontSize: 9, color: CColors.primary)),
+                  ),
+              ]),
+              const SizedBox(height: CSizes.sm),
+              if (bid.message != null && bid.message!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: CSizes.sm),
+                  child: Text('"${bid.message}"', style: TextStyle(fontStyle: FontStyle.italic, fontSize: isUrdu ? 15 : 13, color: isDark ? CColors.textWhite.withValues(alpha: 0.7) : CColors.darkerGrey)),
+                ),
+              if (bid.availableTime != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: CSizes.sm),
+                  child: Row(
+                    children: [
+                      Icon(Icons.access_time_outlined, size: 16, color: CColors.primary),
+                      const SizedBox(width: 6),
+                      Text('Available: ${DateFormat('d MMM yyyy, hh:mm a').format(bid.availableTime!)}', style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey)),
+                    ],
+                  ),
+                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: _isOpeningChat ? null : () => _openChat(bid.workerId, workerName),
+                    icon: _isOpeningChat
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.chat_outlined, size: 16, color: CColors.primary),
+                    label: Text('Chat', style: TextStyle(fontSize: isUrdu ? 12 : 11, color: CColors.primary)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _showWorkerProfile(bid.workerId),
+                    icon: const Icon(Icons.person_rounded, size: 16, color: CColors.primary),
+                    label: Text('View Profile', style: TextStyle(fontSize: isUrdu ? 12 : 11, color: CColors.primary)),
+                  ),
+                  if (isJobOpen && !isAccepted && hasValidStartTime)
+                    ElevatedButton(
+                      onPressed: isAccepting ? null : () => _acceptBid(bid),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+                      ),
+                      child: isAccepting
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Accept'),
+                    ),
+                ],
               ),
             ],
           ),

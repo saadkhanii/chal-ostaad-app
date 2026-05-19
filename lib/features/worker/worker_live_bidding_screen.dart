@@ -12,6 +12,7 @@ import '../../../core/models/bid_model.dart';
 import '../../../core/models/job_model.dart';
 import '../../../core/services/bid_service.dart';
 import '../../../shared/widgets/common_header.dart';
+import '../../../shared/widgets/app_card.dart'; // added
 import '../../../features/profile/worker_profile_preview_sheet.dart';
 import 'edit_bid_screen.dart';
 
@@ -263,130 +264,107 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
       future: _getWorkerName(bid.workerId),
       builder: (context, nameSnapshot) {
         final bidderName = nameSnapshot.data ?? 'Worker';
-        return Card(
-          key: ValueKey(bid.id ?? 'bid_${bid.workerId}_${bid.jobId}'),
+        return AppCard(
           margin: const EdgeInsets.only(bottom: CSizes.sm),
-          elevation: 2,
-          shadowColor: CColors.secondary.withValues(alpha: 0.18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+          headerGradient: AppCardGradients.scheduled(),
+          headerTitle: Row(
+            children: [
+              const Icon(Icons.person_outline_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  bidderName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    letterSpacing: 0.4,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-          clipBehavior: Clip.antiAlias,
-          color: isDark ? CColors.darkContainer : Colors.white,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          headerTrailing: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [CColors.secondary, CColors.secondary.withValues(alpha: 0.75)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Rank #$rank',
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (isAccepted) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: CColors.success,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Accepted ✓',
+                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.person_outline_rounded, color: Colors.white, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        bidderName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          letterSpacing: 0.4,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+              ],
+            ],
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    'Rs. ${bid.amount.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isUrdu ? 22 : 20,
+                      color: CColors.secondary,
                     ),
-                    const SizedBox(width: 8),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '— quoted amount',
+                    style: TextStyle(fontSize: 11, color: CColors.darkGrey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: CSizes.sm),
+              if (proposedStart != null) ...[
+                Row(children: [
+                  Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Proposed start: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedStart)}',
+                      style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey),
+                    ),
+                  ),
+                  if (bid.workerProposedStartTime == null && widget.job.scheduledAt != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
+                        color: CColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Rank #$rank',
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        'Client\'s time',
+                        style: TextStyle(fontSize: 9, color: CColors.primary),
                       ),
                     ),
-                    if (isAccepted) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: CColors.success,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'Accepted ✓',
-                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(CSizes.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          'Rs. ${bid.amount.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: isUrdu ? 22 : 20,
-                            color: CColors.secondary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '— quoted amount',
-                          style: TextStyle(fontSize: 11, color: CColors.darkGrey),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: CSizes.sm),
-
-                    if (proposedStart != null) ...[
-                      Row(children: [
-                        Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Proposed start: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedStart)}',
-                            style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey),
-                          ),
-                        ),
-                        if (bid.workerProposedStartTime == null && widget.job.scheduledAt != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: CColors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Client\'s time',
-                              style: TextStyle(fontSize: 9, color: CColors.primary),
-                            ),
-                          ),
-                      ]),
-                      const SizedBox(height: CSizes.sm),
-                    ],
-
-                    _buildCardBody(bid, isDark, isUrdu),
-                    _buildCardFooter(bid, isUrdu),
-                  ],
-                ),
-              ),
+                ]),
+                const SizedBox(height: CSizes.sm),
+              ],
+              _buildCardBody(bid, isDark, isUrdu),
+              _buildCardFooter(bid, isUrdu),
             ],
           ),
         );
@@ -395,164 +373,143 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
   }
 
   Widget _buildMyBidCard(BidModel bid, bool isAccepted, int rank, bool isDark, bool isUrdu, bool isDeleting, DateTime? proposedStart) {
-    return Card(
-      key: ValueKey(bid.id ?? 'my_bid_${bid.workerId}'),
+    return AppCard(
       margin: const EdgeInsets.only(bottom: CSizes.sm),
       elevation: 3,
-      shadowColor: CColors.primary.withValues(alpha: 0.25),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+      headerGradient: AppCardGradients.urgent(),
+      headerTitle: Row(
+        children: [
+          const Icon(Icons.gavel_rounded, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          const Text(
+            'Your Bid',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      headerTrailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [CColors.primary, CColors.primary.withValues(alpha: 0.75)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              'Rank #$rank',
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (isAccepted) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: CColors.success,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Accepted ✓',
+                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
               ),
             ),
-            child: Row(
-              children: [
-                const Icon(Icons.gavel_rounded, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                const Text(
-                  'Your Bid',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    letterSpacing: 0.4,
-                  ),
+          ],
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'Rs. ${bid.amount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: isUrdu ? 22 : 20,
+                  color: CColors.primary,
                 ),
-                const Spacer(),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '— your quoted amount',
+                style: TextStyle(fontSize: 11, color: CColors.darkGrey),
+              ),
+            ],
+          ),
+          const SizedBox(height: CSizes.sm),
+          if (proposedStart != null) ...[
+            Row(children: [
+              Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Proposed start: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedStart)}',
+                  style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey),
+                ),
+              ),
+              if (bid.workerProposedStartTime == null && widget.job.scheduledAt != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
+                    color: CColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    'Rank #$rank',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                    'Client\'s time',
+                    style: TextStyle(fontSize: 9, color: CColors.primary),
                   ),
                 ),
-                if (isAccepted) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: CColors.success,
-                      borderRadius: BorderRadius.circular(20),
+            ]),
+            const SizedBox(height: CSizes.sm),
+          ],
+          _buildCardBody(bid, isDark, isUrdu),
+          if (bid.status.trim().toLowerCase() == 'pending' && !isDeleting)
+            Padding(
+              padding: const EdgeInsets.only(top: CSizes.sm),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _editBid(bid),
+                    icon: const Icon(Icons.edit_outlined, size: 15),
+                    label: Text('Edit', style: TextStyle(fontSize: isUrdu ? 13 : 11)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CColors.primary,
+                      side: BorderSide(color: CColors.primary),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text(
-                      'Accepted ✓',
-                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _deleteBid(bid.id!),
+                    icon: const Icon(Icons.delete_outline, size: 15),
+                    label: Text('Delete', style: TextStyle(fontSize: isUrdu ? 13 : 11)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CColors.error,
+                      side: BorderSide(color: CColors.error),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(CSizes.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      'Rs. ${bid.amount.toStringAsFixed(0)}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: isUrdu ? 22 : 20,
-                        color: CColors.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '— your quoted amount',
-                      style: TextStyle(fontSize: 11, color: CColors.darkGrey),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: CSizes.sm),
-
-                if (proposedStart != null) ...[
-                  Row(children: [
-                    Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Proposed start: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedStart)}',
-                        style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.darkGrey),
-                      ),
-                    ),
-                    if (bid.workerProposedStartTime == null && widget.job.scheduledAt != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: CColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'Client\'s time',
-                          style: TextStyle(fontSize: 9, color: CColors.primary),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: CSizes.sm),
-                ],
-
-                _buildCardBody(bid, isDark, isUrdu),
-                if (bid.status.trim().toLowerCase() == 'pending' && !isDeleting)
-                  Padding(
-                    padding: const EdgeInsets.only(top: CSizes.sm),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => _editBid(bid),
-                          icon: const Icon(Icons.edit_outlined, size: 15),
-                          label: Text('Edit', style: TextStyle(fontSize: isUrdu ? 13 : 11)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: CColors.primary,
-                            side: BorderSide(color: CColors.primary),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => _deleteBid(bid.id!),
-                          icon: const Icon(Icons.delete_outline, size: 15),
-                          label: Text('Delete', style: TextStyle(fontSize: isUrdu ? 13 : 11)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: CColors.error,
-                            side: BorderSide(color: CColors.error),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (isDeleting)
-                  const Padding(
-                    padding: EdgeInsets.only(top: CSizes.sm),
-                    child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-                  ),
-              ],
+          if (isDeleting)
+            const Padding(
+              padding: EdgeInsets.only(top: CSizes.sm),
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
             ),
-          ),
         ],
       ),
     );

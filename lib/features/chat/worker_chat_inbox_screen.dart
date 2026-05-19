@@ -35,13 +35,13 @@ class WorkerChatInboxScreen extends ConsumerStatefulWidget {
 
 class _WorkerChatInboxScreenState
     extends ConsumerState<WorkerChatInboxScreen> {
-  String _workerId   = '';
-  String _workerName = '';
+  String _workerId = '';
 
-  final ChatService _chatService = ChatService();
+  final ChatService         _chatService = ChatService();
+  // avatar (base64) and real name fetched from Firestore, keyed by clientId
   final Map<String, String> _avatarCache = {};
   final Map<String, String> _nameCache   = {};
-  final Set<String>         _fetchingIds = {};
+  final Set<String>         _fetchingIds = {}; // guards concurrent fetches
   List<ChatModel>           _cachedChats = [];
 
   @override
@@ -57,16 +57,17 @@ class _WorkerChatInboxScreenState
     }
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
-      setState(() {
-        _workerId   = prefs.getString('user_uid')  ?? '';
-        _workerName = prefs.getString('user_name') ?? '';
-      });
+      setState(() => _workerId = prefs.getString('user_uid') ?? '');
     }
   }
 
+  // ── Fetch client photo + name from Firestore (single call) ──────────
+  // Always fetches on first encounter so we never show a UID string.
+  // Subsequent calls are no-ops (guarded by cache).
   Future<void> _prefetchClientInfo(String clientId) async {
-    if (_avatarCache.containsKey(clientId) ||
-        _fetchingIds.contains(clientId)) return;
+    if (_avatarCache.containsKey(clientId) || _fetchingIds.contains(clientId)) {
+      return;
+    }
     _fetchingIds.add(clientId);
     try {
       final doc = await FirebaseFirestore.instance
@@ -79,23 +80,51 @@ class _WorkerChatInboxScreenState
         final info =
             (doc.data()?['personalInfo']) as Map<String, dynamic>? ?? {};
         photo = (info['photoBase64'] as String?) ?? '';
-        name  = (info['fullName']    as String?) ?? '';
+        name  = (info['name']     as String?) ?? '';
+        if (name.isEmpty) name = (info['fullName'] as String?) ?? '';
       }
       _avatarCache[clientId] = photo;
-      _nameCache[clientId]   = name;
+      if (name.isNotEmpty) _nameCache[clientId] = name;
       if (mounted) setState(() {});
     } catch (_) {
       _avatarCache[clientId] = '';
-      _nameCache[clientId]   = '';
       if (mounted) setState(() {});
     } finally {
       _fetchingIds.remove(clientId);
     }
   }
 
-  // ── Delete chat with confirmation ──────────────────────────────────
+  // ── Returns the best available name for a client ────────────────────
+  // Priority: Firestore-fetched name > stored chat.clientName (only if
+  // it looks like a real name, not a UID).
+  String _resolvedClientName(String storedName, String clientId) {
+    // Firestore fetch already returned — use it.
+    final cached = _nameCache[clientId];
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    // Fetch not done yet; return storedName only when it looks like a
+    // human name (non-empty, not a 20+ char alphanumeric UID).
+    final isUid = storedName.length >= 20 &&
+        RegExp(r'^[A-Za-z0-9_\-]{20,}$').hasMatch(storedName);
+    if (storedName.isNotEmpty && !isUid) return storedName;
+
+    // Fallback while fetch is in flight.
+    return '...';
+  }
+
+  // ── Pull-to-refresh: clear caches and re-fetch ──────────────────────
+  Future<void> _onRefresh() async {
+    _avatarCache.clear();
+    _nameCache.clear();
+    _fetchingIds.clear();
+    for (final chat in _cachedChats) {
+      await _prefetchClientInfo(chat.clientId);
+    }
+  }
+
+  // ── Delete chat with confirmation ────────────────────────────────────
   Future<void> _confirmDeleteChat(ChatModel chat, String otherName) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark    = Theme.of(context).brightness == Brightness.dark;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -153,9 +182,9 @@ class _WorkerChatInboxScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('chat.chat_deleted'.tr()),
+            content:         Text('chat.chat_deleted'.tr()),
             backgroundColor: CColors.primary,
-            behavior: SnackBarBehavior.floating,
+            behavior:        SnackBarBehavior.floating,
           ),
         );
       }
@@ -197,7 +226,7 @@ class _WorkerChatInboxScreenState
 
   Widget _buildChatList(bool isDark) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      key: ValueKey(_workerId),
+      key:    ValueKey(_workerId),
       stream: FirebaseFirestore.instance
           .collection('chats')
           .where('workerId', isEqualTo: _workerId)
@@ -214,6 +243,7 @@ class _WorkerChatInboxScreenState
               .map((doc) => ChatModel.fromSnapshot(doc))
               .toList();
 
+          // Kick off info fetches after the frame.
           WidgetsBinding.instance.addPostFrameCallback((_) {
             for (final chat in _cachedChats) {
               _prefetchClientInfo(chat.clientId);
@@ -223,28 +253,31 @@ class _WorkerChatInboxScreenState
 
         if (_cachedChats.isEmpty) return _buildEmpty(isDark);
 
-        return ListView.separated(
-          controller: widget.scrollController,
-          padding:    const EdgeInsets.symmetric(vertical: CSizes.sm),
-          itemCount:  _cachedChats.length,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            indent: 80,
-            color:  isDark ? CColors.darkGrey : CColors.borderPrimary,
+        return RefreshIndicator(
+          onRefresh: _onRefresh,
+          color:     CColors.primary,
+          child: ListView.separated(
+            controller:       widget.scrollController,
+            physics:          const AlwaysScrollableScrollPhysics(),
+            padding:          const EdgeInsets.symmetric(vertical: CSizes.sm),
+            itemCount:        _cachedChats.length,
+            separatorBuilder: (_, __) => Divider(
+              height: 1,
+              indent: 80,
+              color:  isDark ? CColors.darkGrey : CColors.borderPrimary,
+            ),
+            itemBuilder: (context, index) =>
+                _buildChatTile(_cachedChats[index], isDark),
           ),
-          itemBuilder: (context, index) =>
-              _buildChatTile(_cachedChats[index], isDark),
         );
       },
     );
   }
 
   Widget _buildChatTile(ChatModel chat, bool isDark) {
-    final isUnread = !chat.isRead && chat.lastSenderId != _workerId;
-    final clientId = chat.clientId;
-    final otherName = (_nameCache[clientId]?.isNotEmpty == true)
-        ? _nameCache[clientId]!
-        : chat.clientName;
+    final isUnread  = !chat.isRead && chat.lastSenderId != _workerId;
+    final clientId  = chat.clientId;
+    final otherName = _resolvedClientName(chat.clientName, clientId);
 
     return InkWell(
       onTap: () {
@@ -386,7 +419,7 @@ class _WorkerChatInboxScreenState
       } catch (_) {}
     }
 
-    final initials = name.trim().isNotEmpty
+    final initials = name.trim().isNotEmpty && name != '...'
         ? name
         .trim()
         .split(' ')
@@ -414,25 +447,33 @@ class _WorkerChatInboxScreenState
   }
 
   Widget _buildEmpty(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      onRefresh: _onRefresh,
+      color:     CColors.primary,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Icon(Icons.chat_bubble_outline, size: 72, color: CColors.grey),
-          const SizedBox(height: CSizes.md),
-          Text(
-            'chat.no_chats'.tr(),
-            style: TextStyle(
-              fontSize:   16,
-              color:      CColors.darkGrey,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: CSizes.sm),
-          Text(
-            'chat.chats_appear_after_bid'.tr(),
-            style:     TextStyle(fontSize: 13, color: CColors.grey),
-            textAlign: TextAlign.center,
+          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.chat_bubble_outline, size: 72, color: CColors.grey),
+              const SizedBox(height: CSizes.md),
+              Text(
+                'chat.no_chats'.tr(),
+                style: TextStyle(
+                  fontSize:   16,
+                  color:      CColors.darkGrey,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: CSizes.sm),
+              Text(
+                'chat.chats_appear_after_bid'.tr(),
+                style:     TextStyle(fontSize: 13, color: CColors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ],
       ),
