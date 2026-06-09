@@ -25,6 +25,8 @@ final clientLiveBidsProvider = StreamProvider.family<List<BidModel>, String>((re
     final bids = snapshot.docs
         .map((doc) => BidModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>))
         .toList();
+    // ✅ Only show active bids — deleted bids are gone from Firestore,
+    // rejected/cancelled ones are filtered out here
     final filtered = bids.where((b) {
       final status = b.status.trim().toLowerCase();
       return status == 'pending' || status == 'accepted';

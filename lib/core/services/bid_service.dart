@@ -184,7 +184,7 @@ class BidService {
     }
   }
 
-  // ── Finalise acceptance after grace period (called by Cloud Function or client-side timer) ──
+  // ── Finalise acceptance after grace period ────────────────────────
   Future<void> finaliseAcceptance(String jobId) async {
     final jobDoc = await _firestore.collection('jobs').doc(jobId).get();
     if (!jobDoc.exists) throw Exception('Job not found');
@@ -340,7 +340,7 @@ class BidService {
     } catch (_) {}
   }
 
-  // ── Worker cancels job (reopens as urgent, bans worker) ───────────
+  // ── Worker cancels job (conditional reopen for scheduled jobs) ───────────
   Future<void> workerCancelJob(String jobId, String workerId, {String? reason}) async {
     final jobDoc = await _firestore.collection('jobs').doc(jobId).get();
     if (!jobDoc.exists) throw Exception('Job not found');
@@ -372,17 +372,51 @@ class BidService {
       });
     }
 
-    // Update job: reopen as urgent, clear deadlines
-    batch.update(_firestore.collection('jobs').doc(jobId), {
+    // Determine how to reopen based on job type
+    final isUrgent = jobData['isUrgent'] ?? false;
+    final scheduledAt = (jobData['scheduledAt'] as Timestamp?)?.toDate();
+
+    bool reopenAsUrgent;
+    if (isUrgent) {
+      reopenAsUrgent = true;
+    } else {
+      // Scheduled job: check remaining time until scheduled start
+      if (scheduledAt == null) {
+        reopenAsUrgent = true; // fallback
+      } else {
+        final timeRemaining = scheduledAt.difference(DateTime.now());
+        reopenAsUrgent = timeRemaining < const Duration(hours: 2);
+      }
+    }
+
+    // Prepare job update
+    final jobUpdate = <String, dynamic>{
       'status': 'open',
-      'isUrgent': true, // force urgent on reopen
-      'reopenedAs': 'urgent',
       'workerStartDeadline': FieldValue.delete(),
       if (reason != null) 'cancelReason': reason,
       'cancelledBy': 'worker',
       'cancelledAt': now,
       'updatedAt': now,
-    });
+    };
+
+    if (reopenAsUrgent) {
+      jobUpdate['isUrgent'] = true;
+      jobUpdate['reopenedAs'] = 'urgent';
+      jobUpdate['scheduledAt'] = FieldValue.delete(); // remove scheduled time
+    } else {
+      // Keep original scheduled time, not urgent
+      jobUpdate['isUrgent'] = false;
+      jobUpdate['reopenedAs'] = 'scheduled';
+      // scheduledAt remains unchanged
+    }
+
+    batch.update(_firestore.collection('jobs').doc(jobId), jobUpdate);
+
+    // Update accepted bid status to cancelled
+    batch.update(
+      _firestore.collection('bids').doc(acceptedBid.docs.first.id),
+      {'status': 'cancelled_by_worker', 'updatedAt': now},
+    );
 
     await batch.commit();
 
@@ -427,6 +461,20 @@ class BidService {
       'cancelledAt': now,
       'updatedAt': now,
     });
+
+    // Also update bid status
+    final timedOutBid = await _firestore
+        .collection('bids')
+        .where('jobId', isEqualTo: jobId)
+        .where('status', isEqualTo: 'accepted')
+        .limit(1)
+        .get();
+    if (timedOutBid.docs.isNotEmpty) {
+      batch.update(
+        _firestore.collection('bids').doc(timedOutBid.docs.first.id),
+        {'status': 'cancelled_no_action', 'updatedAt': now},
+      );
+    }
 
     await batch.commit();
 

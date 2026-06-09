@@ -21,6 +21,7 @@ import '../../core/services/map_service.dart';
 import '../../shared/widgets/Cbutton.dart';
 import '../../shared/widgets/CtextField.dart';
 import '../../shared/widgets/common_header.dart';
+import 'my_posted_jobs_screen.dart';
 
 class Category {
   final String id;
@@ -63,7 +64,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   String? _clientId;
   String? _clientName;
 
-  // ── Location state ───────────────────────────────────────────────
+  // ── Location state (mandatory) ───────────────────────────────────────────────
   GeoPoint? _jobLocation;
   String?   _jobLocationAddress;
   String?   _jobCity;
@@ -79,7 +80,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final List<String> _existingMediaTypes = [];
   static const int   _maxMedia           = 3;
 
-  // ── Upload progress (drives the progress dialog) ─────────────────
+  // ── Upload progress ─────────────────────────────────
   int    _uploadTotal   = 0;
   int    _uploadCurrent = 0;
   double _fileProgress  = 0.0;
@@ -393,16 +394,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     _progressNotifier.value = overall.clamp(0.0, 1.0);
   }
 
-  // ── Validate budget ──────────────────────────────────────────────
-  /// Returns null if valid, or an error string.
+  // ── Validate budget (optional) ──────────────────────────────────────────────
+  /// Returns null if valid (both empty or valid min < max), or an error string.
   String? _validateBudget() {
     final minText = _minAmountController.text.trim();
     final maxText = _maxAmountController.text.trim();
 
-    // Both empty → no budget set, that's fine
     if (minText.isEmpty && maxText.isEmpty) return null;
 
-    // One filled but not both
     if (minText.isEmpty || maxText.isEmpty) {
       return 'Enter both minimum and maximum amounts, or leave both empty.';
     }
@@ -419,13 +418,28 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   // ── Submit (create or update) ────────────────────────────────────
   Future<void> _handleSubmit() async {
+    // 1. Validate form fields (title, category)
     if (!_formKey.currentState!.validate()) return;
 
-    if (_selectedCategoryId == null) {
-      _showErrorMessage('job.category_required'.tr());
+    // 2. Location is mandatory
+    if (_jobLocation == null) {
+      _showErrorMessage('Please select a job location.');
       return;
     }
 
+    // 3. Schedule is mandatory: either urgent or a specific future time
+    if (!_isUrgent && _scheduledAt == null) {
+      _showErrorMessage('Please select either "ASAP / Urgent" or a specific start time.');
+      return;
+    }
+
+    // 4. Media is mandatory
+    if (_pickedFiles.isEmpty && _existingMediaUrls.isEmpty) {
+      _showErrorMessage('Please add at least one photo or video of the job.');
+      return;
+    }
+
+    // 5. Budget validation (optional but must be valid if filled)
     final budgetError = _validateBudget();
     if (budgetError != null) {
       _showErrorMessage(budgetError);
@@ -505,25 +519,26 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
         // ── Edit: build a partial map and call updateJob() ─────
         final updatedFields = <String, dynamic>{
           'title':       _titleController.text.trim(),
-          'description': _descriptionController.text.trim(),
+          'description': _descriptionController.text.trim(),   // optional
           'category':    selectedCategory.name,
           'mediaUrls':   finalUrls,
           'mediaTypes':  finalTypes,
           'isUrgent':    _isUrgent,
         };
 
-        // Location — allow clearing
+        // Location – mandatory, cannot be cleared in edit mode (but can be updated)
         if (_jobLocation != null) {
           updatedFields['location']        = _jobLocation;
           updatedFields['locationAddress'] = _jobLocationAddress;
           updatedFields['city']            = _jobCity;
         } else {
+          // Should never happen because we validated earlier, but keep safe.
           updatedFields['location']        = FieldValue.delete();
           updatedFields['locationAddress'] = FieldValue.delete();
           updatedFields['city']            = FieldValue.delete();
         }
 
-        // Budget — allow clearing
+        // Budget – optional (allow clearing)
         if (recMin != null && recMax != null) {
           updatedFields['recommendedAmountMin'] = recMin;
           updatedFields['recommendedAmountMax'] = recMax;
@@ -532,11 +547,11 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           updatedFields['recommendedAmountMax'] = FieldValue.delete();
         }
 
-        // Scheduled — allow clearing
-        if (scheduledTs != null) {
-          updatedFields['scheduledAt'] = scheduledTs;
-        } else {
+        // Scheduled – mandatory (either urgent or a timestamp)
+        if (_isUrgent) {
           updatedFields['scheduledAt'] = FieldValue.delete();
+        } else {
+          updatedFields['scheduledAt'] = scheduledTs;
         }
 
         await jobService.updateJob(
@@ -556,26 +571,22 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           status:               'open',
           mediaUrls:            finalUrls,
           mediaTypes:           finalTypes,
-          location:             _jobLocation,
+          location:             _jobLocation!, // mandatory, non-null at this point
           locationAddress:      _jobLocationAddress,
           city:                 _jobCity,
           recommendedAmountMin: recMin,
           recommendedAmountMax: recMax,
-          scheduledAt:          scheduledTs,
+          scheduledAt:          _isUrgent ? null : scheduledTs,
           isUrgent:             _isUrgent,
         );
 
         await jobService.createJob(newJob);
         _showSuccessMessage('job.job_posted'.tr());
+        return; // _showSuccessMessage handles navigation
       }
 
-      if (mounted) {
-        if (widget.onJobPosted != null) {
-          widget.onJobPosted!();
-        } else {
-          Navigator.pop(context);
-        }
-      }
+      // Edit mode — pop back
+      if (mounted) Navigator.pop(context);
     } on Exception catch (e) {
       if (mounted) {
         try { Navigator.of(context, rootNavigator: true).pop(); } catch (_) {}
@@ -637,9 +648,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                     ),
                     const SizedBox(height: CSizes.spaceBtwSections),
 
-                    // ── Title ───────────────────────────────────────
+                    // ── Title (mandatory) ───────────────────────────────────────
                     CTextField(
-                      label:      'job.job_title'.tr(),
+                      label:      '${'job.job_title'.tr()}',
                       hintText:   'job.title_hint'.tr(),
                       controller: _titleController,
                       validator: (value) => value == null || value.isEmpty
@@ -648,35 +659,33 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // ── Description ─────────────────────────────────
+                    // ── Description (optional) ─────────────────────────────────
                     CTextField(
                       label:      'job.job_description'.tr(),
                       hintText:   'job.description_hint'.tr(),
                       controller: _descriptionController,
                       maxLines:   5,
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'job.description_required'.tr()
-                          : null,
+                      // No validator – optional
                     ),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // ── Category ────────────────────────────────────
+                    // ── Category (mandatory) ────────────────────────────────────
                     _buildCategoryDropdown(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // ── Budget range ────────────────────────────────
+                    // ── Budget range (optional) ────────────────────────────────
                     _buildBudgetSection(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // ── Scheduled start time + Urgent checkbox ────────
+                    // ── Scheduled start time (mandatory: urgent OR specific time) ─
                     _buildSchedulePicker(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // ── Location Picker ─────────────────────────────
+                    // ── Location (mandatory) ─────────────────────────────
                     _buildLocationPicker(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
 
-                    // ── Media Picker ────────────────────────────────
+                    // ── Media Picker (optional) ────────────────────────────────
                     _buildMediaPicker(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwSections),
 
@@ -700,7 +709,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
-  // ── Budget range section ─────────────────────────────────────────
+  // ── Budget range section (optional) ─────────────────────────────────────────
   Widget _buildBudgetSection(bool isDark, bool isUrdu) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -780,7 +789,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
-  // ── Schedule picker widget (with Urgent checkbox) ─────────────────
+  // ── Schedule picker widget (mandatory: urgent or specific time) ─────────────────
   Widget _buildSchedulePicker(bool isDark, bool isUrdu) {
     final hasSchedule = _scheduledAt != null;
     final formatted   = hasSchedule
@@ -794,7 +803,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
           children: [
             Expanded(
               child: Text(
-                'Preferred Start Time — optional',
+                'Preferred Start Time',
                 style: TextStyle(
                   fontSize:   isUrdu ? 16 : 14,
                   fontWeight: FontWeight.w500,
@@ -904,14 +913,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
-  // ── Media picker widget ──────────────────────────────────────────
+  // ── Media picker widget (optional) ──────────────────────────────────────────
   Widget _buildMediaPicker(bool isDark, bool isUrdu) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: [
           Text(
-            'Job Photos / Videos (optional)',
+            'Job Photos / Videos',
             style: TextStyle(
               fontSize:   isUrdu ? 16 : 14,
               fontWeight: FontWeight.w500,
@@ -1110,7 +1119,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     );
   }
 
-  // ── Location picker widget ───────────────────────────────────────
+  // ── Location picker widget (mandatory) ───────────────────────────────────────
   Widget _buildLocationPicker(bool isDark, bool isUrdu) {
     final hasLocation = _jobLocation != null;
 
@@ -1118,7 +1127,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'job.job_location'.tr(),
+          '${'job.job_location'.tr()}',
           style: TextStyle(
             fontSize:   isUrdu ? 16 : 14,
             fontWeight: FontWeight.w500,
@@ -1283,8 +1292,23 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
     ));
+
+    // Navigate after snackbar
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      if (widget.onJobPosted != null) {
+        // Embedded in dashboard — let dashboard handle navigation
+        widget.onJobPosted!();
+      } else {
+        // Standalone screen — push to MyPostedJobsScreen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MyPostedJobsScreen()),
+        );
+      }
+    });
   }
-}
+} // end of _PostJobScreenState
 
 // ── Local video thumbnail ─────────────────────────────────────────────────────
 class _VideoThumbnail extends StatelessWidget {
@@ -1305,7 +1329,7 @@ class _VideoThumbnail extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Upload Progress Dialog – Updated with app primary/secondary colors
+// Upload Progress Dialog
 // ══════════════════════════════════════════════════════════════════
 class _UploadProgressDialog extends StatelessWidget {
   final _PostJobScreenState    screen;

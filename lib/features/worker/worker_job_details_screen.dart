@@ -88,6 +88,20 @@ class _WorkerJobDetailsScreenState
   bool _workerReachedLocation = false;
   bool _hasAnyBid = false;
 
+  // For urgent jobs: 10‑minute deadline
+  DateTime? _workerStartDeadline;
+  int _workerStartRemainingSeconds = 0;
+  Timer? _workerStartTimer;
+
+  // For scheduled jobs:
+  DateTime? _scheduledStartTime;
+  int _scheduledRemainingSeconds = 0;
+  Timer? _scheduledTimer;
+  // The 2‑hour deadline after scheduled time (only used after scheduled time passes)
+  DateTime? _scheduledWorkerDeadline;
+  int _scheduledWorkerRemainingSeconds = 0;
+  Timer? _scheduledWorkerTimer;
+
   @override
   void initState() {
     super.initState();
@@ -113,6 +127,9 @@ class _WorkerJobDetailsScreenState
       final request = data['progressRequest'] as Map<String, dynamic>?;
       final rawExtras = data['extraCharges'] as List<dynamic>? ?? [];
       final reachedLocation = data['workerReachedLocation'] as bool? ?? false;
+      final deadline = (data['workerStartDeadline'] as Timestamp?)?.toDate();
+      final graceExpiry = (data['gracePeriodExpiry'] as Timestamp?)?.toDate();
+      final scheduledAt = (data['scheduledAt'] as Timestamp?)?.toDate();
 
       final charges = rawExtras
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -134,7 +151,52 @@ class _WorkerJobDetailsScreenState
         _approvedExtrasTotal = approvedTotal;
         _pendingTimeProposal = timeProposal;
         _workerReachedLocation = reachedLocation;
+        _workerStartDeadline = deadline;
+        _scheduledStartTime = scheduledAt;
+        // For scheduled jobs, the workerStartDeadline is set to scheduledAt + 2 hours by finaliseAcceptance
+        _scheduledWorkerDeadline = deadline;
       });
+
+      // Handle grace period expiry (worker triggers finalisation if client missed it)
+      if (status == 'grace_period' && graceExpiry != null) {
+        final now = DateTime.now();
+        if (now.isAfter(graceExpiry)) {
+          debugPrint('WorkerJobDetails: grace period expired, triggering finalisation');
+          _bidService.finaliseAcceptance(widget.job.id!).catchError((e) {
+            debugPrint('Error finalising from worker side: $e');
+          });
+        }
+        return;
+      }
+
+      // Re-check accepted bid when status becomes active/scheduled
+      if ((status == 'active' || status == 'scheduled') && _acceptedBid == null) {
+        _checkExistingBid();
+      }
+
+      // For urgent jobs: start the 10‑minute deadline
+      if (status == 'active' && deadline != null && widget.job.isUrgent) {
+        _updateWorkerStartCountdown();
+      }
+      // For scheduled jobs: manage both countdown to scheduled time and the 2‑hour deadline
+      else if (status == 'scheduled' && !widget.job.isUrgent && scheduledAt != null) {
+        // Always update the countdown to scheduled time (even if it's already past)
+        _updateScheduledCountdown();
+
+        // If the scheduled time has already passed, start the 2‑hour deadline timer
+        final now = DateTime.now();
+        if (now.isAfter(scheduledAt) && deadline != null) {
+          _updateScheduledWorkerDeadlineCountdown();
+        }
+      }
+      else {
+        _workerStartTimer?.cancel();
+        _workerStartRemainingSeconds = 0;
+        _scheduledTimer?.cancel();
+        _scheduledRemainingSeconds = 0;
+        _scheduledWorkerTimer?.cancel();
+        _scheduledWorkerRemainingSeconds = 0;
+      }
     });
   }
 
@@ -156,6 +218,9 @@ class _WorkerJobDetailsScreenState
   void dispose() {
     _jobSub?.cancel();
     _bidsSub?.cancel();
+    _workerStartTimer?.cancel();
+    _scheduledTimer?.cancel();
+    _scheduledWorkerTimer?.cancel();
     _amountController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -252,7 +317,123 @@ class _WorkerJobDetailsScreenState
     } catch (_) {}
   }
 
+  // ── Urgent job: 10‑minute deadline ──────────────────────────────
+  void _updateWorkerStartCountdown() {
+    if (_workerStartDeadline == null) return;
+    _workerStartTimer?.cancel();
+
+    final now = DateTime.now();
+    if (now.isAfter(_workerStartDeadline!)) {
+      _workerStartRemainingSeconds = 0;
+      _handleWorkerStartTimeout();
+      return;
+    }
+
+    final remaining = _workerStartDeadline!.difference(now).inSeconds;
+    setState(() => _workerStartRemainingSeconds = remaining);
+
+    _workerStartTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final newRemaining = _workerStartDeadline!.difference(DateTime.now()).inSeconds;
+      if (newRemaining <= 0) {
+        timer.cancel();
+        setState(() => _workerStartRemainingSeconds = 0);
+        _handleWorkerStartTimeout();
+      } else {
+        setState(() => _workerStartRemainingSeconds = newRemaining);
+      }
+    });
+  }
+
+  Future<void> _handleWorkerStartTimeout() async {
+    if (_acceptedBid == null) return;
+    try {
+      await _bidService.workerNoActionTimeout(widget.job.id!, widget.workerId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You did not start the job in time. It has been reopened.'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      debugPrint('Error handling worker start timeout: $e');
+    }
+  }
+
+  // ── Scheduled job: countdown to scheduled start time ─────────────
+  void _updateScheduledCountdown() {
+    if (_scheduledStartTime == null) return;
+    _scheduledTimer?.cancel();
+
+    final now = DateTime.now();
+    if (now.isAfter(_scheduledStartTime!)) {
+      setState(() => _scheduledRemainingSeconds = 0);
+      // Once scheduled time is past, start the 2‑hour deadline timer if not already running
+      if (_scheduledWorkerDeadline != null) {
+        _updateScheduledWorkerDeadlineCountdown();
+      }
+      return;
+    }
+
+    final remaining = _scheduledStartTime!.difference(now).inSeconds;
+    setState(() => _scheduledRemainingSeconds = remaining);
+
+    _scheduledTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final newRemaining = _scheduledStartTime!.difference(DateTime.now()).inSeconds;
+      if (newRemaining <= 0) {
+        timer.cancel();
+        setState(() => _scheduledRemainingSeconds = 0);
+        // Start the 2‑hour deadline timer
+        if (_scheduledWorkerDeadline != null) {
+          _updateScheduledWorkerDeadlineCountdown();
+        }
+      } else {
+        setState(() => _scheduledRemainingSeconds = newRemaining);
+      }
+    });
+  }
+
+  // ── Scheduled job: 2‑hour deadline after scheduled time ──────────
+  void _updateScheduledWorkerDeadlineCountdown() {
+    if (_scheduledWorkerDeadline == null) return;
+    _scheduledWorkerTimer?.cancel();
+
+    final now = DateTime.now();
+    if (now.isAfter(_scheduledWorkerDeadline!)) {
+      _scheduledWorkerRemainingSeconds = 0;
+      _handleWorkerStartTimeout();  // same as urgent timeout → reopen job, ban worker
+      return;
+    }
+
+    final remaining = _scheduledWorkerDeadline!.difference(now).inSeconds;
+    setState(() => _scheduledWorkerRemainingSeconds = remaining);
+
+    _scheduledWorkerTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final newRemaining = _scheduledWorkerDeadline!.difference(DateTime.now()).inSeconds;
+      if (newRemaining <= 0) {
+        timer.cancel();
+        setState(() => _scheduledWorkerRemainingSeconds = 0);
+        _handleWorkerStartTimeout();
+      } else {
+        setState(() => _scheduledWorkerRemainingSeconds = newRemaining);
+      }
+    });
+  }
+
   Future<void> _startJob() async {
+    // For scheduled jobs, ensure the scheduled time has passed
     if (!widget.job.isUrgent && widget.job.scheduledAt != null) {
       final now = DateTime.now();
       if (now.isBefore(widget.job.scheduledAt!.toDate())) {
@@ -1158,6 +1339,332 @@ class _WorkerJobDetailsScreenState
     );
   }
 
+  // ── Scheduled start card (for specific time jobs) ───────────────
+  Widget _buildScheduledStartCard(bool isDark, bool isUrdu) {
+    final bool isScheduledTimePast = _scheduledRemainingSeconds <= 0;
+    final bool hasDeadline = _scheduledWorkerDeadline != null;
+    final bool isDeadlineRunning = hasDeadline && _scheduledWorkerRemainingSeconds > 0;
+    final bool isDeadlineExpired = hasDeadline && _scheduledWorkerRemainingSeconds <= 0 && isScheduledTimePast;
+
+    // Decide what to show
+    String title;
+    String countdownText;
+    bool enableStart;
+    Color primaryColor;
+
+    if (!isScheduledTimePast) {
+      // Still counting down to scheduled time
+      title = 'Scheduled start time';
+      countdownText = _formatDuration(Duration(seconds: _scheduledRemainingSeconds));
+      enableStart = false;
+      primaryColor = CColors.primary;
+    } else if (isDeadlineRunning) {
+      // Scheduled time passed, counting down 2‑hour deadline
+      title = '⚠️ You must start within 2 hours ⚠️';
+      countdownText = _formatDuration(Duration(seconds: _scheduledWorkerRemainingSeconds));
+      enableStart = true;
+      primaryColor = CColors.warning;
+    } else if (isDeadlineExpired) {
+      // Deadline expired – will have triggered timeout, but show a message
+      title = 'Deadline expired';
+      countdownText = 'Job will be cancelled';
+      enableStart = false;
+      primaryColor = CColors.error;
+    } else {
+      // Fallback: ready to start
+      title = 'Job is ready to start';
+      countdownText = 'Ready to start';
+      enableStart = true;
+      primaryColor = CColors.success;
+    }
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(CSizes.md),
+          decoration: BoxDecoration(
+            color: isDark ? CColors.darkContainer : CColors.white,
+            borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+            border: Border.all(color: primaryColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: primaryColor.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isDeadlineRunning ? Icons.warning_amber_rounded : (isScheduledTimePast ? Icons.play_circle_filled : Icons.timer_outlined),
+                    color: primaryColor,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 16 : 14,
+                        color: primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(40),
+                    border: Border.all(color: primaryColor, width: 1.5),
+                  ),
+                  child: Text(
+                    countdownText,
+                    style: TextStyle(
+                      fontSize: isUrdu ? 24 : 20,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color: primaryColor,
+                    ),
+                  ),
+                ),
+              ),
+              if (isDeadlineRunning) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'You have only 2 hours after the scheduled time to start the job. Otherwise it will be cancelled automatically and you will be banned.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: isUrdu ? 12 : 11,
+                    color: CColors.darkGrey,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: enableStart && !_isLoading ? _startJob : null,
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: Text(
+                        'Start Job',
+                        style: TextStyle(fontSize: isUrdu ? 15 : 13, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: enableStart ? CColors.success : CColors.grey,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading ? null : _cancelJobAsWorker,
+                      icon: const Icon(Icons.cancel_outlined, size: 20),
+                      label: Text(
+                        'Cancel Job',
+                        style: TextStyle(fontSize: isUrdu ? 15 : 13, color: CColors.error),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: CColors.error),
+                        foregroundColor: CColors.error,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (isDeadlineRunning)
+          const SizedBox(height: CSizes.spaceBtwItems),
+      ],
+    );
+  }
+
+  // ── Worker 10‑min start deadline card (for urgent jobs) ─────────
+  Widget _buildUrgentStartCard(bool isDark, bool isUrdu) {
+    final minutes = (_workerStartRemainingSeconds / 60).floor();
+    final seconds = _workerStartRemainingSeconds % 60;
+    final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+    // Turn red when under 2 minutes
+    final isUrgentTime = _workerStartRemainingSeconds <= 120;
+    final timerColor = isUrgentTime ? CColors.error : CColors.primary;
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(CSizes.md),
+          decoration: BoxDecoration(
+            color: isDark ? CColors.darkContainer : CColors.white,
+            borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+            border: Border.all(color: timerColor.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: timerColor.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.timer_outlined, color: timerColor, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Action Required — Start or Cancel',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isUrdu ? 16 : 14,
+                        color: timerColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: timerColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(40),
+                    border: Border.all(color: timerColor, width: 1.5),
+                  ),
+                  child: Text(
+                    timeStr,
+                    style: TextStyle(
+                      fontSize: isUrdu ? 32 : 28,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color: timerColor,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _startJob,
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: Text(
+                        'Start Job',
+                        style: TextStyle(fontSize: isUrdu ? 15 : 13, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CColors.success,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                        ),
+                        elevation: 2,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading ? null : _cancelJobAsWorker,
+                      icon: const Icon(Icons.cancel_outlined, size: 20),
+                      label: Text(
+                        'Cancel Job',
+                        style: TextStyle(fontSize: isUrdu ? 15 : 13, color: CColors.error),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: CColors.error),
+                        foregroundColor: CColors.error,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: CSizes.spaceBtwItems),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(CSizes.md),
+          decoration: BoxDecoration(
+            color: CColors.error.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+            border: Border.all(color: CColors.error.withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: CColors.error, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Important Warning',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: CColors.error,
+                      fontSize: isUrdu ? 15 : 13,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'If you do not start or cancel within 10 minutes, this job will be automatically cancelled and reopened for other workers. You will also be permanently banned from bidding on this job again.',
+                style: TextStyle(
+                  fontSize: isUrdu ? 13 : 12,
+                  color: isDark ? CColors.textWhite.withValues(alpha: 0.75) : CColors.darkerGrey,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    final days = duration.inDays;
+    final hours = duration.inHours.remainder(24);
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    if (days > 0) {
+      return '${days}d : ${hours.toString().padLeft(2, '0')}h : ${minutes.toString().padLeft(2, '0')}m : ${seconds.toString().padLeft(2, '0')}s';
+    } else if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+  }
+
   Widget _buildBidForm(bool isDark, bool isUrdu) {
     final isAccepted = _acceptedBid != null;
     final isJobOpenForBidding = widget.job.status == 'open' && !isAccepted && !_hasExistingBid;
@@ -1197,7 +1704,8 @@ class _WorkerJobDetailsScreenState
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
 
-        if (isAccepted)
+        // Acceptance card shown only when status is active or scheduled (grace period over)
+        if (isAccepted && (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled'))
           _buildAcceptedPanel(isDark, isUrdu)
         else if (_hasExistingBid)
           _buildAlreadyPlacedMessage(isDark, isUrdu)
@@ -1800,10 +2308,21 @@ class _WorkerJobDetailsScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
 
-    bool showStartButton = (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled') && _acceptedBid != null;
-    bool showCancelButton = (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled') && _acceptedBid != null;
-    bool showProposeTimeButton = _liveJobStatus == 'scheduled' && _acceptedBid != null && !widget.job.isUrgent;
+    // Show scheduled start card for non‑urgent jobs when status is 'scheduled'
+    bool showScheduledCard = !widget.job.isUrgent &&
+        _liveJobStatus == 'scheduled' &&
+        _scheduledStartTime != null &&
+        _acceptedBid != null;
+
+    // Show urgent start card for urgent jobs when status is 'active' and deadline exists
+    bool showUrgentCard = widget.job.isUrgent &&
+        _liveJobStatus == 'active' &&
+        _acceptedBid != null &&
+        _workerStartDeadline != null &&
+        DateTime.now().isBefore(_workerStartDeadline!);
+
     bool showCashConfirm = _pendingPaymentId != null && _liveJobStatus == 'in-progress';
+    bool showProposeTimeButton = _liveJobStatus == 'scheduled' && _acceptedBid != null && !widget.job.isUrgent;
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -1827,6 +2346,19 @@ class _WorkerJobDetailsScreenState
                     _buildJobDetailsCard(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
                     _buildStatusCard(isDark, isUrdu),
+
+                    // Scheduled job card (countdown to scheduled time + 2‑hour deadline)
+                    if (showScheduledCard) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildScheduledStartCard(isDark, isUrdu),
+                    ],
+
+                    // Urgent job card (10‑minute deadline)
+                    if (showUrgentCard) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildUrgentStartCard(isDark, isUrdu),
+                    ],
+
                     if (widget.job.hasLocation) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildMiniMap(isDark, isUrdu),
@@ -1847,46 +2379,27 @@ class _WorkerJobDetailsScreenState
                     ],
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildBidForm(isDark, isUrdu),
-                    if (showStartButton || showCancelButton || showProposeTimeButton) ...[
+
+                    // Propose new time button (only for scheduled jobs when no card is shown)
+                    if (showProposeTimeButton && !showScheduledCard) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          if (showStartButton)
-                            ElevatedButton.icon(
-                              onPressed: _isLoading ? null : _startJob,
-                              icon: const Icon(Icons.play_arrow_rounded),
-                              label: const Text('Start Job'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: CColors.success,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              ),
+                          OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _proposeNewTime,
+                            icon: const Icon(Icons.event_available_rounded),
+                            label: const Text('Propose New Time'),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: CColors.primary),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                             ),
-                          if (showProposeTimeButton)
-                            OutlinedButton.icon(
-                              onPressed: _isLoading ? null : _proposeNewTime,
-                              icon: const Icon(Icons.event_available_rounded),
-                              label: const Text('Propose New Time'),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: CColors.primary),
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              ),
-                            ),
-                          if (showCancelButton)
-                            OutlinedButton.icon(
-                              onPressed: _isLoading ? null : _cancelJobAsWorker,
-                              icon: const Icon(Icons.cancel_outlined, color: CColors.error),
-                              label: const Text('Cancel Job', style: TextStyle(color: CColors.error)),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: CColors.error),
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              ),
-                            ),
+                          ),
                         ],
                       ),
                     ],
+
                     if (_acceptedBid != null && _liveJobStatus == 'completed') ...[
                       const SizedBox(height: CSizes.spaceBtwSections),
                       _buildCompletedBanner(isDark, isUrdu),

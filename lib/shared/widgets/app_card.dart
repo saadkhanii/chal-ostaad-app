@@ -45,7 +45,7 @@ class AppCard extends StatelessWidget {
     final effectiveCardColor = cardBackgroundColor ??
         (isDark ? CColors.darkContainer : Colors.white);
 
-    // ✅ Changed default from grey to primary gradient
+    // Changed default from grey to primary gradient
     final headerDecoration = headerGradient != null
         ? BoxDecoration(gradient: headerGradient)
         : headerColor != null

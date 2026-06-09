@@ -26,6 +26,7 @@ final liveBidsProvider = StreamProvider.family<List<BidModel>, String>((ref, job
         .map((doc) => BidModel.fromSnapshot(doc as DocumentSnapshot<Map<String, dynamic>>))
         .toList();
 
+    // ✅ Only show active bids — exclude cancelled, rejected, withdrawn
     final filtered = bids.where((b) {
       final status = b.status.trim().toLowerCase();
       return status == 'pending' || status == 'accepted';
@@ -34,6 +35,15 @@ final liveBidsProvider = StreamProvider.family<List<BidModel>, String>((ref, job
     filtered.sort((a, b) => a.amount.compareTo(b.amount));
     return filtered;
   });
+});
+
+// ✅ Stream job doc to check banned status for worker
+final jobDocProvider = StreamProvider.family<Map<String, dynamic>?, String>((ref, jobId) {
+  return FirebaseFirestore.instance
+      .collection('jobs')
+      .doc(jobId)
+      .snapshots()
+      .map((snap) => snap.exists ? snap.data() : null);
 });
 
 class LiveBiddingScreen extends ConsumerStatefulWidget {
@@ -142,6 +152,51 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
     WorkerProfilePreviewSheet.show(context, workerId: workerId);
   }
 
+  Widget _buildBannedCard(bool isDark, bool isUrdu) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
+      padding: const EdgeInsets.all(CSizes.lg),
+      decoration: BoxDecoration(
+        color: CColors.error.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: CColors.error.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: CColors.error.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.block_rounded, color: CColors.error, size: 36),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'You are banned from this job',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: isUrdu ? 18 : 16,
+              color: CColors.error,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'You cancelled or did not start this job in time. You are no longer allowed to place a bid on this job.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: isUrdu ? 14 : 13,
+              color: isDark ? CColors.textWhite.withValues(alpha: 0.7) : CColors.darkerGrey,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -206,12 +261,24 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
             ),
           ),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final bidsAsync = ref.watch(liveBidsProvider(widget.job.id!));
-                  return bidsAsync.when(
+            child: Consumer(
+              builder: (context, ref, _) {
+                // ✅ Watch job doc to detect banned status
+                final jobAsync = ref.watch(jobDocProvider(widget.job.id!));
+                final bidsAsync = ref.watch(liveBidsProvider(widget.job.id!));
+
+                final jobData = jobAsync.asData?.value;
+                final bannedIds = List<String>.from(jobData?['bannedWorkerIds'] ?? []);
+                final isBanned = bannedIds.contains(widget.workerId);
+
+                // ✅ Show banned card immediately — no need to load bids
+                if (isBanned) {
+                  return _buildBannedCard(isDark, isUrdu);
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: CSizes.defaultSpace),
+                  child: bidsAsync.when(
                     data: (bids) {
                       if (bids.isEmpty) {
                         return Center(
@@ -239,10 +306,10 @@ class _LiveBiddingScreenState extends ConsumerState<LiveBiddingScreen> {
                       );
                     },
                     loading: () => const Center(child: CircularProgressIndicator()),
-                    error: (e, _) => Center(child: Text('Error loading bids: $e')),
-                  );
-                },
-              ),
+                    error: (e, _) => Center(child: Text('Error loading bids: \$e')),
+                  ),
+                );
+              },
             ),
           ),
         ],

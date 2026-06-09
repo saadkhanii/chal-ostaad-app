@@ -289,13 +289,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       PostJobScreen(
         showAppBar: false,
         onJobPosted: () {
-          ref.read(clientPageIndexProvider.notifier).state = 2;
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content:         Text('job.job_posted'.tr()),
-            backgroundColor: CColors.success,
-            duration:        const Duration(seconds: 2),
-            behavior:        SnackBarBehavior.floating,
-          ));
+          // Go to My Posted Jobs tab (index 0)
+          ref.read(clientPageIndexProvider.notifier).state = 0;
         },
       ),
       _buildHomePage(),

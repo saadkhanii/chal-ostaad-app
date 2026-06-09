@@ -292,7 +292,7 @@ class _EditBidScreenState extends State<EditBidScreen> {
               child: RadioListTile<bool>(
                 title: Text('Accept client\'s time', style: TextStyle(fontSize: isUrdu ? 13 : 12)),
                 value: true,
-                groupValue: _acceptClientTime,
+                 groupValue: _acceptClientTime,
                 onChanged: (val) {
                   setState(() {
                     _acceptClientTime = true;

@@ -84,6 +84,7 @@ class _ClientJobDetailsScreenState
 
   bool _workerReachedLocation = false;
   bool _hasAnyBid = false; // for detecting bidding phase
+  BidModel? _acceptedBidForPayment; // ✅ tracked for payment button
 
   StreamSubscription<DocumentSnapshot>? _jobSub;
   StreamSubscription<QuerySnapshot>? _bidsSub;
@@ -113,8 +114,16 @@ class _ClientJobDetailsScreenState
         .snapshots()
         .listen((snapshot) {
       final hasAny = snapshot.docs.isNotEmpty;
-      if (mounted && _hasAnyBid != hasAny) {
-        setState(() => _hasAnyBid = hasAny);
+      // ✅ Also track accepted bid for payment button
+      final acceptedDocs = snapshot.docs.where((d) => d.data()['status'] == 'accepted').toList();
+      final acceptedBid = acceptedDocs.isNotEmpty
+          ? BidModel.fromSnapshot(acceptedDocs.first as DocumentSnapshot<Map<String, dynamic>>)
+          : null;
+      if (mounted) {
+        setState(() {
+          _hasAnyBid = hasAny;
+          _acceptedBidForPayment = acceptedBid;
+        });
       }
     });
   }
@@ -147,6 +156,9 @@ class _ClientJobDetailsScreenState
       final workerDeadline = (data['workerStartDeadline'] as Timestamp?)?.toDate();
       final scheduledStart = (data['scheduledAt'] as Timestamp?)?.toDate();
       final reachedLocation = data['workerReachedLocation'] as bool? ?? false;
+      // ✅ Track payment status live so mark-complete button shows automatically
+      final paymentStatus = data['paymentStatus'] as String? ?? '';
+      final isPaid = paymentStatus == 'paid';
 
       setState(() {
         _jobStatus = status;
@@ -155,6 +167,7 @@ class _ClientJobDetailsScreenState
         _hasPendingExtras = hasPending;
         _approvedExtrasTotal = approvedTotal;
         _workerReachedLocation = reachedLocation;
+        if (isPaid) _jobPaid = true;
 
         if (status == 'grace_period' && graceExpiry != null) {
           _graceExpiry = graceExpiry;
@@ -263,6 +276,22 @@ class _ClientJobDetailsScreenState
     }
   }
 
+  // Helper to format duration with days
+  String _formatDuration(Duration duration) {
+    final days = duration.inDays;
+    final hours = duration.inHours.remainder(24);
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    if (days > 0) {
+      return '${days}d : ${hours.toString().padLeft(2, '0')}h : ${minutes.toString().padLeft(2, '0')}m : ${seconds.toString().padLeft(2, '0')}s';
+    } else if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+  }
+
   Future<void> _instantLockBid() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -326,15 +355,41 @@ class _ClientJobDetailsScreenState
   }
 
   Future<void> _markWorkerArrived() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Worker Arrived?'),
+        content: const Text('Confirm that the worker has reached the job location. The job will move to In Progress.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not Yet')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.success),
+            child: const Text('Yes, Arrived', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     try {
+      // ✅ Update both workerReachedLocation AND job status to in-progress
       await FirebaseFirestore.instance
           .collection('jobs')
           .doc(widget.job.id)
-          .update({'workerReachedLocation': true});
+          .update({
+        'workerReachedLocation': true,
+        'status': 'in-progress',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
       if (mounted) {
+        setState(() {
+          _workerReachedLocation = true;
+          _jobStatus = 'in-progress';
+        });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Worker marked as arrived. Status updated to "In Progress".'),
+          content: Text('Worker marked as arrived. Job is now In Progress!'),
           backgroundColor: CColors.success,
+          behavior: SnackBarBehavior.floating,
         ));
       }
     } catch (e) {
@@ -342,6 +397,7 @@ class _ClientJobDetailsScreenState
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Error: $e'),
           backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
         ));
       }
     }
@@ -731,10 +787,8 @@ class _ClientJobDetailsScreenState
           ),
         );
       case 'scheduled':
-        final hours = (_scheduledRemainingSeconds / 3600).floor();
-        final minutes = ((_scheduledRemainingSeconds % 3600) / 60).floor();
-        final seconds = _scheduledRemainingSeconds % 60;
-        final timeStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+        final duration = Duration(seconds: _scheduledRemainingSeconds);
+        final timeStr = _formatDuration(duration);
         return Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -994,7 +1048,7 @@ class _ClientJobDetailsScreenState
             child: ElevatedButton.icon(
               onPressed: _instantLockBid,
               icon: const Icon(Icons.lock_outline),
-              label: const Text('Lock & Accept'),
+              label: const Text('Lock Bid'),
               style: ElevatedButton.styleFrom(backgroundColor: CColors.success, foregroundColor: Colors.white),
             ),
           ),
@@ -1044,10 +1098,8 @@ class _ClientJobDetailsScreenState
   }
 
   Widget _buildScheduledCountdownBanner(bool isDark, bool isUrdu) {
-    final hours = (_scheduledRemainingSeconds / 3600).floor();
-    final minutes = ((_scheduledRemainingSeconds % 3600) / 60).floor();
-    final seconds = _scheduledRemainingSeconds % 60;
-    final timeStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final duration = Duration(seconds: _scheduledRemainingSeconds);
+    final timeStr = _formatDuration(duration);
     return Container(
       padding: const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
@@ -1070,7 +1122,7 @@ class _ClientJobDetailsScreenState
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
-        Text('Time until start: $timeStr', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: CColors.primary)),
+        Text('Time until start: $timeStr', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: CColors.primary)),
         const SizedBox(height: 8),
         Text(
           'Worker can start the job exactly at the scheduled time.',
@@ -1260,6 +1312,162 @@ class _ClientJobDetailsScreenState
         ),
       ),
     );
+  }
+
+  // ✅ NEW: Worker Arrived button — only shows when job is active/scheduled and not yet arrived
+  Widget _buildWorkerArrivedButton(bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _markWorkerArrived,
+        icon: const Icon(Icons.where_to_vote_rounded, size: 18),
+        label: Text(
+          'Worker Has Arrived',
+          style: TextStyle(fontSize: isUrdu ? 16 : 14, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: CColors.success,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+          elevation: 2,
+        ),
+      ),
+    );
+  }
+
+  // Pay button — shows when job is in-progress and not yet paid
+  Widget _buildPaymentButton(bool isDark, bool isUrdu) {
+    final acceptedBid = _acceptedBidForPayment;
+    if (acceptedBid == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark ? CColors.darkContainer : CColors.white,
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: CColors.primary.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(color: CColors.primary.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      padding: const EdgeInsets.all(CSizes.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.payment_rounded, color: CColors.primary, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Payment Due',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: isUrdu ? 16 : 14,
+                  color: isDark ? CColors.textWhite : CColors.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              'Rs. ${acceptedBid.amount.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: CColors.primary,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _openPaymentScreen(acceptedBid),
+              icon: const Icon(Icons.credit_card_rounded, size: 18),
+              label: Text(
+                'Pay Now',
+                style: TextStyle(fontSize: isUrdu ? 16 : 14, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+                elevation: 2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  // Mark complete button — shows when in-progress and job is paid
+  Widget _buildMarkCompleteButton(bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isRespondingToProgress ? null : () => _markJobComplete(),
+        icon: _isRespondingToProgress
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            : const Icon(Icons.check_circle_rounded, size: 18),
+        label: Text(
+          'Mark Job as Complete',
+          style: TextStyle(fontSize: isUrdu ? 16 : 14, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: CColors.info,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+          elevation: 2,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _markJobComplete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark Job as Complete?'),
+        content: const Text('Confirm the job has been completed successfully. This will notify the worker.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not Yet')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.info),
+            child: const Text('Yes, Complete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isRespondingToProgress = true);
+    try {
+      await FirebaseFirestore.instance.collection('jobs').doc(widget.job.id).update({
+        'status': 'completed',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        setState(() {
+          _jobStatus = 'completed';
+          _isRespondingToProgress = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Job marked as completed!'),
+          backgroundColor: CColors.success,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRespondingToProgress = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: \$e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
   }
 
   Widget _buildActionButtons(bool isDark, bool isUrdu) {
@@ -1533,9 +1741,21 @@ class _ClientJobDetailsScreenState
                     ],
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildLiveBiddingButton(isDark, isUrdu),
+                    // Live location button: show when worker has started (in-progress)
+                    // Arrival confirmation is handled inside the live location screen
                     if (_jobStatus == 'in-progress' && _acceptedWorkerId != null) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildLiveLocationButton(isDark, isUrdu),
+                    ],
+                    // ✅ Payment button: show when in-progress and NOT yet paid
+                    if (_jobStatus == 'in-progress' && _workerReachedLocation && !_jobPaid && _acceptedWorkerId != null) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildPaymentButton(isDark, isUrdu),
+                    ],
+                    // ✅ Mark complete button: show when in-progress and paid
+                    if (_jobStatus == 'in-progress' && _workerReachedLocation && _jobPaid) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildMarkCompleteButton(isDark, isUrdu),
                     ],
                     if (_acceptedWorkerId != null) ...[
                       const SizedBox(height: CSizes.spaceBtwSections),
