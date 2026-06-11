@@ -15,6 +15,7 @@ import '../../../core/models/worker_model.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/map_service.dart';
 import '../../../core/routes/app_routes.dart';
+import '../../../shared/widgets/common_header.dart';
 
 class JobsMapScreen extends StatefulWidget {
   /// Pass a worker to show their location + radius circle + nearby jobs.
@@ -122,36 +123,10 @@ class _JobsMapScreenState extends State<JobsMapScreen> {
     final theme          = Theme.of(context);
     final worker         = widget.worker;
     final radiusKm       = (worker?.serviceRadius ?? 10).toDouble();
-    final jobsWithLoc    = _jobs.where((j) => j.hasLocation).length;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Jobs Map'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-        actions: [
-          // Job count badge
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '$jobsWithLoc jobs',
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
-          // ── Map ────────────────────────────────────────────────────
+          // ── Map (full screen) ──────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
@@ -217,6 +192,16 @@ class _JobsMapScreenState extends State<JobsMapScreen> {
               left: 16,
               child: _Legend(radiusKm: radiusKm),
             ),
+          // ── CommonHeader overlay ───────────────────────────────
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CommonHeader(
+              title: 'Jobs Map',
+              showBackButton: true,
+            ),
+          ),
         ],
       ),
 

@@ -9,26 +9,21 @@ class WorkerService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // ── Current worker ───────────────────────────────────────────────
-
   Future<WorkerModel?> getCurrentWorker() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userEmail = prefs.getString('user_email');
-
       if (userEmail == null) {
         throw Exception('No user email found in shared preferences');
       }
-
       final querySnapshot = await _firestore
           .collection('workers')
           .where('personalInfo.email', isEqualTo: userEmail)
           .limit(1)
           .get();
-
       if (querySnapshot.docs.isEmpty) {
         throw Exception('Worker not found with email: $userEmail');
       }
-
       final doc = querySnapshot.docs.first;
       return WorkerModel.fromSnapshot(
           doc as DocumentSnapshot<Map<String, dynamic>>);
@@ -38,12 +33,9 @@ class WorkerService {
     }
   }
 
-  // ── Get by ID ────────────────────────────────────────────────────
-
   Future<WorkerModel?> getWorkerById(String workerId) async {
     try {
-      final doc =
-      await _firestore.collection('workers').doc(workerId).get();
+      final doc = await _firestore.collection('workers').doc(workerId).get();
       if (doc.exists) {
         return WorkerModel.fromSnapshot(
             doc as DocumentSnapshot<Map<String, dynamic>>);
@@ -55,16 +47,48 @@ class WorkerService {
     }
   }
 
-  // ── Get worker name ──────────────────────────────────────────────
+  // ── Live location update (with sharing flag and optional heading/accuracy)
+  Future<void> updateLiveLocation(
+      String workerId,
+      double latitude,
+      double longitude, {
+        double? heading,
+        double? accuracy,
+      }) async {
+    try {
+      final updateData = {
+        'locationInfo.liveLocation': GeoPoint(latitude, longitude),
+        'locationInfo.lastLiveUpdate': FieldValue.serverTimestamp(),
+        'locationInfo.isLiveSharing': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (heading != null) updateData['locationInfo.heading'] = heading;
+      if (accuracy != null) updateData['locationInfo.accuracy'] = accuracy;
+      await _firestore.collection('workers').doc(workerId).update(updateData);
+    } catch (e) {
+      debugPrint('Error updating live location: $e');
+      rethrow;
+    }
+  }
+
+  // ── Turn off live sharing (when job finishes)
+  Future<void> disableLiveSharing(String workerId) async {
+    try {
+      await _firestore.collection('workers').doc(workerId).update({
+        'locationInfo.isLiveSharing': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error disabling live sharing: $e');
+    }
+  }
 
   Future<String> getWorkerName(String workerId) async {
     try {
-      final doc =
-      await _firestore.collection('workers').doc(workerId).get();
+      final doc = await _firestore.collection('workers').doc(workerId).get();
       if (doc.exists) {
         final data = doc.data();
-        final personalInfo =
-        data?['personalInfo'] as Map<String, dynamic>?;
+        final personalInfo = data?['personalInfo'] as Map<String, dynamic>?;
         return personalInfo?['name'] ?? 'Worker';
       }
       return 'Worker';
@@ -74,12 +98,6 @@ class WorkerService {
     }
   }
 
-  // ── Category-based worker IDs (used by notification service) ────
-  //
-  // NOTE: Firestore cannot do radius queries natively.
-  // We fetch all workers in the category here, then Phase 2's
-  // LocationService.filterWorkersByRadius() will trim the list
-  // to only those within the job's serviceRadius.
   Future<List<String>> getWorkerIdsByCategory(String categoryId) async {
     try {
       final querySnapshot = await _firestore
@@ -87,7 +105,6 @@ class WorkerService {
           .where('workInfo.categoryId', isEqualTo: categoryId)
           .where('account.accountStatus', isEqualTo: 'active')
           .get();
-
       return querySnapshot.docs.map((doc) => doc.id).toList();
     } catch (e) {
       debugPrint('Error getting workers by category: $e');
@@ -95,28 +112,20 @@ class WorkerService {
     }
   }
 
-  // ── Location updates ─────────────────────────────────────────────
-
-  /// Call this whenever the worker's live GPS position changes.
-  /// Updates only the locationInfo.currentLocation field — does not
-  /// touch any other worker data.
   Future<void> updateCurrentLocation(
       String workerId, double latitude, double longitude) async {
     try {
       await _firestore.collection('workers').doc(workerId).update({
-        'locationInfo.currentLocation':
-        GeoPoint(latitude, longitude),
+        'locationInfo.currentLocation': GeoPoint(latitude, longitude),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint(
-          'Worker $workerId location updated: $latitude, $longitude');
+      debugPrint('Worker $workerId location updated: $latitude, $longitude');
     } catch (e) {
       debugPrint('Error updating worker location: $e');
       rethrow;
     }
   }
 
-  /// Call this when a worker sets their home/base location in profile settings.
   Future<void> updateHomeLocation(
       String workerId, double latitude, double longitude) async {
     try {
@@ -124,15 +133,12 @@ class WorkerService {
         'locationInfo.homeLocation': GeoPoint(latitude, longitude),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint(
-          'Worker $workerId home location updated: $latitude, $longitude');
+      debugPrint('Worker $workerId home location updated: $latitude, $longitude');
     } catch (e) {
       debugPrint('Error updating home location: $e');
       rethrow;
     }
   }
-
-  // ── Profile update ───────────────────────────────────────────────
 
   Future<void> updateWorkerProfile(
       String workerId, Map<String, dynamic> updates) async {
@@ -146,8 +152,6 @@ class WorkerService {
       rethrow;
     }
   }
-
-  // ── Stats ────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getWorkerStats(String workerId) async {
     try {

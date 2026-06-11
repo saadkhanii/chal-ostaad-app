@@ -20,6 +20,7 @@ import '../../../core/services/map_service.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../shared/widgets/common_header.dart';
 import '../../../core/services/chat_service.dart';
+import '../../../core/services/worker_service.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../chat/chat_screen.dart';
 import '../dispute/raise_dispute_dialog.dart';
@@ -58,6 +59,7 @@ class _WorkerJobDetailsScreenState
   final _mapService = MapService();
   final _locationService = LocationService();
   final _paymentService = PaymentService();
+  final _workerService = WorkerService();
 
   bool _isLoading = false;
   bool _hasExistingBid = false;
@@ -97,10 +99,14 @@ class _WorkerJobDetailsScreenState
   DateTime? _scheduledStartTime;
   int _scheduledRemainingSeconds = 0;
   Timer? _scheduledTimer;
-  // The 2‑hour deadline after scheduled time (only used after scheduled time passes)
   DateTime? _scheduledWorkerDeadline;
   int _scheduledWorkerRemainingSeconds = 0;
   Timer? _scheduledWorkerTimer;
+
+  // ── Live location sharing ────────────────────────────────────────
+  bool _locationSharingEnabled = false;
+  Timer? _locationUpdateTimer;
+  bool _isSharingActive = false;
 
   @override
   void initState() {
@@ -130,6 +136,7 @@ class _WorkerJobDetailsScreenState
       final deadline = (data['workerStartDeadline'] as Timestamp?)?.toDate();
       final graceExpiry = (data['gracePeriodExpiry'] as Timestamp?)?.toDate();
       final scheduledAt = (data['scheduledAt'] as Timestamp?)?.toDate();
+      final sharingEnabled = data['locationSharingEnabled'] as bool? ?? false;
 
       final charges = rawExtras
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -153,15 +160,14 @@ class _WorkerJobDetailsScreenState
         _workerReachedLocation = reachedLocation;
         _workerStartDeadline = deadline;
         _scheduledStartTime = scheduledAt;
-        // For scheduled jobs, the workerStartDeadline is set to scheduledAt + 2 hours by finaliseAcceptance
         _scheduledWorkerDeadline = deadline;
+        _locationSharingEnabled = sharingEnabled;
       });
 
-      // Handle grace period expiry (worker triggers finalisation if client missed it)
+      // Grace period expiry fallback
       if (status == 'grace_period' && graceExpiry != null) {
         final now = DateTime.now();
         if (now.isAfter(graceExpiry)) {
-          debugPrint('WorkerJobDetails: grace period expired, triggering finalisation');
           _bidService.finaliseAcceptance(widget.job.id!).catchError((e) {
             debugPrint('Error finalising from worker side: $e');
           });
@@ -169,33 +175,34 @@ class _WorkerJobDetailsScreenState
         return;
       }
 
-      // Re-check accepted bid when status becomes active/scheduled
+      // Re‑check accepted bid when status becomes active/scheduled
       if ((status == 'active' || status == 'scheduled') && _acceptedBid == null) {
         _checkExistingBid();
       }
 
-      // For urgent jobs: start the 10‑minute deadline
+      // Deadlines
       if (status == 'active' && deadline != null && widget.job.isUrgent) {
         _updateWorkerStartCountdown();
-      }
-      // For scheduled jobs: manage both countdown to scheduled time and the 2‑hour deadline
-      else if (status == 'scheduled' && !widget.job.isUrgent && scheduledAt != null) {
-        // Always update the countdown to scheduled time (even if it's already past)
+      } else if (status == 'scheduled' && !widget.job.isUrgent && scheduledAt != null) {
         _updateScheduledCountdown();
-
-        // If the scheduled time has already passed, start the 2‑hour deadline timer
         final now = DateTime.now();
         if (now.isAfter(scheduledAt) && deadline != null) {
           _updateScheduledWorkerDeadlineCountdown();
         }
-      }
-      else {
+      } else {
         _workerStartTimer?.cancel();
         _workerStartRemainingSeconds = 0;
         _scheduledTimer?.cancel();
         _scheduledRemainingSeconds = 0;
         _scheduledWorkerTimer?.cancel();
         _scheduledWorkerRemainingSeconds = 0;
+      }
+
+      // ── Start / stop live location updates ────────────────────
+      if (status == 'in-progress' && sharingEnabled && !_isSharingActive) {
+        _startLocationUpdates();
+      } else if ((status != 'in-progress' || !sharingEnabled) && _isSharingActive) {
+        _stopLocationUpdates();
       }
     });
   }
@@ -221,10 +228,60 @@ class _WorkerJobDetailsScreenState
     _workerStartTimer?.cancel();
     _scheduledTimer?.cancel();
     _scheduledWorkerTimer?.cancel();
+    _stopLocationUpdates();
     _amountController.dispose();
     _messageController.dispose();
     super.dispose();
   }
+
+  // ── Live location sharing methods ─────────────────────────────────
+  Future<void> _startLocationUpdates() async {
+    if (_isSharingActive) return;
+    final granted = await _locationService.requestLocationPermission();
+    if (!granted) {
+      debugPrint('[LocationSharing] permission denied — sharing disabled');
+      return;
+    }
+    _isSharingActive = true;
+    // Explicitly enable live sharing flag in worker doc
+    await _workerService.disableLiveSharing(widget.workerId); // clear false first
+    await _updateWorkerLiveLocation(); // this will set isLiveSharing = true
+    _locationUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _updateWorkerLiveLocation();
+    });
+    debugPrint('Started live location updates for job ${widget.job.id}');
+  }
+
+  Future<void> _updateWorkerLiveLocation() async {
+    if (!_isSharingActive) return;
+    try {
+      final pos = await _locationService.getCurrentPosition();
+      // heading is available on Position object
+      final heading = pos.heading; // may be -1 if not available
+      final accuracy = pos.accuracy;
+      await _workerService.updateLiveLocation(
+        widget.workerId,
+        pos.latitude,
+        pos.longitude,
+        heading: heading >= 0 ? heading : null,
+        accuracy: accuracy,
+      );
+      debugPrint('Live location updated: ${pos.latitude}, ${pos.longitude}');
+    } catch (e) {
+      debugPrint('Failed to update live location: $e');
+    }
+  }
+
+  void _stopLocationUpdates() {
+    _locationUpdateTimer?.cancel();
+    _locationUpdateTimer = null;
+    _isSharingActive = false;
+    // Tell Firestore sharing has stopped
+    _workerService.disableLiveSharing(widget.workerId);
+    debugPrint('Stopped live location updates');
+  }
+
+  // ── Helper methods (unchanged except for stopping updates on cancel/complete) ──
 
   Future<void> _loadPendingPayment() async {
     if (widget.job.id == null) return;
@@ -240,7 +297,6 @@ class _WorkerJobDetailsScreenState
     try {
       final hasBid = await _bidService.hasWorkerBidOnJob(widget.workerId, widget.job.id!);
       if (mounted) setState(() => _hasExistingBid = hasBid);
-
       if (hasBid) {
         final snapshot = await FirebaseFirestore.instance
             .collection('bids')
@@ -317,21 +373,17 @@ class _WorkerJobDetailsScreenState
     } catch (_) {}
   }
 
-  // ── Urgent job: 10‑minute deadline ──────────────────────────────
   void _updateWorkerStartCountdown() {
     if (_workerStartDeadline == null) return;
     _workerStartTimer?.cancel();
-
     final now = DateTime.now();
     if (now.isAfter(_workerStartDeadline!)) {
       _workerStartRemainingSeconds = 0;
       _handleWorkerStartTimeout();
       return;
     }
-
     final remaining = _workerStartDeadline!.difference(now).inSeconds;
     setState(() => _workerStartRemainingSeconds = remaining);
-
     _workerStartTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -364,24 +416,19 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Scheduled job: countdown to scheduled start time ─────────────
   void _updateScheduledCountdown() {
     if (_scheduledStartTime == null) return;
     _scheduledTimer?.cancel();
-
     final now = DateTime.now();
     if (now.isAfter(_scheduledStartTime!)) {
       setState(() => _scheduledRemainingSeconds = 0);
-      // Once scheduled time is past, start the 2‑hour deadline timer if not already running
       if (_scheduledWorkerDeadline != null) {
         _updateScheduledWorkerDeadlineCountdown();
       }
       return;
     }
-
     final remaining = _scheduledStartTime!.difference(now).inSeconds;
     setState(() => _scheduledRemainingSeconds = remaining);
-
     _scheduledTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -391,7 +438,6 @@ class _WorkerJobDetailsScreenState
       if (newRemaining <= 0) {
         timer.cancel();
         setState(() => _scheduledRemainingSeconds = 0);
-        // Start the 2‑hour deadline timer
         if (_scheduledWorkerDeadline != null) {
           _updateScheduledWorkerDeadlineCountdown();
         }
@@ -401,21 +447,17 @@ class _WorkerJobDetailsScreenState
     });
   }
 
-  // ── Scheduled job: 2‑hour deadline after scheduled time ──────────
   void _updateScheduledWorkerDeadlineCountdown() {
     if (_scheduledWorkerDeadline == null) return;
     _scheduledWorkerTimer?.cancel();
-
     final now = DateTime.now();
     if (now.isAfter(_scheduledWorkerDeadline!)) {
       _scheduledWorkerRemainingSeconds = 0;
-      _handleWorkerStartTimeout();  // same as urgent timeout → reopen job, ban worker
+      _handleWorkerStartTimeout();
       return;
     }
-
     final remaining = _scheduledWorkerDeadline!.difference(now).inSeconds;
     setState(() => _scheduledWorkerRemainingSeconds = remaining);
-
     _scheduledWorkerTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -433,7 +475,6 @@ class _WorkerJobDetailsScreenState
   }
 
   Future<void> _startJob() async {
-    // For scheduled jobs, ensure the scheduled time has passed
     if (!widget.job.isUrgent && widget.job.scheduledAt != null) {
       final now = DateTime.now();
       if (now.isBefore(widget.job.scheduledAt!.toDate())) {
@@ -467,6 +508,7 @@ class _WorkerJobDetailsScreenState
           backgroundColor: CColors.success,
         ));
         setState(() => _liveJobStatus = 'in-progress');
+        // The job document will have locationSharingEnabled = true, so the subscription will start updates.
       }
     } catch (e) {
       if (mounted) {
@@ -782,7 +824,8 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Helper methods for UI ─────────────────────────────────────────
+  // ── Status card, job card, etc. (unchanged) ──
+
   Color _getStatusColor(String s) {
     switch (s) {
       case 'open': return CColors.success;
@@ -831,7 +874,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Status Card using AppCard ─────────────────────────────────
   List<Map<String, String>> _getStatusSteps() {
     if (widget.job.isUrgent) {
       return [
@@ -961,7 +1003,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Gradient Header for Job Info Card ──────────────────────────
   LinearGradient _getHeaderGradient() {
     if (widget.job.isUrgent) {
       return LinearGradient(
@@ -984,7 +1025,6 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Job Details Card using AppCard ────────────────────
   Widget _buildJobDetailsCard(bool isDark, bool isUrdu) {
     final statusColor = _getStatusColor(_liveJobStatus);
     final statusText = _getStatusText(_liveJobStatus);
@@ -1119,7 +1159,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Mini Map wrapped in AppCard ─────────────────────────────────
   Widget _buildMiniMap(bool isDark, bool isUrdu) {
     final jobLatLng = LatLng(widget.job.latitude!, widget.job.longitude!);
     return AppCard(
@@ -1190,7 +1229,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Extra Charges Card using AppCard ────────────────────────────
   Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
     return AppCard(
       margin: EdgeInsets.zero,
@@ -1240,11 +1278,9 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Cash Confirm Banner using AppCard ───────────────────────────
   Widget _buildCashConfirmBanner(bool isDark, bool isUrdu) {
     final baseAmount = _acceptedBid?.amount ?? 0;
     final totalAmount = baseAmount + _approvedExtrasTotal;
-
     return AppCard(
       margin: EdgeInsets.zero,
       headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
@@ -1298,7 +1334,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Time Proposal Banner using AppCard ───────────────────────────
   Widget _buildTimeProposalBanner(bool isDark, bool isUrdu) {
     final proposal = _pendingTimeProposal!;
     final proposedBy = proposal['proposedBy'] as String;
@@ -1339,39 +1374,33 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── Scheduled start card (for specific time jobs) ───────────────
   Widget _buildScheduledStartCard(bool isDark, bool isUrdu) {
     final bool isScheduledTimePast = _scheduledRemainingSeconds <= 0;
     final bool hasDeadline = _scheduledWorkerDeadline != null;
     final bool isDeadlineRunning = hasDeadline && _scheduledWorkerRemainingSeconds > 0;
     final bool isDeadlineExpired = hasDeadline && _scheduledWorkerRemainingSeconds <= 0 && isScheduledTimePast;
 
-    // Decide what to show
     String title;
     String countdownText;
     bool enableStart;
     Color primaryColor;
 
     if (!isScheduledTimePast) {
-      // Still counting down to scheduled time
       title = 'Scheduled start time';
       countdownText = _formatDuration(Duration(seconds: _scheduledRemainingSeconds));
       enableStart = false;
       primaryColor = CColors.primary;
     } else if (isDeadlineRunning) {
-      // Scheduled time passed, counting down 2‑hour deadline
       title = '⚠️ You must start within 2 hours ⚠️';
       countdownText = _formatDuration(Duration(seconds: _scheduledWorkerRemainingSeconds));
       enableStart = true;
       primaryColor = CColors.warning;
     } else if (isDeadlineExpired) {
-      // Deadline expired – will have triggered timeout, but show a message
       title = 'Deadline expired';
       countdownText = 'Job will be cancelled';
       enableStart = false;
       primaryColor = CColors.error;
     } else {
-      // Fallback: ready to start
       title = 'Job is ready to start';
       countdownText = 'Ready to start';
       enableStart = true;
@@ -1492,22 +1521,17 @@ class _WorkerJobDetailsScreenState
             ],
           ),
         ),
-        if (isDeadlineRunning)
-          const SizedBox(height: CSizes.spaceBtwItems),
+        if (isDeadlineRunning) const SizedBox(height: CSizes.spaceBtwItems),
       ],
     );
   }
 
-  // ── Worker 10‑min start deadline card (for urgent jobs) ─────────
   Widget _buildUrgentStartCard(bool isDark, bool isUrdu) {
     final minutes = (_workerStartRemainingSeconds / 60).floor();
     final seconds = _workerStartRemainingSeconds % 60;
     final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-
-    // Turn red when under 2 minutes
     final isUrgentTime = _workerStartRemainingSeconds <= 120;
     final timerColor = isUrgentTime ? CColors.error : CColors.primary;
-
     return Column(
       children: [
         Container(
@@ -1655,7 +1679,6 @@ class _WorkerJobDetailsScreenState
     final hours = duration.inHours.remainder(24);
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-
     if (days > 0) {
       return '${days}d : ${hours.toString().padLeft(2, '0')}h : ${minutes.toString().padLeft(2, '0')}m : ${seconds.toString().padLeft(2, '0')}s';
     } else if (hours > 0) {
@@ -1668,7 +1691,6 @@ class _WorkerJobDetailsScreenState
   Widget _buildBidForm(bool isDark, bool isUrdu) {
     final isAccepted = _acceptedBid != null;
     final isJobOpenForBidding = widget.job.status == 'open' && !isAccepted && !_hasExistingBid;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1703,8 +1725,6 @@ class _WorkerJobDetailsScreenState
           ),
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
-
-        // Acceptance card shown only when status is active or scheduled (grace period over)
         if (isAccepted && (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled'))
           _buildAcceptedPanel(isDark, isUrdu)
         else if (_hasExistingBid)
@@ -1720,7 +1740,6 @@ class _WorkerJobDetailsScreenState
   Widget _buildAcceptedPanel(bool isDark, bool isUrdu) {
     final baseAmount = _acceptedBid!.amount;
     final totalAmount = baseAmount + _approvedExtrasTotal;
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(CSizes.lg),
@@ -1818,7 +1837,6 @@ class _WorkerJobDetailsScreenState
           ),
         ),
         const SizedBox(height: CSizes.spaceBtwItems),
-
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -1844,15 +1862,11 @@ class _WorkerJobDetailsScreenState
             ),
           ),
         ),
-
         const SizedBox(height: CSizes.spaceBtwItems),
-
         _buildClientStartTimeInfo(isDark, isUrdu),
         const SizedBox(height: CSizes.spaceBtwInputFields),
-
         _buildWorkerStartTimeChoice(isDark, isUrdu),
         const SizedBox(height: CSizes.spaceBtwInputFields),
-
         Container(
           padding: const EdgeInsets.all(CSizes.lg),
           decoration: BoxDecoration(
@@ -1883,7 +1897,6 @@ class _WorkerJobDetailsScreenState
                 ),
               ),
               const SizedBox(height: CSizes.spaceBtwInputFields),
-
               TextField(
                 controller: _messageController,
                 maxLines: 3,
@@ -1902,7 +1915,6 @@ class _WorkerJobDetailsScreenState
                 ),
               ),
               const SizedBox(height: CSizes.spaceBtwSections),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -1975,7 +1987,6 @@ class _WorkerJobDetailsScreenState
         ),
       );
     }
-
     if (widget.job.scheduledAt == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1996,7 +2007,6 @@ class _WorkerJobDetailsScreenState
         ]),
       );
     }
-
     final clientTime = widget.job.scheduledAt!.toDate();
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2048,10 +2058,7 @@ class _WorkerJobDetailsScreenState
   }
 
   Widget _buildWorkerStartTimeChoice(bool isDark, bool isUrdu) {
-    if (widget.job.isUrgent) {
-      return const SizedBox.shrink();
-    }
-
+    if (widget.job.isUrgent) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2308,13 +2315,11 @@ class _WorkerJobDetailsScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
 
-    // Show scheduled start card for non‑urgent jobs when status is 'scheduled'
     bool showScheduledCard = !widget.job.isUrgent &&
         _liveJobStatus == 'scheduled' &&
         _scheduledStartTime != null &&
         _acceptedBid != null;
 
-    // Show urgent start card for urgent jobs when status is 'active' and deadline exists
     bool showUrgentCard = widget.job.isUrgent &&
         _liveJobStatus == 'active' &&
         _acceptedBid != null &&
@@ -2346,19 +2351,14 @@ class _WorkerJobDetailsScreenState
                     _buildJobDetailsCard(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
                     _buildStatusCard(isDark, isUrdu),
-
-                    // Scheduled job card (countdown to scheduled time + 2‑hour deadline)
                     if (showScheduledCard) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildScheduledStartCard(isDark, isUrdu),
                     ],
-
-                    // Urgent job card (10‑minute deadline)
                     if (showUrgentCard) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildUrgentStartCard(isDark, isUrdu),
                     ],
-
                     if (widget.job.hasLocation) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildMiniMap(isDark, isUrdu),
@@ -2379,8 +2379,6 @@ class _WorkerJobDetailsScreenState
                     ],
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildBidForm(isDark, isUrdu),
-
-                    // Propose new time button (only for scheduled jobs when no card is shown)
                     if (showProposeTimeButton && !showScheduledCard) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       Wrap(
@@ -2399,7 +2397,6 @@ class _WorkerJobDetailsScreenState
                         ],
                       ),
                     ],
-
                     if (_acceptedBid != null && _liveJobStatus == 'completed') ...[
                       const SizedBox(height: CSizes.spaceBtwSections),
                       _buildCompletedBanner(isDark, isUrdu),

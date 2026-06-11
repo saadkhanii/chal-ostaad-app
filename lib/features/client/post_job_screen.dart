@@ -18,6 +18,7 @@ import '../../core/constants/sizes.dart';
 import '../../core/services/cloudinary_service.dart';
 import '../../core/services/job_service.dart';
 import '../../core/services/map_service.dart';
+import '../maps/location_picker_screen.dart';
 import '../../shared/widgets/Cbutton.dart';
 import '../../shared/widgets/CtextField.dart';
 import '../../shared/widgets/common_header.dart';
