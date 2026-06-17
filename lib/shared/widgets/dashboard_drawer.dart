@@ -16,6 +16,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
+import 'confirmation_dialog.dart' show ConfirmationDialog;
 import 'language_switch.dart';
 
 class DashboardDrawer extends ConsumerStatefulWidget {
@@ -1128,48 +1129,16 @@ class _DashboardDrawerState extends ConsumerState<DashboardDrawer> {
   }
 
   void _showLogoutDialog(BuildContext context, bool isDark, bool isUrdu) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? CColors.dark : CColors.white,
-        title: Text(
-          'drawer.logout'.tr(),
-          style: TextStyle(
-            color: isDark ? CColors.white : CColors.textPrimary,
-            fontSize: isUrdu ? 20 : 18,
-          ),
-        ),
-        content: Text(
-          'drawer.confirm_logout'.tr(),
-          style: TextStyle(
-            color: isDark ? CColors.lightGrey : CColors.textPrimary,
-            fontSize: isUrdu ? 16 : 14,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'drawer.cancel'.tr(),
-              style: TextStyle(
-                color: isDark ? CColors.white : CColors.primary,
-                fontSize: isUrdu ? 16 : 14,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => _performLogout(context),
-            style: TextButton.styleFrom(foregroundColor: CColors.error),
-            child: Text(
-              'drawer.logout'.tr(),
-              style: TextStyle(fontSize: isUrdu ? 16 : 14),
-            ),
-          ),
-        ],
-      ),
+    ConfirmationDialog.show(
+      context,
+      title: 'drawer.logout'.tr(),
+      content: 'drawer.confirm_logout'.tr(),
+      confirmText: 'drawer.logout'.tr(),
+      cancelText: 'drawer.cancel'.tr(),
+      isDestructive: true,
+      onConfirm: () => _performLogout(context),
     );
   }
-
   Future<void> _performLogout(BuildContext context) async {
     Navigator.pop(context); // Close dialog
 

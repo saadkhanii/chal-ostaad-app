@@ -19,6 +19,7 @@ class AppCard extends StatelessWidget {
   final BorderRadiusGeometry borderRadius;
   final Color? cardBackgroundColor;
   final Clip clipBehavior;
+  final bool showTopBorder; // ADDED
 
   const AppCard({
     super.key,
@@ -37,6 +38,7 @@ class AppCard extends StatelessWidget {
     this.borderRadius = const BorderRadius.all(Radius.circular(CSizes.cardRadiusMd)),
     this.cardBackgroundColor,
     this.clipBehavior = Clip.antiAlias,
+    this.showTopBorder = false, // ADDED default
   });
 
   @override
@@ -50,7 +52,54 @@ class AppCard extends StatelessWidget {
         ? BoxDecoration(gradient: headerGradient)
         : headerColor != null
         ? BoxDecoration(color: headerColor)
-        : BoxDecoration(gradient: AppCardGradients.urgent()); // primary gradient
+        : BoxDecoration(gradient: AppCardGradients.urgent());
+
+    // Build the column that goes inside the card
+    Widget child = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (headerTitle != null || headerLeading != null || headerTrailing != null || headerActions != null)
+          Container(
+            padding: headerPadding,
+            decoration: headerDecoration,
+            child: Row(
+              children: [
+                if (headerLeading != null) ...[
+                  headerLeading!,
+                  const SizedBox(width: 8),
+                ],
+                if (headerTitle != null) Expanded(child: headerTitle!),
+                if (headerTrailing != null) ...[
+                  const SizedBox(width: 8),
+                  headerTrailing!,
+                ],
+                if (headerActions != null) headerActions!,
+              ],
+            ),
+          ),
+        Padding(padding: bodyPadding, child: body),
+      ],
+    );
+
+    // ADDED: wrap with top border if requested
+    if (showTopBorder) {
+      // Use the same border radius as the card for the top corners
+      final radius = borderRadius is BorderRadius
+          ? (borderRadius as BorderRadius).topLeft
+          : const Radius.circular(CSizes.cardRadiusMd);
+      child = Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: CColors.primary, width: 3.0),
+          ),
+          borderRadius: BorderRadius.only(
+            topLeft: radius,
+            topRight: radius,
+          ),
+        ),
+        child: child,
+      );
+    }
 
     return Card(
       margin: margin,
@@ -60,31 +109,7 @@ class AppCard extends StatelessWidget {
       color: effectiveCardColor,
       child: InkWell(
         onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (headerTitle != null || headerLeading != null || headerTrailing != null || headerActions != null)
-              Container(
-                padding: headerPadding,
-                decoration: headerDecoration,
-                child: Row(
-                  children: [
-                    if (headerLeading != null) ...[
-                      headerLeading!,
-                      const SizedBox(width: 8),
-                    ],
-                    if (headerTitle != null) Expanded(child: headerTitle!),
-                    if (headerTrailing != null) ...[
-                      const SizedBox(width: 8),
-                      headerTrailing!,
-                    ],
-                    if (headerActions != null) headerActions!,
-                  ],
-                ),
-              ),
-            Padding(padding: bodyPadding, child: body),
-          ],
-        ),
+        child: child,
       ),
     );
   }

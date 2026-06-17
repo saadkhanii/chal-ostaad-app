@@ -15,6 +15,7 @@ import '../../core/constants/sizes.dart';
 import '../../core/routes/app_routes.dart';
 import '../review/worker_reviews_screen.dart';
 import '../../shared/widgets/common_header.dart';
+import '../../shared/widgets/app_card.dart'; // ✅ import AppCard
 
 class WorkerProfileScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -74,8 +75,6 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
   // ── Load all data ──────────────────────────────────────────────
   Future<void> _loadWorkerData() async {
     try {
-      // If a specific workerId was passed (view-mode), use it directly.
-      // Otherwise fall back to the logged-in worker stored in SharedPreferences.
       String workerId = widget.workerId ?? '';
       if (workerId.isEmpty) {
         final prefs = await SharedPreferences.getInstance();
@@ -403,43 +402,93 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
                   _buildStatsRow(isDark),
                   const SizedBox(height: CSizes.md),
 
-                  // Personal info (read-only)
-                  _buildSectionCard(
-                    context: context,
-                    isDark:  isDark,
-                    title:   'profile.personal_info'.tr(),
-                    child:   _buildPersonalInfo(isDark),
-                  ),
-                  const SizedBox(height: CSizes.md),
-
-                  // Work info (read-only)
-                  _buildSectionCard(
-                    context: context,
-                    isDark:  isDark,
-                    title:   'profile.work_info'.tr(),
-                    child:   _buildWorkInfo(isDark),
-                  ),
-                  const SizedBox(height: CSizes.md),
-
-                  // Office info
-                  if (_officeName.isNotEmpty || _officeCity.isNotEmpty) ...[
-                    _buildSectionCard(
-                      context: context,
-                      isDark:  isDark,
-                      title:   'profile.office_info'.tr(),
-                      child:   _buildOfficeInfo(isDark),
+                  // ── Personal info (ONLY FOR OWNER) ─────────────
+                  if (!_isViewMode) ...[
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      showTopBorder: true,
+                      bodyPadding: const EdgeInsets.all(CSizes.md),
+                      body: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'profile.personal_info'.tr(),
+                            style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const Divider(height: CSizes.lg),
+                          _buildPersonalInfo(isDark),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: CSizes.md),
                   ],
 
-                  // Settings + Logout — only shown on the owner's own profile
-                  if (!_isViewMode) ...[
-                    _buildSectionCard(
-                      context: context,
-                      isDark:  isDark,
-                      title:   'profile.settings'.tr(),
-                      child:   Column(
+                  // ── Work info (always visible) ─────────────────
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    showTopBorder: true,
+                    bodyPadding: const EdgeInsets.all(CSizes.md),
+                    body: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'profile.work_info'.tr(),
+                          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const Divider(height: CSizes.lg),
+                        _buildWorkInfo(isDark),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: CSizes.md),
+
+                  // ── Office info (always visible, if present) ──
+                  if (_officeName.isNotEmpty || _officeCity.isNotEmpty) ...[
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      showTopBorder: true,
+                      bodyPadding: const EdgeInsets.all(CSizes.md),
+                      body: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(
+                            'profile.office_info'.tr(),
+                            style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const Divider(height: CSizes.lg),
+                          _buildOfficeInfo(isDark),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: CSizes.md),
+                  ],
+
+                  // ── Settings & Logout (ONLY FOR OWNER) ────────
+                  if (!_isViewMode) ...[
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      showTopBorder: true,
+                      bodyPadding: const EdgeInsets.all(CSizes.md),
+                      body: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'profile.settings'.tr(),
+                            style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const Divider(height: CSizes.lg),
                           _buildOptionTile(
                             icon:   Icons.lock_reset_rounded,
                             title:  'Reset Password',
@@ -473,11 +522,12 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: CSizes.md),
-                    _buildSectionCard(
-                      context: context,
-                      isDark:  isDark,
-                      title:   '',
-                      child:   _buildOptionTile(
+                    // Logout as a separate card with red accent
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      showTopBorder: true,
+                      bodyPadding: const EdgeInsets.all(CSizes.md),
+                      body: _buildOptionTile(
                         icon:   Icons.logout_rounded,
                         title:  'profile.logout'.tr(),
                         onTap:  _logout,
@@ -593,9 +643,11 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(_email,
-              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                  color: CColors.darkGrey, fontSize: 13)),
+          // Show email only for the owner
+          if (!_isViewMode)
+            Text(_email,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                    color: CColors.darkGrey, fontSize: 13)),
           const SizedBox(height: 8),
           // Verification badge
           Container(
@@ -782,44 +834,6 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  // ── Section card ───────────────────────────────────────────────
-  Widget _buildSectionCard({
-    required BuildContext context,
-    required bool isDark,
-    required String title,
-    required Widget child,
-  }) {
-    return Container(
-      width:   double.infinity,
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color:        isDark ? CColors.darkContainer : CColors.white,
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        boxShadow: [
-          BoxShadow(
-            color:      Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset:     const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title.isNotEmpty) ...[
-            Text(title,
-                style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize:   15,
-                )),
-            const Divider(height: CSizes.lg),
-          ],
-          child,
         ],
       ),
     );

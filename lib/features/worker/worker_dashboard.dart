@@ -673,6 +673,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         required Color color,
       }) {
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.symmetric(horizontal: 4),
       bodyPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       elevation: isDark ? 0 : 2,
@@ -750,6 +751,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         }
 
         return AppCard(
+          showTopBorder: true, // ADDED
           elevation: isDark ? 0 : 2,
           margin: EdgeInsets.zero,
           bodyPadding: const EdgeInsets.all(16),
@@ -854,6 +856,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         final payments = snap.data ?? [];
         if (payments.isEmpty) {
           return AppCard(
+            showTopBorder: true, // ADDED
             margin: EdgeInsets.zero,
             elevation: 0,
             bodyPadding: const EdgeInsets.all(CSizes.lg),
@@ -887,6 +890,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
     final icon = p.isCash ? Icons.payments_outlined : Icons.credit_card_rounded;
 
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.only(bottom: CSizes.sm),
       elevation: isDark ? 0 : 1,
       bodyPadding: const EdgeInsets.all(CSizes.md),
@@ -1007,6 +1011,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         statusIcon = Icons.flag_rounded;
     }
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.only(bottom: CSizes.sm),
       elevation: isDark ? 0 : 1,
       onTap: () => Navigator.pushNamed(context, AppRoutes.disputes,
@@ -1140,6 +1145,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
   Widget _buildJobCard(JobModel job) {
     final isUrdu = context.locale.languageCode == 'ur';
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.only(bottom: CSizes.md),
       elevation: 2,
       onTap: () => _showJobDetails(job),
@@ -1264,6 +1270,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         final jobTitle = jobData['title'] ?? 'job.unknown'.tr();
 
         return AppCard(
+          showTopBorder: true, // ADDED
           margin: const EdgeInsets.only(bottom: CSizes.sm),
           elevation: isDark ? 0 : 1.5,
           body: Row(children: [
@@ -1395,6 +1402,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       endDrawer: !isUrdu ? const DashboardDrawer() : null,
       drawer: isUrdu ? const DashboardDrawer() : null,
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
+      extendBody: true,
+      extendBodyBehindAppBar: false,
       body: IndexedStack(index: currentPageIndex, children: _getPages()),
       bottomNavigationBar: CurvedNavBar(
         currentIndex: currentPageIndex,

@@ -700,6 +700,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                       onPressed: _handleSubmit,
                       width:     double.infinity,
                     ),
+                    SizedBox(height: 70),
                   ],
                 ),
               ),

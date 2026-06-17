@@ -14,6 +14,7 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/routes/app_routes.dart';
 import '../../shared/widgets/common_header.dart';
+import '../../shared/widgets/app_card.dart'; // ✅ import AppCard
 
 class ClientProfileScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -24,8 +25,7 @@ class ClientProfileScreen extends ConsumerStatefulWidget {
       _ClientProfileScreenState();
 }
 
-class _ClientProfileScreenState
-    extends ConsumerState<ClientProfileScreen> {
+class _ClientProfileScreenState extends ConsumerState<ClientProfileScreen> {
   // ── State ──────────────────────────────────────────────────────
   String  _clientId   = '';
   String  _fullName   = '';
@@ -36,7 +36,7 @@ class _ClientProfileScreenState
 
   // Profile photo
   File?   _pickedImage;
-  String  _photoBase64 = ''; // Base64-encoded photo stored in Firestore
+  String  _photoBase64 = '';
 
   // Edit mode
   bool _isEditing = false;
@@ -152,20 +152,18 @@ class _ClientProfileScreenState
 
     final picked = await picker.pickImage(
       source:       source,
-      imageQuality: 60,   // lower quality = smaller Base64 string
-      maxWidth:     400,  // keep it small for Firestore (< 1MB limit per field)
+      imageQuality: 60,
+      maxWidth:     400,
     );
 
     if (picked == null || !mounted) return;
 
-    // Show saving indicator
     setState(() => _isSaving = true);
 
     try {
       final bytes      = await File(picked.path).readAsBytes();
       final base64Str  = base64Encode(bytes);
 
-      // Save to Firestore
       await FirebaseFirestore.instance
           .collection('clients')
           .doc(_clientId)
@@ -344,7 +342,7 @@ class _ClientProfileScreenState
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: Column(
         children: [
-          // ── Header with avatar on the RIGHT at title position ──
+          // ── Header with avatar on the RIGHT ───────────────────
           Stack(
             clipBehavior: Clip.none,
             children: [
@@ -356,8 +354,6 @@ class _ClientProfileScreenState
                     : null,
                 showThemeToggle: true,
               ),
-              // Avatar — positioned at bottom-RIGHT of header,
-              // horizontally aligned with where the title text ends
               Positioned(
                 bottom: -30,
                 right:  CSizes.xl,
@@ -366,7 +362,6 @@ class _ClientProfileScreenState
             ],
           ),
 
-          // Space for avatar overlap
           const SizedBox(height: 40),
 
           // ── Content ────────────────────────────────────────────
@@ -416,24 +411,46 @@ class _ClientProfileScreenState
                     ),
                   ),
 
-                  // Personal info card
-                  _buildSectionCard(
-                    context:  context,
-                    isDark:   isDark,
-                    title:    'profile.personal_info'.tr(),
-                    child:    _isEditing
-                        ? _buildEditForm(isDark)
-                        : _buildInfoView(isDark),
+                  // ── Personal info card ─────────────────────────
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    showTopBorder: true,
+                    bodyPadding: const EdgeInsets.all(CSizes.md),
+                    body: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'profile.personal_info'.tr(),
+                          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const Divider(height: CSizes.lg),
+                        _isEditing
+                            ? _buildEditForm(isDark)
+                            : _buildInfoView(isDark),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: CSizes.md),
 
-                  // Account actions card
-                  _buildSectionCard(
-                    context: context,
-                    isDark:  isDark,
-                    title:   'profile.settings'.tr(),
-                    child:   Column(
+                  // ── Settings card ──────────────────────────────
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    showTopBorder: true,
+                    bodyPadding: const EdgeInsets.all(CSizes.md),
+                    body: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(
+                          'profile.settings'.tr(),
+                          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const Divider(height: CSizes.lg),
                         _buildOptionTile(
                           icon:    Icons.lock_reset_rounded,
                           title:   'Reset Password',
@@ -459,12 +476,12 @@ class _ClientProfileScreenState
                   ),
                   const SizedBox(height: CSizes.md),
 
-                  // Logout
-                  _buildSectionCard(
-                    context: context,
-                    isDark:  isDark,
-                    title:   '',
-                    child:   _buildOptionTile(
+                  // ── Logout card ────────────────────────────────
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    showTopBorder: true,
+                    bodyPadding: const EdgeInsets.all(CSizes.md),
+                    body: _buildOptionTile(
                       icon:    Icons.logout_rounded,
                       title:   'profile.logout'.tr(),
                       onTap:   _logout,
@@ -487,19 +504,19 @@ class _ClientProfileScreenState
         ? _fullName.trim().split(' ').map((w) => w[0]).take(2).join().toUpperCase()
         : 'C';
 
-    // Priority: newly picked file → saved Base64 → initials
     ImageProvider? imageProvider;
     if (_pickedImage != null) {
       imageProvider = FileImage(_pickedImage!);
     } else if (_photoBase64.isNotEmpty) {
-      imageProvider = MemoryImage(base64Decode(_photoBase64));
+      try {
+        imageProvider = MemoryImage(base64Decode(_photoBase64));
+      } catch (_) {}
     }
 
     return GestureDetector(
       onTap: _pickProfilePhoto,
       child: Stack(
         children: [
-          // Avatar circle
           Container(
             decoration: BoxDecoration(
               shape:  BoxShape.circle,
@@ -528,8 +545,6 @@ class _ClientProfileScreenState
                   : null,
             ),
           ),
-
-          // Small camera badge at bottom-right of avatar
           Positioned(
             bottom: 0,
             right:  0,
@@ -566,7 +581,7 @@ class _ClientProfileScreenState
           child: OutlinedButton.icon(
             onPressed: () => setState(() => _isEditing = true),
             icon:  const Icon(Icons.edit_outlined, size: 16),
-            label: Text('profile.personal_info'.tr()),
+            label: Text('profile.edit_info'.tr()),
             style: OutlinedButton.styleFrom(
               foregroundColor: CColors.primary,
               side: const BorderSide(color: CColors.primary),
@@ -641,7 +656,6 @@ class _ClientProfileScreenState
             v == null || v.isEmpty ? 'Phone is required' : null,
           ),
           const SizedBox(height: CSizes.md),
-          // Email — read only
           TextFormField(
             initialValue: _email,
             readOnly:     true,
@@ -696,44 +710,6 @@ class _ClientProfileScreenState
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  // ── Section card ───────────────────────────────────────────────
-  Widget _buildSectionCard({
-    required BuildContext context,
-    required bool isDark,
-    required String title,
-    required Widget child,
-  }) {
-    return Container(
-      width:   double.infinity,
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color:        isDark ? CColors.darkContainer : CColors.white,
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
-        boxShadow: [
-          BoxShadow(
-            color:      Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset:     const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title.isNotEmpty) ...[
-            Text(title,
-                style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize:   15,
-                )),
-            const Divider(height: CSizes.lg),
-          ],
-          child,
         ],
       ),
     );

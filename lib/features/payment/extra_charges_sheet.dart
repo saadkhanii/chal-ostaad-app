@@ -1,16 +1,5 @@
 // lib/features/payment/extra_charges_sheet.dart
-//
-// A bottom sheet that lets either the client or the worker:
-//   • View all existing extra charges (with status badges)
-//   • Propose a new extra charge
-//   • Approve / reject charges proposed by the other party
-//
-// Usage:
-//   ExtraChargesSheet.show(
-//     context,
-//     jobId:       job.id!,
-//     currentRole: 'client',   // or 'worker'
-//   );
+
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -82,6 +71,9 @@ class _ExtraChargesSheetState extends State<ExtraChargesSheet> {
       );
       _amountController.clear();
       _descController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Extra charge proposed!'), backgroundColor: CColors.success),
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -99,6 +91,7 @@ class _ExtraChargesSheetState extends State<ExtraChargesSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mediaQuery = MediaQuery.of(context);
+    final bool isWorker = widget.currentRole == 'worker';
 
     return Container(
       height: mediaQuery.size.height * 0.82,
@@ -173,75 +166,99 @@ class _ExtraChargesSheetState extends State<ExtraChargesSheet> {
 
                     const SizedBox(height: CSizes.spaceBtwSections),
 
-                    // Add new charge
-                    Text('Request New Extra Charge',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize:   15,
-                            color: isDark
-                                ? CColors.textWhite
-                                : CColors.textPrimary)),
-                    const SizedBox(height: CSizes.sm),
-                    Container(
-                      padding:    const EdgeInsets.all(CSizes.md),
-                      decoration: BoxDecoration(
-                        color:        isDark
-                            ? CColors.darkContainer
-                            : CColors.lightGrey,
-                        borderRadius:
-                        BorderRadius.circular(CSizes.cardRadiusMd),
-                        border: Border.all(
-                            color: isDark
-                                ? CColors.darkerGrey
-                                : CColors.borderPrimary),
-                      ),
-                      child: Column(children: [
-                        TextField(
-                          controller:   _amountController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: 'Amount (Rs.)',
-                            prefixText: 'Rs. ',
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
+                    // ── Add new charge (only for worker) ──────
+                    if (isWorker) ...[
+                      Text('Request New Extra Charge',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize:   15,
+                              color: isDark
+                                  ? CColors.textWhite
+                                  : CColors.textPrimary)),
+                      const SizedBox(height: CSizes.sm),
+                      Container(
+                        padding:    const EdgeInsets.all(CSizes.md),
+                        decoration: BoxDecoration(
+                          color:        isDark
+                              ? CColors.darkContainer
+                              : CColors.lightGrey,
+                          borderRadius:
+                          BorderRadius.circular(CSizes.cardRadiusMd),
+                          border: Border.all(
+                              color: isDark
+                                  ? CColors.darkerGrey
+                                  : CColors.borderPrimary),
                         ),
-                        const SizedBox(height: CSizes.sm),
-                        TextField(
-                          controller: _descController,
-                          maxLines:   3,
-                          decoration: InputDecoration(
-                            labelText: 'Description',
-                            hintText:  'e.g. Extra materials needed',
-                            border:    OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                        const SizedBox(height: CSizes.sm),
-                        SizedBox(
-                          width:  double.infinity,
-                          child:  ElevatedButton.icon(
-                            onPressed: _isSaving ? null : _addCharge,
-                            icon:  const Icon(Icons.add_circle_outline),
-                            label: _isSaving
-                                ? const SizedBox(
-                                width:  16,
-                                height: 16,
-                                child:  CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white))
-                                : const Text('Add Charge'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: CColors.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
+                        child: Column(children: [
+                          TextField(
+                            controller:   _amountController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'Amount (Rs.)',
+                              prefixText: 'Rs. ',
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                           ),
+                          const SizedBox(height: CSizes.sm),
+                          TextField(
+                            controller: _descController,
+                            maxLines:   3,
+                            decoration: InputDecoration(
+                              labelText: 'Description',
+                              hintText:  'e.g. Extra materials needed',
+                              border:    OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                          const SizedBox(height: CSizes.sm),
+                          SizedBox(
+                            width:  double.infinity,
+                            child:  ElevatedButton.icon(
+                              onPressed: _isSaving ? null : _addCharge,
+                              icon:  const Icon(Icons.add_circle_outline),
+                              label: _isSaving
+                                  ? const SizedBox(
+                                  width:  16,
+                                  height: 16,
+                                  child:  CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white))
+                                  : const Text('Propose Charge'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: CColors.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                    BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ] else ...[
+                      // Client: info message that they can only approve
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: CColors.info.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: CColors.info.withValues(alpha: 0.3)),
                         ),
-                      ]),
-                    ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: CColors.info),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'You can approve or reject pending requests from the worker.',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },

@@ -51,6 +51,25 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
   final Set<String> _deletingIds = {};
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
 
+  // ── Safe nullable controller ────────────────────────────
+  ScrollController? _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Use provided controller or create our own
+    _scrollController = widget.scrollController ?? ScrollController();
+  }
+
+  @override
+  void dispose() {
+    // Only dispose if we created it (not provided by parent)
+    if (widget.scrollController == null) {
+      _scrollController?.dispose();
+    }
+    super.dispose();
+  }
+
   Color _getStatusColor(String status) {
     switch (status.trim().toLowerCase()) {
       case 'open': return CColors.success;
@@ -186,6 +205,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
       return Center(child: Text('job.login_to_view'.tr(), style: TextStyle(fontSize: isUrdu ? 16 : 14)));
     }
 
+    // Build the query once per filter change
     Query query = FirebaseFirestore.instance
         .collection('jobs')
         .where('clientId', isEqualTo: widget.clientId)
@@ -196,6 +216,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     }
 
     return StreamBuilder<QuerySnapshot>(
+      key: const ValueKey('jobs_list_stream'), // prevents full rebuild on data changes
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -226,36 +247,38 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
 
         final jobsWithLocation = allJobs.where((j) => j.hasLocation).toList();
 
-        return Stack(
-          children: [
-            ListView.builder(
-              controller: widget.scrollController,
-              padding: widget.padding ?? const EdgeInsets.all(CSizes.defaultSpace),
-              itemCount: itemCount,
-              itemBuilder: (context, index) {
-                final job = allJobs[index];
-                final bidCountAsync = ref.watch(bidCountProvider(job.id!));
-                return _buildJobCard(context, isDark, isUrdu, job, bidCountAsync);
-              },
-            ),
-            if (widget.showMapButton && jobsWithLocation.isNotEmpty)
-              Positioned(
-                bottom: 16,
-                right: 16,
-                child: FloatingActionButton.extended(
-                  heroTag: 'jobs_list_map',
-                  onPressed: () => _openMapView(allJobs),
-                  backgroundColor: CColors.primary,
-                  icon: const Icon(Icons.map_rounded, color: Colors.white),
-                  label: const Text('Map View', style: TextStyle(color: Colors.white)),
-                ),
+        return RepaintBoundary( // isolates rebuilds
+          child: Stack(
+            children: [
+              ListView.builder(
+                controller: _scrollController!,
+                physics: const ClampingScrollPhysics(), // ✅ prevents overscroll → no accidental refresh
+                padding: widget.padding ?? const EdgeInsets.all(CSizes.defaultSpace),
+                itemCount: itemCount,
+                itemBuilder: (context, index) {
+                  final job = allJobs[index];
+                  final bidCountAsync = ref.watch(bidCountProvider(job.id!));
+                  return _buildJobCard(context, isDark, isUrdu, job, bidCountAsync);
+                },
               ),
-          ],
+              if (widget.showMapButton && jobsWithLocation.isNotEmpty)
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: FloatingActionButton.extended(
+                    heroTag: 'jobs_list_map',
+                    onPressed: () => _openMapView(allJobs),
+                    backgroundColor: CColors.primary,
+                    icon: const Icon(Icons.map_rounded, color: Colors.white),
+                    label: const Text('Map View', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
   }
-
   Widget _buildJobCard(BuildContext context, bool isDark, bool isUrdu, JobModel job, AsyncValue<int> bidCountAsync) {
     final statusNorm = job.status.trim().toLowerCase();
     final isOpen = statusNorm == 'open' || statusNorm == 'cancelled';

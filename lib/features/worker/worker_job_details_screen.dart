@@ -1163,115 +1163,275 @@ class _WorkerJobDetailsScreenState
     final jobLatLng = LatLng(widget.job.latitude!, widget.job.longitude!);
     return AppCard(
       margin: EdgeInsets.zero,
+      bodyPadding: EdgeInsets.zero,
       headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
       headerTitle: const Text('Job Location', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 200,
-            decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-                border: Border.all(
-                    color: isDark ? CColors.darkerGrey : CColors.borderPrimary)),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(children: [
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: jobLatLng,
-                  initialZoom: 15.0,
-                  interactionOptions:
-                  const InteractionOptions(flags: InteractiveFlag.none),
-                ),
-                children: [
-                  _mapService.osmTileLayer(),
-                  _mapService.selectedPinLayer(jobLatLng),
-                ],
-              ),
-              Positioned(
-                bottom: 10,
-                right: 10,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    try {
-                      final pos = await _locationService.getCurrentPosition();
-                      await _mapService.openDirections(
-                        from: _locationService
-                            .latLngToGeoPoint(LatLng(pos.latitude, pos.longitude)),
-                        to: widget.job.location!,
-                        destinationLabel: widget.job.title,
-                      );
-                    } catch (e) {
-                      await _mapService.openDirections(
-                        from: widget.job.location!,
-                        to: widget.job.location!,
-                        destinationLabel: widget.job.title,
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.directions_rounded, size: 16),
-                  label: Text('job.get_directions'.tr(),
-                      style: TextStyle(fontSize: isUrdu ? 14 : 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    elevation: 3,
-                  ),
-                ),
-              ),
-            ]),
+      body: SizedBox(
+        height: 200,
+        width: double.infinity,
+        child: Stack(children: [
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: jobLatLng,
+              initialZoom: 15.0,
+              interactionOptions:
+              const InteractionOptions(flags: InteractiveFlag.none),
+            ),
+            children: [
+              _mapService.osmTileLayer(),
+              _mapService.selectedPinLayer(jobLatLng),
+            ],
           ),
-        ],
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                try {
+                  final pos = await _locationService.getCurrentPosition();
+                  await _mapService.openDirections(
+                    from: _locationService
+                        .latLngToGeoPoint(LatLng(pos.latitude, pos.longitude)),
+                    to: widget.job.location!,
+                    destinationLabel: widget.job.title,
+                  );
+                } catch (e) {
+                  await _mapService.openDirections(
+                    from: widget.job.location!,
+                    to: widget.job.location!,
+                    destinationLabel: widget.job.title,
+                  );
+                }
+              },
+              icon: const Icon(Icons.directions_rounded, size: 16),
+              label: Text('job.get_directions'.tr(),
+                  style: TextStyle(fontSize: isUrdu ? 14 : 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                elevation: 3,
+              ),
+            ),
+          ),
+        ]),
       ),
     );
   }
 
   Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
-    return AppCard(
-      margin: EdgeInsets.zero,
-      headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
-      headerTitle: Row(
+    // Build a stream to get latest charges
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('jobs')
+          .doc(widget.job.id)
+          .snapshots(),
+      builder: (context, snap) {
+        final data = snap.data?.data() as Map<String, dynamic>?;
+        final raw = data?['extraCharges'] as List<dynamic>? ?? [];
+        final charges = raw
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+
+        final approvedTotal = charges
+            .where((c) => c['status'] == 'approved')
+            .fold<double>(0, (s, c) => s + ((c['amount'] as num?)?.toDouble() ?? 0));
+
+        final pendingCount = charges
+            .where((c) => c['status'] == 'pending')
+            .length;
+
+        return AppCard(
+          margin: EdgeInsets.zero,
+          headerGradient: AppCardGradients.scheduled(), // or custom
+          headerTitle: Row(
+            children: [
+              const Icon(Icons.add_circle_outline, color: Colors.white, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Extra Charges',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const Spacer(),
+              if (pendingCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$pendingCount pending',
+                    style: const TextStyle(color: CColors.warning, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Summary
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Approved extras total',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? CColors.textWhite.withValues(alpha: 0.7) : CColors.darkGrey,
+                      fontSize: isUrdu ? 15 : 13,
+                    ),
+                  ),
+                  Text(
+                    'Rs. ${approvedTotal.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isUrdu ? 18 : 16,
+                      color: CColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              // List of charges
+              if (charges.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No extra charges have been proposed yet.'),
+                )
+              else
+                Column(
+                  children: charges.map((c) => _buildChargeListItem(c, isDark, isUrdu)).toList(),
+                ),
+              const SizedBox(height: 16),
+              // Request button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => ExtraChargesSheet.show(
+                    context,
+                    jobId: widget.job.id!,
+                    currentRole: 'worker',
+                  ),
+                  icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+                  label: Text(
+                    'Request Extra Charge',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: isUrdu ? 16 : 14),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                    ),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+// Helper to build a single charge list item
+  Widget _buildChargeListItem(Map<String, dynamic> charge, bool isDark, bool isUrdu) {
+    final amount = (charge['amount'] as num?)?.toDouble() ?? 0;
+    final desc = charge['description'] as String? ?? '';
+    final status = charge['status'] as String? ?? 'pending';
+    final requestedBy = charge['requestedBy'] as String? ?? '';
+
+    Color statusColor;
+    String statusLabel;
+    switch (status) {
+      case 'approved':
+        statusColor = CColors.success;
+        statusLabel = 'Approved';
+        break;
+      case 'rejected':
+        statusColor = CColors.error;
+        statusLabel = 'Rejected';
+        break;
+      default:
+        statusColor = CColors.warning;
+        statusLabel = 'Pending';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? CColors.darkContainer.withValues(alpha: 0.5) : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+      ),
+      child: Row(
         children: [
-          Icon(
-            _hasPendingExtras
-                ? Icons.warning_amber_rounded
-                : Icons.add_circle_outline,
-            color: _hasPendingExtras ? CColors.warning : Colors.white,
-            size: 22,
+          Container(
+            width: 4,
+            height: 32,
+            decoration: BoxDecoration(
+              color: statusColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           const SizedBox(width: 12),
-          Text(
-            _hasPendingExtras
-                ? 'Extra charge awaiting your approval'
-                : 'Extra Charges',
-            style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: Colors.white),
-          ),
-        ],
-      ),
-      body: Row(
-        children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('View, approve or propose additional charges',
-                    style: TextStyle(fontSize: 12, color: CColors.darkGrey)),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontSize: isUrdu ? 14 : 13,
+                    color: isDark ? CColors.textWhite : CColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Row(
+                  children: [
+                    Text(
+                      'Rs. ${amount.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: CColors.primary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '• $requestedBy',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? CColors.textWhite.withValues(alpha: 0.5) : CColors.darkGrey,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          TextButton(
-            onPressed: () => ExtraChargesSheet.show(
-              context,
-              jobId: widget.job.id!,
-              currentRole: 'worker',
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: statusColor.withValues(alpha: 0.3)),
             ),
-            child: const Text('Manage'),
+            child: Text(
+              statusLabel,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -2363,9 +2523,7 @@ class _WorkerJobDetailsScreenState
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildMiniMap(isDark, isUrdu),
                     ],
-                    if (_acceptedBid != null &&
-                        (_liveJobStatus == 'in-progress' ||
-                            _liveJobStatus == 'completed')) ...[
+                    if (_acceptedBid != null && _liveJobStatus == 'in-progress') ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildExtraChargesCard(isDark, isUrdu),
                     ],

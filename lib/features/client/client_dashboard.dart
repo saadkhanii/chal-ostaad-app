@@ -123,7 +123,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       if (userUid != null) {
         try {
           final userDoc =
-              await _firestore.collection('users').doc(userUid).get();
+          await _firestore.collection('users').doc(userUid).get();
           if (userDoc.exists && userDoc.data() != null) {
             final data = userDoc.data()!;
             final fetchedName = data['fullName'] ??
@@ -144,7 +144,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         String photoBase64 = '';
         try {
           final clientDoc =
-              await _firestore.collection('clients').doc(userUid).get();
+          await _firestore.collection('clients').doc(userUid).get();
           if (clientDoc.exists) {
             final info =
                 clientDoc.data()?['personalInfo'] as Map<String, dynamic>? ??
@@ -227,19 +227,19 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
           .get();
       final payments = paymentsSnap.docs
           .map((d) => PaymentModel.fromSnapshot(
-              d as DocumentSnapshot<Map<String, dynamic>>))
+          d as DocumentSnapshot<Map<String, dynamic>>))
           .toList();
 
       final paid = payments.where((p) => p.status == 'completed').toList();
       final pending =
-          payments.where((p) => p.status == 'pending' && p.isCash).toList();
+      payments.where((p) => p.status == 'pending' && p.isCash).toList();
 
       double totalSpent = paid.fold(0.0, (s, p) => s + p.amount) +
           pending.fold(0.0, (s, p) => s + p.amount);
       double stripeSpent =
-          paid.where((p) => p.isStripe).fold(0.0, (s, p) => s + p.amount);
+      paid.where((p) => p.isStripe).fold(0.0, (s, p) => s + p.amount);
       double cashSpent =
-          paid.where((p) => p.isCash).fold(0.0, (s, p) => s + p.amount);
+      paid.where((p) => p.isCash).fold(0.0, (s, p) => s + p.amount);
       double pendingAmt = pending.fold(0.0, (s, p) => s + p.amount);
 
       // Platform fees paid
@@ -256,8 +256,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       final monthStart = DateTime(now.year, now.month, 1);
       double thisMonth = paid
           .where((p) =>
-              p.completedAt != null &&
-              p.completedAt!.toDate().isAfter(monthStart))
+      p.completedAt != null &&
+          p.completedAt!.toDate().isAfter(monthStart))
           .fold(0, (s, p) => s + p.amount);
 
       return {
@@ -400,7 +400,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                     context,
                     'bid.recent_jobs'.tr(),
                     'common.view_all'.tr(),
-                    () => ref.read(clientPageIndexProvider.notifier).state = 0),
+                        () => ref.read(clientPageIndexProvider.notifier).state = 0),
                 const SizedBox(height: 10),
                 _buildJobFeed(limit: 3),
                 const SizedBox(height: 20),
@@ -459,10 +459,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                 const SizedBox(height: 12),
                 GestureDetector(
                   onTap: () =>
-                      ref.read(clientPageIndexProvider.notifier).state = 1,
+                  ref.read(clientPageIndexProvider.notifier).state = 1,
                   child: Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20)),
@@ -494,7 +494,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                 right: 70,
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   decoration: BoxDecoration(
                       color: CColors.secondary.withValues(alpha: 0.85),
                       borderRadius: BorderRadius.circular(20)),
@@ -557,14 +557,14 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         return Row(
           children: items
               .map((item) => Expanded(
-                      child: _miniStatCard(
-                    context,
-                    isDark,
-                    label: item['label'] as String,
-                    value: item['value'] as String,
-                    icon: item['icon'] as IconData,
-                    color: item['color'] as Color,
-                  )))
+              child: _miniStatCard(
+                context,
+                isDark,
+                label: item['label'] as String,
+                value: item['value'] as String,
+                icon: item['icon'] as IconData,
+                color: item['color'] as Color,
+              )))
               .toList(),
         );
       },
@@ -572,14 +572,15 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
   }
 
   Widget _miniStatCard(
-    BuildContext context,
-    bool isDark, {
-    required String label,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
+      BuildContext context,
+      bool isDark, {
+        required String label,
+        required String value,
+        required IconData icon,
+        required Color color,
+      }) {
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.symmetric(horizontal: 4),
       bodyPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       elevation: isDark ? 0 : 2,
@@ -656,6 +657,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         }
 
         return AppCard(
+          showTopBorder: true, // ADDED
           elevation: isDark ? 0 : 2,
           margin: EdgeInsets.zero,
           bodyPadding: const EdgeInsets.all(16),
@@ -693,14 +695,14 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
   }
 
   Widget _spendRow(
-    BuildContext context,
-    bool isDark, {
-    required IconData icon,
-    required Color color,
-    required String label,
-    required String value,
-    bool highlight = false,
-  }) {
+      BuildContext context,
+      bool isDark, {
+        required IconData icon,
+        required Color color,
+        required String label,
+        required String value,
+        bool highlight = false,
+      }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(children: [
@@ -745,24 +747,25 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
               child: Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          ));
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(),
+              ));
         }
 
         final payments = snap.data ?? [];
         if (payments.isEmpty) {
           return AppCard(
+            showTopBorder: true, // ADDED
             margin: EdgeInsets.zero,
             elevation: 0,
             bodyPadding: const EdgeInsets.all(CSizes.lg),
             body: Center(
                 child: Column(children: [
-              Icon(Icons.receipt_long_outlined, size: 40, color: CColors.grey),
-              const SizedBox(height: 8),
-              const Text('No payments yet',
-                  style: TextStyle(color: CColors.darkGrey)),
-            ])),
+                  Icon(Icons.receipt_long_outlined, size: 40, color: CColors.grey),
+                  const SizedBox(height: 8),
+                  const Text('No payments yet',
+                      style: TextStyle(color: CColors.darkGrey)),
+                ])),
           );
         }
 
@@ -784,6 +787,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
     final icon = p.isCash ? Icons.payments_outlined : Icons.credit_card_rounded;
 
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.only(bottom: CSizes.sm),
       elevation: isDark ? 0 : 1,
       bodyPadding: const EdgeInsets.all(CSizes.md),
@@ -800,22 +804,22 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         const SizedBox(width: 12),
         Expanded(
             child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(p.jobTitle,
-                style:
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p.jobTitle,
+                    style:
                     const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 3),
-            Row(children: [
-              _pill(p.methodDisplayName, color),
-              const SizedBox(width: 6),
-              _pill(p.statusDisplayName,
-                  isCompleted ? CColors.success : CColors.warning),
-            ]),
-          ],
-        )),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 3),
+                Row(children: [
+                  _pill(p.methodDisplayName, color),
+                  const SizedBox(width: 6),
+                  _pill(p.statusDisplayName,
+                      isCompleted ? CColors.success : CColors.warning),
+                ]),
+              ],
+            )),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(_formatCurrency(p.amount),
               style: TextStyle(
@@ -843,8 +847,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
     );
   }
 
-  // ── Stats grid (removed, replaced by _buildStatsRow inline) ─────
-
   // ── Job distribution chart (existing, kept) ────────────────────
 
   Widget _buildJobDistributionChart(BuildContext context) {
@@ -862,6 +864,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
 
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return AppCard(
+            showTopBorder: true, // ADDED
             elevation: isDark ? 0 : 2,
             margin: EdgeInsets.zero,
             bodyPadding: const EdgeInsets.all(CSizes.md),
@@ -886,7 +889,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                         value: inProgress.toDouble(),
                         color: CColors.warning,
                         title:
-                            '${((inProgress / total) * 100).toStringAsFixed(0)}%',
+                        '${((inProgress / total) * 100).toStringAsFixed(0)}%',
                         radius: 40,
                         titleStyle: const TextStyle(
                             color: Colors.white,
@@ -897,7 +900,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
                         value: completed.toDouble(),
                         color: CColors.success,
                         title:
-                            '${((completed / total) * 100).toStringAsFixed(0)}%',
+                        '${((completed / total) * 100).toStringAsFixed(0)}%',
                         radius: 40,
                         titleStyle: const TextStyle(
                             color: Colors.white,
@@ -946,6 +949,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
 
   Widget _buildEmptyChart(BuildContext context) {
     return AppCard(
+      showTopBorder: true, // ADDED
       elevation: 0,
       margin: EdgeInsets.zero,
       bodyPadding: const EdgeInsets.all(CSizes.md),
@@ -953,17 +957,17 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         height: 130,
         child: Center(
             child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.pie_chart_outline, size: 40, color: CColors.grey),
-            const SizedBox(height: 8),
-            Text('No job data yet',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: CColors.grey)),
-          ],
-        )),
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.pie_chart_outline, size: 40, color: CColors.grey),
+                const SizedBox(height: 8),
+                Text('No job data yet',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: CColors.grey)),
+              ],
+            )),
       ),
     );
   }
@@ -1029,6 +1033,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         statusText = job.status;
     }
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.only(bottom: CSizes.md),
       elevation: 2,
       onTap: () => _showJobDetails(job),
@@ -1154,6 +1159,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         statusIcon = Icons.flag_rounded;
     }
     return AppCard(
+      showTopBorder: true, // ADDED
       margin: const EdgeInsets.only(bottom: CSizes.sm),
       elevation: isDark ? 0 : 1,
       onTap: () => Navigator.pushNamed(context, AppRoutes.disputes,
@@ -1169,23 +1175,23 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
         const SizedBox(width: 12),
         Expanded(
             child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(dispute.jobTitle,
-                style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: isUrdu ? 14 : 13,
-                    color: isDark ? CColors.textWhite : CColors.textPrimary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
-            Text(dispute.reason,
-                style: TextStyle(
-                    fontSize: isUrdu ? 12 : 11, color: CColors.darkGrey),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          ],
-        )),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(dispute.jobTitle,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: isUrdu ? 14 : 13,
+                        color: isDark ? CColors.textWhite : CColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(dispute.reason,
+                    style: TextStyle(
+                        fontSize: isUrdu ? 12 : 11, color: CColors.darkGrey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            )),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
@@ -1209,10 +1215,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       height: 150,
       child: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const CircularProgressIndicator(color: CColors.primary),
-        const SizedBox(height: CSizes.md),
-        Text('common.loading_jobs'.tr()),
-      ])));
+            const CircularProgressIndicator(color: CColors.primary),
+            const SizedBox(height: CSizes.md),
+            Text('common.loading_jobs'.tr()),
+          ])));
 
   Widget _buildEmptyState(String message) => Container(
       height: 150,
@@ -1224,15 +1230,15 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       ),
       child: Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.work_outline, size: 48, color: CColors.grey),
-        const SizedBox(height: CSizes.md),
-        Text(message,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium!
-                .copyWith(color: CColors.textSecondary),
-            textAlign: TextAlign.center),
-      ])));
+            Icon(Icons.work_outline, size: 48, color: CColors.grey),
+            const SizedBox(height: CSizes.md),
+            Text(message,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium!
+                    .copyWith(color: CColors.textSecondary),
+                textAlign: TextAlign.center),
+          ])));
 
   // ── Build ─────────────────────────────────────────────────────────
 
@@ -1267,6 +1273,8 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       endDrawer: !isUrdu ? const DashboardDrawer() : null,
       drawer: isUrdu ? const DashboardDrawer() : null,
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
+      extendBody: true,
+      extendBodyBehindAppBar: false,
       body: IndexedStack(index: currentPageIndex, children: _getPages()),
       bottomNavigationBar: CurvedNavBar(
         currentIndex: currentPageIndex,

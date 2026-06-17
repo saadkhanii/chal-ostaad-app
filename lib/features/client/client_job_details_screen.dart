@@ -14,13 +14,16 @@ import 'package:intl/intl.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/models/bid_model.dart';
+import '../../shared/widgets/app_card.dart';
 import '../client/post_job_screen.dart' show PostJobScreen;
 import '../../core/models/job_model.dart';
 import '../../core/services/bid_service.dart';
 import '../../core/services/chat_service.dart';
 import '../../core/services/job_service.dart';
 import '../../core/services/map_service.dart';
+
 import '../../shared/widgets/common_header.dart';
+import '../../shared/widgets/confirmation_dialog.dart';
 import '../chat/chat_screen.dart';
 import '../../core/services/review_service.dart';
 import '../review/submit_review_dialog.dart';
@@ -293,20 +296,14 @@ class _ClientJobDetailsScreenState
   }
 
   Future<void> _instantLockBid() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Acceptance'),
-        content: const Text('Are you sure you want to accept this bid immediately without waiting for the grace period? This action cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.primary),
-            child: const Text('Confirm & Lock'),
-          ),
-        ],
-      ),
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Confirm Acceptance',
+      content: 'Are you sure you want to accept this bid immediately without waiting for the grace period? This action cannot be undone.',
+      confirmText: 'Confirm & Lock',
+      cancelText: 'common.cancel'.tr(),
+      isDestructive: false,
+      onConfirm: () => Navigator.pop(context, true),
     );
     if (confirmed != true) return;
     try {
@@ -328,16 +325,14 @@ class _ClientJobDetailsScreenState
   }
 
   Future<void> _cancelDuringGrace() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Job?'),
-        content: const Text('You have 60 seconds to cancel the accepted bid. Are you sure?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('common.cancel'.tr())),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: CColors.error), child: const Text('Yes, Cancel')),
-        ],
-      ),
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Cancel Job?',
+      content: 'You have 60 seconds to cancel the accepted bid. Are you sure?',
+      confirmText: 'Yes, Cancel',
+      cancelText: 'common.cancel'.tr(),
+      isDestructive: true,
+      onConfirm: () => Navigator.pop(context, true),
     );
     if (confirmed != true) return;
     try {
@@ -355,20 +350,14 @@ class _ClientJobDetailsScreenState
   }
 
   Future<void> _markWorkerArrived() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Worker Arrived?'),
-        content: const Text('Confirm that the worker has reached the job location. The job will move to In Progress.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not Yet')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.success),
-            child: const Text('Yes, Arrived', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Worker Arrived?',
+      content: 'Confirm that the worker has reached the job location. The job will move to In Progress.',
+      confirmText: 'Yes, Arrived',
+      cancelText: 'Not Yet',
+      isDestructive: false,
+      onConfirm: () => Navigator.pop(context, true),
     );
     if (confirmed != true || !mounted) return;
     try {
@@ -444,32 +433,94 @@ class _ClientJobDetailsScreenState
   // ── Cancel job (client side, for non-grace states) ─────────────
   Future<void> _cancelJob() async {
     final reasonController = TextEditingController();
-    final confirmed = await showDialog<bool>(
+
+    // Capture optional reason first
+    final reasonEntered = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Job?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Are you sure you want to cancel this job? This action cannot be undone.'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(labelText: 'Reason (optional)', border: OutlineInputBorder()),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: IntrinsicHeight(
+          child: AppCard(
+            showTopBorder: false,
+            margin: EdgeInsets.zero,
+            borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+            headerGradient: LinearGradient(
+              colors: [CColors.error, CColors.error.withValues(alpha: 0.8)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
-            child: const Text('Cancel Job', style: TextStyle(color: Colors.white)),
+            headerPadding: const EdgeInsets.symmetric(horizontal: CSizes.md, vertical: 10),
+            headerTitle: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text('Cancel Job?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+              ],
+            ),
+            headerTrailing: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 18),
+              onPressed: () => Navigator.pop(ctx, false),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            bodyPadding: const EdgeInsets.all(CSizes.md),
+            body: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Are you sure you want to cancel this job? This action cannot be undone.',
+                  style: TextStyle(fontSize: 13, color: Theme.of(ctx).brightness == Brightness.dark ? CColors.lightGrey : CColors.textPrimary, height: 1.4),
+                ),
+                const SizedBox(height: CSizes.md),
+                TextField(
+                  controller: reasonController,
+                  decoration: InputDecoration(
+                    labelText: 'Reason (optional)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: CSizes.md),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(60, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        foregroundColor: CColors.error,
+                        side: const BorderSide(color: CColors.error, width: 1.2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+                      ),
+                      child: Text('common.cancel'.tr(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                    ),
+                    const SizedBox(width: CSizes.xs),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CColors.error,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(70, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusMd)),
+                      ),
+                      child: const Text('Cancel Job', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (reasonEntered != true || !mounted) return;
     setState(() => _isCancelling = true);
     try {
       await _bidService.cancelJob(
@@ -502,20 +553,14 @@ class _ClientJobDetailsScreenState
 
   // ── Delete job (client only, only when open) ────────────────────────
   Future<void> _deleteJob() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('job.delete_job'.tr()),
-        content: Text('job.delete_job_confirm'.tr()),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.error),
-            child: Text('common.delete'.tr(), style: const TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'job.delete_job'.tr(),
+      content: 'job.delete_job_confirm'.tr(),
+      confirmText: 'common.delete'.tr(),
+      cancelText: 'common.cancel'.tr(),
+      isDestructive: true,
+      onConfirm: () => Navigator.pop(context, true),
     );
     if (confirmed != true || !mounted) return;
     setState(() => _isDeleting = true);
@@ -651,14 +696,12 @@ class _ClientJobDetailsScreenState
   Widget _buildStatusCard(bool isDark, bool isUrdu) {
     final steps = _getStatusSteps();
     final currentIndex = _getCurrentStepIndex();
-    return Container(
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color: isDark ? CColors.darkContainer : CColors.white,
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(color: isDark ? CColors.darkerGrey : CColors.borderPrimary),
-      ),
-      child: Column(
+
+    return AppCard(
+      margin: EdgeInsets.zero,
+      showTopBorder: true,
+      bodyPadding: const EdgeInsets.all(CSizes.md),
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -1178,42 +1221,169 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
-    return Container(
-      padding: const EdgeInsets.all(CSizes.md),
-      decoration: BoxDecoration(
-        color: isDark ? CColors.darkContainer : CColors.white,
-        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
-        border: Border.all(
-          color: _hasPendingExtras ? CColors.warning.withValues(alpha: 0.5) : (isDark ? CColors.darkerGrey : CColors.borderPrimary),
-        ),
-      ),
-      child: Row(children: [
-        Icon(
-          _hasPendingExtras ? Icons.warning_amber_rounded : Icons.add_circle_outline,
-          color: _hasPendingExtras ? CColors.warning : CColors.primary,
-          size: 22,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              _hasPendingExtras ? 'Extra charge awaiting your approval' : 'Extra Charges',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: _hasPendingExtras ? CColors.warning : (isDark ? CColors.textWhite : CColors.textPrimary),
-              ),
+  Widget _buildExtraChargesButton(bool isDark, bool isUrdu) {
+    return SizedBox(
+      width: double.infinity,
+      child: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('jobs')
+            .doc(widget.job.id)
+            .snapshots(),
+        builder: (context, snap) {
+          final data = snap.data?.data() as Map<String, dynamic>?;
+          final raw = data?['extraCharges'] as List<dynamic>? ?? [];
+          final pendingCount = raw
+              .where((e) => (e as Map)['status'] == 'pending' && (e as Map)['requestedBy'] == 'worker')
+              .length;
+          return OutlinedButton.icon(
+            onPressed: () => ExtraChargesSheet.show(
+              context,
+              jobId: widget.job.id!,
+              currentRole: 'client',
             ),
-            const Text('View, approve or propose additional charges', style: TextStyle(fontSize: 12, color: CColors.darkGrey)),
-          ]),
-        ),
-        TextButton(
-          onPressed: () => ExtraChargesSheet.show(context, jobId: widget.job.id!, currentRole: 'client'),
-          child: const Text('Manage'),
-        ),
-      ]),
+            icon: Badge(
+              label: Text('$pendingCount'),
+              isLabelVisible: pendingCount > 0,
+              backgroundColor: CColors.warning,
+              textColor: Colors.white,
+              child: const Icon(Icons.add_circle_outline, size: 20, color: CColors.primary),
+            ),
+            label: Text(
+              'Extra Charges${pendingCount > 0 ? ' ($pendingCount pending)' : ''}',
+              style: TextStyle(fontSize: isUrdu ? 16 : 14, fontWeight: FontWeight.w500),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: CColors.primary.withValues(alpha: 0.5)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(CSizes.borderRadiusLg)),
+            ),
+          );
+        },
+      ),
     );
+  }
+
+  Widget _buildPendingChargeTile(Map<String, dynamic> charge, bool isDark, bool isUrdu) {
+    final id = charge['id'] as String? ?? '';
+    final amount = (charge['amount'] as num?)?.toDouble() ?? 0;
+    final desc = charge['description'] as String? ?? '';
+    final requestedBy = charge['requestedBy'] as String? ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: CColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: CColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Rs. ${amount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: CColors.primary,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: CColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Pending',
+                  style: TextStyle(
+                    color: CColors.warning,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            desc,
+            style: TextStyle(
+              fontSize: isUrdu ? 14 : 13,
+              color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _respondToExtraCharge(id, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: CColors.error,
+                    side: const BorderSide(color: CColors.error),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: Text(
+                    'Reject',
+                    style: TextStyle(fontSize: isUrdu ? 14 : 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _respondToExtraCharge(id, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.success,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: Text(
+                    'Approve',
+                    style: TextStyle(fontSize: isUrdu ? 14 : 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _respondToExtraCharge(String chargeId, bool approved) async {
+    try {
+      await _paymentService.respondToExtraCharge(
+        jobId: widget.job.id!,
+        chargeId: chargeId,
+        approved: approved,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(approved ? 'Extra charge approved!' : 'Extra charge rejected.'),
+          backgroundColor: approved ? CColors.success : CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
   }
 
   Widget _buildMiniMap(bool isDark) {
@@ -1314,7 +1484,7 @@ class _ClientJobDetailsScreenState
     );
   }
 
-  // ✅ NEW: Worker Arrived button — only shows when job is active/scheduled and not yet arrived
+  // NEW: Worker Arrived button — only shows when job is active/scheduled and not yet arrived
   Widget _buildWorkerArrivedButton(bool isDark, bool isUrdu) {
     return SizedBox(
       width: double.infinity,
@@ -1341,6 +1511,9 @@ class _ClientJobDetailsScreenState
     final acceptedBid = _acceptedBidForPayment;
     if (acceptedBid == null) return const SizedBox.shrink();
 
+    final baseAmount = acceptedBid.amount;
+    final totalAmount = baseAmount + _approvedExtrasTotal; // ✅ includes approved extras
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1355,28 +1528,40 @@ class _ClientJobDetailsScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            const Icon(Icons.payment_rounded, color: CColors.primary, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Payment Due',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: isUrdu ? 16 : 14,
-                  color: isDark ? CColors.textWhite : CColors.textPrimary,
+          Row(
+            children: [
+              const Icon(Icons.payment_rounded, color: CColors.primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Payment Due',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isUrdu ? 16 : 14,
+                    color: isDark ? CColors.textWhite : CColors.textPrimary,
+                  ),
                 ),
               ),
-            ),
-            Text(
-              'Rs. ${acceptedBid.amount.toStringAsFixed(0)}',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: CColors.primary,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Rs. ${totalAmount.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: CColors.primary,
+                    ),
+                  ),
+                  if (_approvedExtrasTotal > 0)
+                    Text(
+                      'Base: Rs. ${baseAmount.toStringAsFixed(0)} + Extras: Rs. ${_approvedExtrasTotal.toStringAsFixed(0)}',
+                      style: TextStyle(fontSize: 10, color: CColors.darkGrey),
+                    ),
+                ],
               ),
-            ),
-          ]),
+            ],
+          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -1384,7 +1569,7 @@ class _ClientJobDetailsScreenState
               onPressed: () => _openPaymentScreen(acceptedBid),
               icon: const Icon(Icons.credit_card_rounded, size: 18),
               label: Text(
-                'Pay Now',
+                'Pay Now — Rs. ${totalAmount.toStringAsFixed(0)}',
                 style: TextStyle(fontSize: isUrdu ? 16 : 14, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
@@ -1400,6 +1585,7 @@ class _ClientJobDetailsScreenState
       ),
     );
   }
+
   // Mark complete button — shows when in-progress and job is paid
   Widget _buildMarkCompleteButton(bool isDark, bool isUrdu) {
     return SizedBox(
@@ -1731,9 +1917,9 @@ class _ClientJobDetailsScreenState
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildProgressRequestBanner(isDark, isUrdu),
                     ],
-                    if (_jobStatus == 'in-progress' || _jobStatus == 'completed') ...[
+                    if (_jobStatus == 'in-progress' && _acceptedWorkerId != null) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
-                      _buildExtraChargesCard(isDark, isUrdu),
+                      _buildExtraChargesButton(isDark, isUrdu),
                     ],
                     if (widget.job.hasLocation) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),

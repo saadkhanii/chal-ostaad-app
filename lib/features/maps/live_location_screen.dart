@@ -535,7 +535,7 @@ class _WorkerLiveLocationScreenState extends State<WorkerLiveLocationScreen> {
             left: 0,
             right: 0,
             child: CommonHeader(
-              title: 'Live Location: $_displayName',
+              title: 'Live Location:\n $_displayName',
               showBackButton: true,
             ),
           ),

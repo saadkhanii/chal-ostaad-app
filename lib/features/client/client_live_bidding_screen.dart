@@ -12,7 +12,9 @@ import '../../../core/models/job_model.dart';
 import '../../../core/services/bid_service.dart';
 import '../../../core/services/chat_service.dart';
 import '../../../shared/widgets/common_header.dart';
+
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/confirmation_dialog.dart';
 import '../chat/chat_screen.dart';
 import '../profile/worker_profile_preview_sheet.dart';
 
@@ -94,35 +96,18 @@ class _ClientLiveBiddingScreenState extends ConsumerState<ClientLiveBiddingScree
   }
 
   Future<void> _acceptBid(BidModel bid) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Accept Bid?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Accept this bid for Rs. ${bid.amount.toStringAsFixed(0)}?'),
-            const SizedBox(height: 12),
-            const Text('You will have 60 seconds to cancel if you change your mind.'),
-            const SizedBox(height: 12),
-            Text(
-              widget.job.isUrgent
-                  ? 'This is an urgent job. After 60 seconds, the worker can start immediately.'
-                  : 'After 60 seconds, the job will be scheduled and you can negotiate the start time.',
-              style: TextStyle(fontSize: 12, color: CColors.darkGrey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('common.cancel'.tr())),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: CColors.primary),
-            child: Text('bid.accept'.tr(), style: const TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    final urgencyNote = widget.job.isUrgent
+        ? 'This is an urgent job. After 60 seconds, the worker can start immediately.'
+        : 'After 60 seconds, the job will be scheduled and you can negotiate the start time.';
+
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Accept Bid?',
+      content: 'Accept this bid for Rs. ${bid.amount.toStringAsFixed(0)}?\n\nYou will have 60 seconds to cancel if you change your mind.\n\n$urgencyNote',
+      confirmText: 'bid.accept'.tr(),
+      cancelText: 'common.cancel'.tr(),
+      isDestructive: false,
+      onConfirm: () => Navigator.pop(context, true),
     );
     if (confirmed != true) return;
 

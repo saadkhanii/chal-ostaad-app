@@ -146,27 +146,28 @@ class PaymentService {
   }
 
   /// Approve or reject an extra charge by its id.
-  /// We rewrite the entire extraCharges array because Firestore doesn't
-  /// support updating individual array-element fields.
+  /// Uses a transaction to avoid concurrent modification issues.
   Future<void> respondToExtraCharge({
     required String jobId,
     required String chargeId,
-    required bool   approved,
+    required bool approved,
   }) async {
-    final snap = await _firestore.collection('jobs').doc(jobId).get();
-    final raw  = snap.data()?['extraCharges'] as List<dynamic>? ?? [];
-
-    final updated = raw.map((e) {
-      final m = Map<String, dynamic>.from(e as Map);
-      if (m['id'] == chargeId) {
-        m['status'] = approved ? 'approved' : 'rejected';
-      }
-      return m;
-    }).toList();
-
-    await _firestore.collection('jobs').doc(jobId).update({
-      'extraCharges': updated,
-      'updatedAt':    FieldValue.serverTimestamp(),
+    final docRef = _firestore.collection('jobs').doc(jobId);
+    await _firestore.runTransaction((transaction) async {
+      final snap = await transaction.get(docRef);
+      if (!snap.exists) return;
+      final raw = snap.data()?['extraCharges'] as List<dynamic>? ?? [];
+      final updated = raw.map((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        if (m['id'] == chargeId) {
+          m['status'] = approved ? 'approved' : 'rejected';
+        }
+        return m;
+      }).toList();
+      transaction.update(docRef, {
+        'extraCharges': updated,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
