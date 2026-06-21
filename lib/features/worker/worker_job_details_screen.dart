@@ -108,6 +108,10 @@ class _WorkerJobDetailsScreenState
   Timer? _locationUpdateTimer;
   bool _isSharingActive = false;
 
+  // ── Time proposal rejection handling ─────────────────────────────
+  bool _showRejectedProposalOptions = false;
+  bool _isRespondingToRejectedProposal = false;
+
   @override
   void initState() {
     super.initState();
@@ -162,6 +166,15 @@ class _WorkerJobDetailsScreenState
         _scheduledStartTime = scheduledAt;
         _scheduledWorkerDeadline = deadline;
         _locationSharingEnabled = sharingEnabled;
+
+        // If the worker's proposal was rejected, show the decision banner
+        if (timeProposal != null &&
+            timeProposal['proposedBy'] == 'worker' &&
+            timeProposal['status'] == 'rejected') {
+          _showRejectedProposalOptions = true;
+        } else {
+          _showRejectedProposalOptions = false;
+        }
       });
 
       // Grace period expiry fallback
@@ -243,7 +256,6 @@ class _WorkerJobDetailsScreenState
       return;
     }
     _isSharingActive = true;
-    // Explicitly enable live sharing flag in worker doc
     await _workerService.disableLiveSharing(widget.workerId); // clear false first
     await _updateWorkerLiveLocation(); // this will set isLiveSharing = true
     _locationUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -256,8 +268,7 @@ class _WorkerJobDetailsScreenState
     if (!_isSharingActive) return;
     try {
       final pos = await _locationService.getCurrentPosition();
-      // heading is available on Position object
-      final heading = pos.heading; // may be -1 if not available
+      final heading = pos.heading;
       final accuracy = pos.accuracy;
       await _workerService.updateLiveLocation(
         widget.workerId,
@@ -276,12 +287,11 @@ class _WorkerJobDetailsScreenState
     _locationUpdateTimer?.cancel();
     _locationUpdateTimer = null;
     _isSharingActive = false;
-    // Tell Firestore sharing has stopped
     _workerService.disableLiveSharing(widget.workerId);
     debugPrint('Stopped live location updates');
   }
 
-  // ── Helper methods (unchanged except for stopping updates on cancel/complete) ──
+  // ── Helper methods ──────────────────────────────────────────────────
 
   Future<void> _loadPendingPayment() async {
     if (widget.job.id == null) return;
@@ -508,7 +518,6 @@ class _WorkerJobDetailsScreenState
           backgroundColor: CColors.success,
         ));
         setState(() => _liveJobStatus = 'in-progress');
-        // The job document will have locationSharingEnabled = true, so the subscription will start updates.
       }
     } catch (e) {
       if (mounted) {
@@ -607,6 +616,82 @@ class _WorkerJobDetailsScreenState
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── Handling rejected proposal: continue or cancel ──────────────────
+  Future<void> _continueWithOriginalTime() async {
+    setState(() => _isRespondingToRejectedProposal = true);
+    try {
+      // Clear the proposal from job doc (or set to ignored)
+      await _bidService.clearTimeProposal(widget.job.id!);
+      if (mounted) {
+        setState(() {
+          _pendingTimeProposal = null;
+          _showRejectedProposalOptions = false;
+          _isRespondingToRejectedProposal = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You will continue with the original scheduled time.'),
+          backgroundColor: CColors.info,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRespondingToRejectedProposal = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+        ));
+      }
+    }
+  }
+
+  Future<void> _cancelJobAfterRejectedProposal() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Job?'),
+        content: const Text(
+          'If you cancel now, the job will be reopened as urgent (if less than 2 hours remain) and you will be banned from rebidding. Do you want to proceed?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: CColors.error), child: const Text('Yes, Cancel')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _isRespondingToRejectedProposal = true);
+    try {
+      // Check remaining time until original scheduledAt
+      final now = DateTime.now();
+      final originalStart = widget.job.scheduledAt!.toDate();
+      final remaining = originalStart.difference(now);
+      final makeUrgent = remaining.inHours < 2; // less than 2 hours
+
+      await _bidService.workerCancelJob(
+        widget.job.id!,
+        widget.workerId,
+        reason: 'Cancelled after rejected time proposal',
+        makeUrgent: makeUrgent, // this flag will be used by service
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(makeUrgent ? 'Job reopened as urgent.' : 'Job cancelled.'),
+          backgroundColor: CColors.warning,
+        ));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isRespondingToRejectedProposal = false);
     }
   }
 
@@ -824,7 +909,7 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── Status card, job card, etc. (unchanged) ──
+  // ── Status card, job card, etc. ──
 
   Color _getStatusColor(String s) {
     switch (s) {
@@ -1222,7 +1307,6 @@ class _WorkerJobDetailsScreenState
   }
 
   Widget _buildExtraChargesCard(bool isDark, bool isUrdu) {
-    // Build a stream to get latest charges
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('jobs')
@@ -1245,7 +1329,7 @@ class _WorkerJobDetailsScreenState
 
         return AppCard(
           margin: EdgeInsets.zero,
-          headerGradient: AppCardGradients.scheduled(), // or custom
+          headerGradient: AppCardGradients.scheduled(),
           headerTitle: Row(
             children: [
               const Icon(Icons.add_circle_outline, color: Colors.white, size: 22),
@@ -1272,7 +1356,6 @@ class _WorkerJobDetailsScreenState
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Summary
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1295,7 +1378,6 @@ class _WorkerJobDetailsScreenState
                 ],
               ),
               const Divider(height: 24),
-              // List of charges
               if (charges.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
@@ -1306,7 +1388,6 @@ class _WorkerJobDetailsScreenState
                   children: charges.map((c) => _buildChargeListItem(c, isDark, isUrdu)).toList(),
                 ),
               const SizedBox(height: 16),
-              // Request button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -1338,7 +1419,6 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-// Helper to build a single charge list item
   Widget _buildChargeListItem(Map<String, dynamic> charge, bool isDark, bool isUrdu) {
     final amount = (charge['amount'] as num?)?.toDouble() ?? 0;
     final desc = charge['description'] as String? ?? '';
@@ -1531,6 +1611,75 @@ class _WorkerJobDetailsScreenState
           ),
         ]),
       ]),
+    );
+  }
+
+  // ── New: Rejected proposal banner ─────────────────────────────────────
+  Widget _buildRejectedProposalBanner(bool isDark, bool isUrdu) {
+    if (!_showRejectedProposalOptions) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color: CColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: CColors.error.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: CColors.error, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Your proposed time was rejected',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: CColors.error,
+                  fontSize: isUrdu ? 16 : 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'The client did not accept your new start time. You can either continue with the original scheduled time or cancel the job.',
+            style: TextStyle(
+              fontSize: isUrdu ? 13 : 12,
+              color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isRespondingToRejectedProposal ? null : _continueWithOriginalTime,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: CColors.primary),
+                  ),
+                  child: _isRespondingToRejectedProposal
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Continue with original time'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _isRespondingToRejectedProposal ? null : _cancelJobAfterRejectedProposal,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _isRespondingToRejectedProposal
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Cancel Job'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -2475,10 +2624,13 @@ class _WorkerJobDetailsScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
 
+    // Show scheduled card only if not urgent, status is scheduled, start time exists,
+    // worker is accepted, and proposal is NOT rejected.
     bool showScheduledCard = !widget.job.isUrgent &&
         _liveJobStatus == 'scheduled' &&
         _scheduledStartTime != null &&
-        _acceptedBid != null;
+        _acceptedBid != null &&
+        !_showRejectedProposalOptions; // ← hide when proposal rejected
 
     bool showUrgentCard = widget.job.isUrgent &&
         _liveJobStatus == 'active' &&
@@ -2487,7 +2639,17 @@ class _WorkerJobDetailsScreenState
         DateTime.now().isBefore(_workerStartDeadline!);
 
     bool showCashConfirm = _pendingPaymentId != null && _liveJobStatus == 'in-progress';
-    bool showProposeTimeButton = _liveJobStatus == 'scheduled' && _acceptedBid != null && !widget.job.isUrgent;
+
+    // Show propose button only if scheduled, accepted, NOT urgent, and proposal NOT rejected.
+    bool showProposeTimeButton = _liveJobStatus == 'scheduled' &&
+        _acceptedBid != null &&
+        !widget.job.isUrgent &&
+        !_showRejectedProposalOptions;
+
+    // Check if worker already has a pending proposal (so we can show an info message)
+    bool hasWorkerPendingProposal = _pendingTimeProposal != null &&
+        _pendingTimeProposal!['proposedBy'] == 'worker' &&
+        _pendingTimeProposal!['status'] == 'pending';
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -2511,54 +2673,110 @@ class _WorkerJobDetailsScreenState
                     _buildJobDetailsCard(isDark, isUrdu),
                     const SizedBox(height: CSizes.spaceBtwItems),
                     _buildStatusCard(isDark, isUrdu),
+
+                    // --- Rejected proposal banner (worker side) ---
+                    if (_showRejectedProposalOptions) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildRejectedProposalBanner(isDark, isUrdu),
+                    ],
+
+                    // --- Scheduled timer card (only if not rejected) ---
                     if (showScheduledCard) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildScheduledStartCard(isDark, isUrdu),
+
+                      // --- Propose New Time button directly under timer ---
+                      if (showProposeTimeButton && !hasWorkerPendingProposal) ...[
+                        const SizedBox(height: CSizes.spaceBtwItems),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _proposeNewTime,
+                            icon: const Icon(Icons.event_available_rounded, size: 20),
+                            label: Text(
+                              'Propose New Time',
+                              style: TextStyle(
+                                fontSize: isUrdu ? 16 : 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: CColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                              ),
+                              elevation: 3,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      // --- Info message when worker proposal is pending ---
+                      if (hasWorkerPendingProposal) ...[
+                        const SizedBox(height: CSizes.spaceBtwItems),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: CColors.info.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: CColors.info.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline, color: CColors.info, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You have already proposed a new time. Waiting for client response.',
+                                  style: TextStyle(
+                                    fontSize: isUrdu ? 13 : 12,
+                                    color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
+
                     if (showUrgentCard) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildUrgentStartCard(isDark, isUrdu),
                     ],
+
                     if (widget.job.hasLocation) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildMiniMap(isDark, isUrdu),
                     ],
+
                     if (_acceptedBid != null && _liveJobStatus == 'in-progress') ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildExtraChargesCard(isDark, isUrdu),
                     ],
+
                     if (showCashConfirm) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildCashConfirmBanner(isDark, isUrdu),
                     ],
-                    if (_pendingTimeProposal != null && _pendingTimeProposal!['status'] == 'pending') ...[
+
+                    if (_pendingTimeProposal != null &&
+                        _pendingTimeProposal!['status'] == 'pending' &&
+                        _pendingTimeProposal!['proposedBy'] == 'client') ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildTimeProposalBanner(isDark, isUrdu),
                     ],
+
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildBidForm(isDark, isUrdu),
-                    if (showProposeTimeButton && !showScheduledCard) ...[
-                      const SizedBox(height: CSizes.spaceBtwItems),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: _isLoading ? null : _proposeNewTime,
-                            icon: const Icon(Icons.event_available_rounded),
-                            label: const Text('Propose New Time'),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: CColors.primary),
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+
                     if (_acceptedBid != null && _liveJobStatus == 'completed') ...[
                       const SizedBox(height: CSizes.spaceBtwSections),
                       _buildCompletedBanner(isDark, isUrdu),
                     ],
+
                     if (_acceptedBid != null) ...[
                       const SizedBox(height: CSizes.spaceBtwSections),
                       DisputeStatusBanner(
@@ -2567,6 +2785,7 @@ class _WorkerJobDetailsScreenState
                         currentUserRole: 'worker',
                       ),
                     ],
+
                     if (_acceptedBid != null &&
                         (_liveJobStatus == 'in-progress' ||
                             _liveJobStatus == 'completed')) ...[

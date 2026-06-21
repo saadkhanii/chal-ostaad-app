@@ -89,6 +89,10 @@ class _ClientJobDetailsScreenState
   bool _hasAnyBid = false; // for detecting bidding phase
   BidModel? _acceptedBidForPayment; // ✅ tracked for payment button
 
+  // --- Time proposal from worker ---
+  Map<String, dynamic>? _pendingTimeProposal; // from job doc
+  bool _isRespondingToTimeProposal = false;
+
   StreamSubscription<DocumentSnapshot>? _jobSub;
   StreamSubscription<QuerySnapshot>? _bidsSub;
 
@@ -117,7 +121,6 @@ class _ClientJobDetailsScreenState
         .snapshots()
         .listen((snapshot) {
       final hasAny = snapshot.docs.isNotEmpty;
-      // ✅ Also track accepted bid for payment button
       final acceptedDocs = snapshot.docs.where((d) => d.data()['status'] == 'accepted').toList();
       final acceptedBid = acceptedDocs.isNotEmpty
           ? BidModel.fromSnapshot(acceptedDocs.first as DocumentSnapshot<Map<String, dynamic>>)
@@ -159,9 +162,11 @@ class _ClientJobDetailsScreenState
       final workerDeadline = (data['workerStartDeadline'] as Timestamp?)?.toDate();
       final scheduledStart = (data['scheduledAt'] as Timestamp?)?.toDate();
       final reachedLocation = data['workerReachedLocation'] as bool? ?? false;
-      // ✅ Track payment status live so mark-complete button shows automatically
       final paymentStatus = data['paymentStatus'] as String? ?? '';
       final isPaid = paymentStatus == 'paid';
+
+      // Time proposal
+      final timeProposal = data['pendingTimeProposal'] as Map<String, dynamic>?;
 
       setState(() {
         _jobStatus = status;
@@ -170,6 +175,7 @@ class _ClientJobDetailsScreenState
         _hasPendingExtras = hasPending;
         _approvedExtrasTotal = approvedTotal;
         _workerReachedLocation = reachedLocation;
+        _pendingTimeProposal = timeProposal;
         if (isPaid) _jobPaid = true;
 
         if (status == 'grace_period' && graceExpiry != null) {
@@ -361,7 +367,6 @@ class _ClientJobDetailsScreenState
     );
     if (confirmed != true || !mounted) return;
     try {
-      // ✅ Update both workerReachedLocation AND job status to in-progress
       await FirebaseFirestore.instance
           .collection('jobs')
           .doc(widget.job.id)
@@ -434,7 +439,6 @@ class _ClientJobDetailsScreenState
   Future<void> _cancelJob() async {
     final reasonController = TextEditingController();
 
-    // Capture optional reason first
     final reasonEntered = await showDialog<bool>(
       context: context,
       builder: (ctx) => Dialog(
@@ -637,6 +641,124 @@ class _ClientJobDetailsScreenState
         ),
       ),
     );
+  }
+
+  // ── Time proposal from worker ──────────────────────────────────────────
+  Widget _buildWorkerTimeProposalBanner(bool isDark, bool isUrdu) {
+    if (_pendingTimeProposal == null) return const SizedBox.shrink();
+    final proposedBy = _pendingTimeProposal!['proposedBy'] as String?;
+    final status = _pendingTimeProposal!['status'] as String?;
+    if (proposedBy != 'worker' || status != 'pending') return const SizedBox.shrink();
+
+    final proposedTime = (_pendingTimeProposal!['proposedTime'] as Timestamp?)?.toDate();
+    if (proposedTime == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color: CColors.info.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: CColors.info.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.event_available_rounded, color: CColors.info, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Worker proposes a new start time',
+                style: const TextStyle(fontWeight: FontWeight.bold, color: CColors.info, fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Proposed: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedTime)}',
+            style: TextStyle(fontSize: isUrdu ? 14 : 13, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isRespondingToTimeProposal ? null : () => _respondToWorkerTimeProposal(false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: CColors.error,
+                    side: const BorderSide(color: CColors.error),
+                  ),
+                  child: const Text('Reject'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _isRespondingToTimeProposal ? null : () => _respondToWorkerTimeProposal(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.success,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _isRespondingToTimeProposal
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Accept'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _respondToWorkerTimeProposal(bool accept) async {
+    setState(() => _isRespondingToTimeProposal = true);
+    try {
+      if (accept) {
+        // The method expects: (String jobId, String clientId, DateTime newTime)
+        await _bidService.acceptWorkerTimeProposal(
+          widget.job.id!,
+          _clientId,
+          (_pendingTimeProposal!['proposedTime'] as Timestamp).toDate(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('New start time accepted. Schedule updated.'),
+            backgroundColor: CColors.success,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      } else {
+        // The method expects: (String jobId, String clientId)
+        await _bidService.rejectWorkerTimeProposal(
+          widget.job.id!,
+          _clientId,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Proposal rejected. Worker will be notified.'),
+            backgroundColor: CColors.warning,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
+      // Clear local proposal after response
+      if (mounted) {
+        setState(() {
+          _pendingTimeProposal = null;
+          _isRespondingToTimeProposal = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRespondingToTimeProposal = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
   }
 
   // ── Rich Status Card ──────────────────────────────────────────────
@@ -1648,7 +1770,7 @@ class _ClientJobDetailsScreenState
       if (mounted) {
         setState(() => _isRespondingToProgress = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: \$e'),
+          content: Text('Error: $e'),
           backgroundColor: CColors.error,
           behavior: SnackBarBehavior.floating,
         ));
@@ -1913,6 +2035,11 @@ class _ClientJobDetailsScreenState
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildScheduledCountdownBanner(isDark, isUrdu),
                     ],
+                    // --- Worker time proposal banner (client side) ---
+                    if (_jobStatus == 'scheduled' && !widget.job.isUrgent) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildWorkerTimeProposalBanner(isDark, isUrdu),
+                    ],
                     if (_pendingProgressRequest != null && _pendingProgressRequest!['status'] == 'pending') ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildProgressRequestBanner(isDark, isUrdu),
@@ -1928,17 +2055,16 @@ class _ClientJobDetailsScreenState
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildLiveBiddingButton(isDark, isUrdu),
                     // Live location button: show when worker has started (in-progress)
-                    // Arrival confirmation is handled inside the live location screen
                     if (_jobStatus == 'in-progress' && _acceptedWorkerId != null) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildLiveLocationButton(isDark, isUrdu),
                     ],
-                    // ✅ Payment button: show when in-progress and NOT yet paid
+                    // Payment button: show when in-progress and NOT yet paid
                     if (_jobStatus == 'in-progress' && _workerReachedLocation && !_jobPaid && _acceptedWorkerId != null) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildPaymentButton(isDark, isUrdu),
                     ],
-                    // ✅ Mark complete button: show when in-progress and paid
+                    // Mark complete button: show when in-progress and paid
                     if (_jobStatus == 'in-progress' && _workerReachedLocation && _jobPaid) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildMarkCompleteButton(isDark, isUrdu),

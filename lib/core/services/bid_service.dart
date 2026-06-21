@@ -341,7 +341,12 @@ class BidService {
   }
 
   // ── Worker cancels job (conditional reopen for scheduled jobs) ───────────
-  Future<void> workerCancelJob(String jobId, String workerId, {String? reason}) async {
+  Future<void> workerCancelJob(
+      String jobId,
+      String workerId, {
+        String? reason,
+        bool makeUrgent = false,
+      }) async {
     final jobDoc = await _firestore.collection('jobs').doc(jobId).get();
     if (!jobDoc.exists) throw Exception('Job not found');
     final jobData = jobDoc.data()!;
@@ -372,12 +377,14 @@ class BidService {
       });
     }
 
-    // Determine how to reopen based on job type
+    // Determine how to reopen based on job type and optional override
     final isUrgent = jobData['isUrgent'] ?? false;
     final scheduledAt = (jobData['scheduledAt'] as Timestamp?)?.toDate();
 
     bool reopenAsUrgent;
-    if (isUrgent) {
+    if (makeUrgent) {
+      reopenAsUrgent = true;
+    } else if (isUrgent) {
       reopenAsUrgent = true;
     } else {
       // Scheduled job: check remaining time until scheduled start
@@ -619,24 +626,10 @@ class BidService {
         'workerStartDeadline': Timestamp.fromDate(deadline),
       });
     } else {
-      // Reject: reopen as urgent and ban the worker
-      final acceptedBid = await _firestore
-          .collection('bids')
-          .where('jobId', isEqualTo: jobId)
-          .where('status', isEqualTo: 'accepted')
-          .limit(1)
-          .get();
-      String? bannedWorkerId;
-      if (acceptedBid.docs.isNotEmpty) {
-        bannedWorkerId = acceptedBid.docs.first.data()['workerId'] as String;
-      }
+      // Reject: only mark proposal as rejected, do NOT reopen job or ban worker.
+      // The worker will then see the rejected proposal and decide to continue or cancel.
       batch.update(_firestore.collection('jobs').doc(jobId), {
-        'status': 'open',
-        'isUrgent': true,
-        'reopenedAs': 'urgent',
-        'pendingTimeProposal': FieldValue.delete(),
-        if (bannedWorkerId != null) 'bannedWorkerIds': FieldValue.arrayUnion([bannedWorkerId]),
-        'workerStartDeadline': FieldValue.delete(),
+        'pendingTimeProposal.status': 'rejected',
         'updatedAt': FieldValue.serverTimestamp(),
       });
     }
@@ -662,6 +655,24 @@ class BidService {
         accepted: accept,
       );
     }
+  }
+
+  // ── Accept worker's time proposal (client) ──────────────────────
+  Future<void> acceptWorkerTimeProposal(String jobId, String clientId, DateTime newTime) async {
+    await respondToTimeProposal(jobId, clientId, true, newTime: newTime);
+  }
+
+  // ── Reject worker's time proposal (client) ──────────────────────
+  Future<void> rejectWorkerTimeProposal(String jobId, String clientId) async {
+    await respondToTimeProposal(jobId, clientId, false);
+  }
+
+  // ── Clear time proposal (worker continues with original time) ──
+  Future<void> clearTimeProposal(String jobId) async {
+    await _firestore.collection('jobs').doc(jobId).update({
+      'pendingTimeProposal': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   // ── Cancel job (legacy, for client) ───────────────────────────────
