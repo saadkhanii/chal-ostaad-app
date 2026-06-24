@@ -712,10 +712,23 @@ class _ClientJobDetailsScreenState
   }
 
   Future<void> _respondToWorkerTimeProposal(bool accept) async {
+    // ✅ Guard against responding to a client‑created proposal
+    if (_pendingTimeProposal == null ||
+        _pendingTimeProposal!['proposedBy'] != 'worker' ||
+        _pendingTimeProposal!['status'] != 'pending') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No pending worker proposal to respond to.'),
+          backgroundColor: CColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
+
     setState(() => _isRespondingToTimeProposal = true);
     try {
       if (accept) {
-        // The method expects: (String jobId, String clientId, DateTime newTime)
         await _bidService.acceptWorkerTimeProposal(
           widget.job.id!,
           _clientId,
@@ -729,7 +742,6 @@ class _ClientJobDetailsScreenState
           ));
         }
       } else {
-        // The method expects: (String jobId, String clientId)
         await _bidService.rejectWorkerTimeProposal(
           widget.job.id!,
           _clientId,
@@ -748,6 +760,87 @@ class _ClientJobDetailsScreenState
           _pendingTimeProposal = null;
           _isRespondingToTimeProposal = false;
         });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRespondingToTimeProposal = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+  // ── NEW: Client proposes a new time (for scheduled jobs) ──────────────
+  Future<void> _proposeNewTimeAsClient() async {
+    // Ensure job is scheduled and not urgent
+    if (_jobStatus != 'scheduled' || widget.job.isUrgent) return;
+
+    // Pick a future date/time
+    final now = DateTime.now();
+    final initialDate = _scheduledStartTime ?? now.add(const Duration(hours: 1));
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (date == null) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialDate),
+    );
+    if (time == null) return;
+
+    final proposedTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (proposedTime.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Please choose a future date and time.'),
+        backgroundColor: CColors.warning,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+
+    // Confirm with the client
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Propose New Start Time'),
+        content: Text(
+          'You are proposing a new start time: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedTime)}.\n\nThe worker will be notified and can accept or reject.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('common.cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: CColors.primary),
+            child: const Text('Propose', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isRespondingToTimeProposal = true);
+    try {
+      await _bidService.clientProposeNewTime(
+        widget.job.id!,
+        _clientId,
+        proposedTime,
+      );
+      if (mounted) {
+        setState(() => _isRespondingToTimeProposal = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Proposal sent to worker.'),
+          backgroundColor: CColors.success,
+          behavior: SnackBarBehavior.floating,
+        ));
       }
     } catch (e) {
       if (mounted) {
@@ -2005,6 +2098,15 @@ class _ClientJobDetailsScreenState
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrdu = context.locale.languageCode == 'ur';
+
+    // Determine if client can propose a new time:
+    // - job status is 'scheduled'
+    // - not urgent
+    // - no pending proposal (from either side) OR existing proposal is not pending (i.e., rejected)
+    bool canProposeTime = _jobStatus == 'scheduled' &&
+        !widget.job.isUrgent &&
+        (_pendingTimeProposal == null || _pendingTimeProposal?['status'] != 'pending');
+
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
       body: RefreshIndicator(
@@ -2039,6 +2141,33 @@ class _ClientJobDetailsScreenState
                     if (_jobStatus == 'scheduled' && !widget.job.isUrgent) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildWorkerTimeProposalBanner(isDark, isUrdu),
+                    ],
+                    // --- NEW: Client proposes a new time (only when no pending proposal) ---
+                    if (canProposeTime) ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isRespondingToTimeProposal ? null : _proposeNewTimeAsClient,
+                          icon: const Icon(Icons.event_available_rounded, size: 20),
+                          label: Text(
+                            'Propose New Start Time',
+                            style: TextStyle(
+                              fontSize: isUrdu ? 16 : 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
+                            ),
+                            elevation: 3,
+                          ),
+                        ),
+                      ),
                     ],
                     if (_pendingProgressRequest != null && _pendingProgressRequest!['status'] == 'pending') ...[
                       const SizedBox(height: CSizes.spaceBtwItems),

@@ -601,12 +601,30 @@ class BidService {
     final proposedBy = proposal['proposedBy'] as String;
     final proposedTime = (proposal['proposedTime'] as Timestamp).toDate();
 
+    // Get accepted worker and client IDs
+    final acceptedBid = await _firestore
+        .collection('bids')
+        .where('jobId', isEqualTo: jobId)
+        .where('status', isEqualTo: 'accepted')
+        .limit(1)
+        .get();
+    if (acceptedBid.docs.isEmpty) throw Exception('No accepted bid found');
+    final workerId = acceptedBid.docs.first.data()['workerId'] as String;
+    final clientId = jobData['clientId'] as String;
+
     // Check responder is the other party
-    if (proposedBy == 'client' && responderId != jobData['clientId']) {
-      throw Exception('Only worker can respond to client proposal');
-    }
-    if (proposedBy == 'worker') {
-      if (responderId != jobData['clientId']) throw Exception('Only client can respond to worker proposal');
+    if (proposedBy == 'client') {
+      // Responder must be the worker
+      if (responderId != workerId) {
+        throw Exception('Only worker can respond to client proposal');
+      }
+    } else if (proposedBy == 'worker') {
+      // Responder must be the client
+      if (responderId != clientId) {
+        throw Exception('Only client can respond to worker proposal');
+      }
+    } else {
+      throw Exception('Invalid proposal source');
     }
 
     final batch = _firestore.batch();
@@ -627,7 +645,6 @@ class BidService {
       });
     } else {
       // Reject: only mark proposal as rejected, do NOT reopen job or ban worker.
-      // The worker will then see the rejected proposal and decide to continue or cancel.
       batch.update(_firestore.collection('jobs').doc(jobId), {
         'pendingTimeProposal.status': 'rejected',
         'updatedAt': FieldValue.serverTimestamp(),
@@ -638,23 +655,16 @@ class BidService {
 
     // Notify both parties
     final jobTitle = jobData['title'] ?? 'a job';
-    final clientId = jobData['clientId'] as String;
-    final acceptedBid2 = await _firestore
-        .collection('bids')
-        .where('jobId', isEqualTo: jobId)
-        .where('status', isEqualTo: 'accepted')
-        .limit(1)
-        .get();
-    if (acceptedBid2.docs.isNotEmpty) {
-      final workerId2 = acceptedBid2.docs.first.data()['workerId'] as String;
+    try {
+      // We can send a generic notification; the service already has a method
       await _notificationService.sendTimeProposalResponseNotification(
         jobId: jobId,
         jobTitle: jobTitle,
         clientId: clientId,
-        workerId: workerId2,
+        workerId: workerId,
         accepted: accept,
       );
-    }
+    } catch (_) {}
   }
 
   // ── Accept worker's time proposal (client) ──────────────────────
