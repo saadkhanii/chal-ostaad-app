@@ -15,7 +15,7 @@ import '../../core/constants/sizes.dart';
 import '../../core/routes/app_routes.dart';
 import '../review/worker_reviews_screen.dart';
 import '../../shared/widgets/common_header.dart';
-import '../../shared/widgets/app_card.dart'; // ✅ import AppCard
+import '../../shared/widgets/app_card.dart';
 
 class WorkerProfileScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -349,6 +349,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final size   = MediaQuery.of(context).size;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -386,11 +387,12 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                  CSizes.defaultSpace,
-                  CSizes.sm,
-                  CSizes.defaultSpace,
-                  CSizes.defaultSpace),
+              padding: EdgeInsets.fromLTRB(
+                CSizes.defaultSpace,
+                CSizes.sm,
+                CSizes.defaultSpace,
+                CSizes.defaultSpace + bottomPadding + 20,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

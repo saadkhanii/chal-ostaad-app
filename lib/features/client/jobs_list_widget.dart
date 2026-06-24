@@ -57,13 +57,11 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
   @override
   void initState() {
     super.initState();
-    // Use provided controller or create our own
     _scrollController = widget.scrollController ?? ScrollController();
   }
 
   @override
   void dispose() {
-    // Only dispose if we created it (not provided by parent)
     if (widget.scrollController == null) {
       _scrollController?.dispose();
     }
@@ -205,7 +203,6 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
       return Center(child: Text('job.login_to_view'.tr(), style: TextStyle(fontSize: isUrdu ? 16 : 14)));
     }
 
-    // Build the query once per filter change
     Query query = FirebaseFirestore.instance
         .collection('jobs')
         .where('clientId', isEqualTo: widget.clientId)
@@ -216,7 +213,7 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
     }
 
     return StreamBuilder<QuerySnapshot>(
-      key: const ValueKey('jobs_list_stream'), // prevents full rebuild on data changes
+      key: const ValueKey('jobs_list_stream'),
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -247,18 +244,18 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
 
         final jobsWithLocation = allJobs.where((j) => j.hasLocation).toList();
 
-        return RepaintBoundary( // isolates rebuilds
+        return RepaintBoundary(
           child: Stack(
             children: [
               ListView.builder(
                 controller: _scrollController!,
-                physics: const ClampingScrollPhysics(), // ✅ prevents overscroll → no accidental refresh
+                physics: const ClampingScrollPhysics(),
                 padding: widget.padding ?? const EdgeInsets.all(CSizes.defaultSpace),
                 itemCount: itemCount,
                 itemBuilder: (context, index) {
                   final job = allJobs[index];
-                  final bidCountAsync = ref.watch(bidCountProvider(job.id!));
-                  return _buildJobCard(context, isDark, isUrdu, job, bidCountAsync);
+                  // Each card is wrapped in a Consumer so only that card rebuilds on bid count changes
+                  return _buildJobCard(context, isDark, isUrdu, job);
                 },
               ),
               if (widget.showMapButton && jobsWithLocation.isNotEmpty)
@@ -279,121 +276,129 @@ class _JobsListWidgetState extends ConsumerState<JobsListWidget> {
       },
     );
   }
-  Widget _buildJobCard(BuildContext context, bool isDark, bool isUrdu, JobModel job, AsyncValue<int> bidCountAsync) {
-    final statusNorm = job.status.trim().toLowerCase();
-    final isOpen = statusNorm == 'open' || statusNorm == 'cancelled';
-    final isDeleting = _deletingIds.contains(job.id);
 
-    return AppCard(
-      headerGradient: AppCardGradients.fromJob(isUrgent: job.isUrgent, hasSchedule: job.hasSchedule),
-      headerTitle: Text(
-        job.title,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      ),
-      headerTrailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-        child: Text(
-          _getStatusText(job.status),
-          style: TextStyle(color: _getStatusColor(job.status), fontSize: 11, fontWeight: FontWeight.bold),
-        ),
-      ),
-      headerActions: isOpen
-          ? SizedBox(
-        width: 32,
-        height: 32,
-        child: isDeleting
-            ? const Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-          ),
-        )
-            : IconButton(
-          padding: EdgeInsets.zero,
-          icon: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
-          tooltip: 'job.delete_job'.tr(),
-          onPressed: () => _deleteJob(job),
-        ),
-      )
-          : null,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            job.description,
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-              fontSize: isUrdu ? 16 : 14,
-              color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
-            ),
-            maxLines: 2,
+  // ✅ Each card is now a Consumer so bid count updates only affect this card
+  Widget _buildJobCard(BuildContext context, bool isDark, bool isUrdu, JobModel job) {
+    return Consumer(
+      key: ValueKey(job.id),
+      builder: (context, ref, _) {
+        final bidCountAsync = ref.watch(bidCountProvider(job.id!));
+        final statusNorm = job.status.trim().toLowerCase();
+        final isOpen = statusNorm == 'open' || statusNorm == 'cancelled';
+        final isDeleting = _deletingIds.contains(job.id);
+
+        return AppCard(
+          headerGradient: AppCardGradients.fromJob(isUrgent: job.isUrgent, hasSchedule: job.hasSchedule),
+          headerTitle: Text(
+            job.title,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
             overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
-          const SizedBox(height: CSizes.sm),
-          if (job.hasMedia) ...[
-            JobMediaGallery(mediaUrls: job.mediaUrls, mediaTypes: job.mediaTypes, mediaBase64: job.mediaBase64),
-            const SizedBox(height: CSizes.sm),
-          ],
-          if (job.hasLocation)
-            Padding(
-              padding: const EdgeInsets.only(bottom: CSizes.sm),
-              child: Row(
-                children: [
-                  Icon(Icons.location_on_outlined, size: 14, color: CColors.darkGrey),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      job.displayLocation,
-                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                        fontSize: isUrdu ? 13 : 11,
-                        color: CColors.darkGrey,
+          headerTrailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+            child: Text(
+              _getStatusText(job.status),
+              style: TextStyle(color: _getStatusColor(job.status), fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+          headerActions: isOpen
+              ? SizedBox(
+            width: 32,
+            height: 32,
+            child: isDeleting
+                ? const Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+            )
+                : IconButton(
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+              tooltip: 'job.delete_job'.tr(),
+              onPressed: () => _deleteJob(job),
+            ),
+          )
+              : null,
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                job.description,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  fontSize: isUrdu ? 16 : 14,
+                  color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: CSizes.sm),
+              if (job.hasMedia) ...[
+                JobMediaGallery(mediaUrls: job.mediaUrls, mediaTypes: job.mediaTypes, mediaBase64: job.mediaBase64),
+                const SizedBox(height: CSizes.sm),
+              ],
+              if (job.hasLocation)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: CSizes.sm),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_on_outlined, size: 14, color: CColors.darkGrey),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          job.displayLocation,
+                          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                            fontSize: isUrdu ? 13 : 11,
+                            color: CColors.darkGrey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 1,
+                    ],
+                  ),
+                ),
+              if (job.hasSchedule)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: CSizes.sm),
+                  child: Row(
+                    children: [
+                      Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Scheduled: ${DateFormat('d MMM yyyy, hh:mm a').format(job.scheduledAt!.toDate())}',
+                        style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.primary, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              Row(
+                children: [
+                  Icon(Icons.access_time, size: 14, color: CColors.darkGrey),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      timeago.format(job.createdAt.toDate()),
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: isUrdu ? 14 : 12),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ],
-              ),
-            ),
-          if (job.hasSchedule)
-            Padding(
-              padding: const EdgeInsets.only(bottom: CSizes.sm),
-              child: Row(
-                children: [
-                  Icon(Icons.event_available_rounded, size: 14, color: CColors.primary),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Scheduled: ${DateFormat('d MMM yyyy, hh:mm a').format(job.scheduledAt!.toDate())}',
-                    style: TextStyle(fontSize: isUrdu ? 13 : 11, color: CColors.primary, fontWeight: FontWeight.w500),
+                  const Spacer(),
+                  bidCountAsync.when(
+                    data: (count) => _buildBidCount(context, isUrdu, count),
+                    loading: () => _buildBidCount(context, isUrdu, '...'),
+                    error: (_, __) => _buildBidCount(context, isUrdu, '0'),
                   ),
                 ],
               ),
-            ),
-          Row(
-            children: [
-              Icon(Icons.access_time, size: 14, color: CColors.darkGrey),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  timeago.format(job.createdAt.toDate()),
-                  style: Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: isUrdu ? 14 : 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const Spacer(),
-              bidCountAsync.when(
-                data: (count) => _buildBidCount(context, isUrdu, count),
-                loading: () => _buildBidCount(context, isUrdu, '...'),
-                error: (_, __) => _buildBidCount(context, isUrdu, '0'),
-              ),
             ],
           ),
-        ],
-      ),
-      onTap: () => _handleJobTap(job),
+          onTap: () => _handleJobTap(job),
+        );
+      },
     );
   }
 

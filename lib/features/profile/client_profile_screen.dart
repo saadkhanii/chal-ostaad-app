@@ -14,7 +14,7 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/sizes.dart';
 import '../../core/routes/app_routes.dart';
 import '../../shared/widgets/common_header.dart';
-import '../../shared/widgets/app_card.dart'; // ✅ import AppCard
+import '../../shared/widgets/app_card.dart';
 
 class ClientProfileScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -337,6 +337,7 @@ class _ClientProfileScreenState extends ConsumerState<ClientProfileScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final size   = MediaQuery.of(context).size;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -369,11 +370,12 @@ class _ClientProfileScreenState extends ConsumerState<ClientProfileScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                  CSizes.defaultSpace,
-                  CSizes.sm,
-                  CSizes.defaultSpace,
-                  CSizes.defaultSpace),
+              padding: EdgeInsets.fromLTRB(
+                CSizes.defaultSpace,
+                CSizes.sm,
+                CSizes.defaultSpace,
+                CSizes.defaultSpace + bottomPadding + 20,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
