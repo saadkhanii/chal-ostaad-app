@@ -213,7 +213,8 @@
     "no_jobs_found": "No jobs found. Post a job to get started!",
     "job_started": "Job started!",
     "job_details": "Job Details",
-    "posted": "Posted"
+    "posted": "Posted",
+    "no_longer_accepting": "This job is no longer accepting your bid."
   },
   "bid": {
     "place_bid": "Place Bid",

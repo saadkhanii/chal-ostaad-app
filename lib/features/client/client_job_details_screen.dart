@@ -187,6 +187,7 @@ class _ClientJobDetailsScreenState
           _graceExpiry = null;
         }
 
+        // 👇 Always track workerStartDeadline, regardless of urgent/scheduled
         if ((status == 'active' || status == 'scheduled') && workerDeadline != null) {
           _workerStartDeadline = workerDeadline;
           _updateWorkerStartTimer();
@@ -259,6 +260,7 @@ class _ClientJobDetailsScreenState
       });
     }
   }
+
 
   void _updateScheduledCountdown() {
     if (_scheduledStartTime == null) return;
@@ -352,6 +354,65 @@ class _ClientJobDetailsScreenState
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: CColors.error));
+    }
+  }
+
+  Future<void> _continueWithOriginalTime() async {
+    try {
+      await _bidService.continueWithOriginalTime(widget.job.id!);
+      if (mounted) {
+        setState(() {
+          _pendingTimeProposal = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Continuing with the original scheduled time.'),
+          backgroundColor: CColors.success,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  Future<void> _reopenWithNewTime() async {
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Reopen Job with New Time?',
+      content: 'The worker will be banned and the job will be reopened with the proposed time. Are you sure?',
+      confirmText: 'Reopen',
+      cancelText: 'common.cancel'.tr(),
+      isDestructive: true,
+      onConfirm: () => Navigator.pop(context, true),
+    );
+    if (confirmed != true) return;
+    try {
+      await _bidService.reopenJobWithNewTime(widget.job.id!);
+      if (mounted) {
+        setState(() {
+          _pendingTimeProposal = null;
+          _jobStatus = 'open';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Job reopened for bidding with the new time.'),
+          backgroundColor: CColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
     }
   }
 
@@ -702,6 +763,74 @@ class _ClientJobDetailsScreenState
                   child: _isRespondingToTimeProposal
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text('Accept'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRejectedProposalClientBanner(bool isDark, bool isUrdu) {
+    if (_pendingTimeProposal == null) return const SizedBox.shrink();
+    final status = _pendingTimeProposal!['status'] as String?;
+    if (status != 'rejected_by_worker') return const SizedBox.shrink();
+    final proposedTime = (_pendingTimeProposal!['proposedTime'] as Timestamp).toDate();
+
+    return Container(
+      padding: const EdgeInsets.all(CSizes.md),
+      decoration: BoxDecoration(
+        color: CColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+        border: Border.all(color: CColors.warning.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: CColors.warning, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Worker rejected your time proposal',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: CColors.warning,
+                  fontSize: isUrdu ? 16 : 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'The worker did not accept your proposed start time: ${DateFormat('d MMM yyyy, hh:mm a').format(proposedTime)}.',
+            style: TextStyle(
+              fontSize: isUrdu ? 13 : 12,
+              color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _continueWithOriginalTime,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: CColors.primary),
+                  ),
+                  child: Text('Continue with Original Time', style: TextStyle(fontSize: isUrdu ? 13 : 12)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _reopenWithNewTime,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CColors.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('Reopen with New Time', style: TextStyle(fontSize: isUrdu ? 13 : 12)),
                 ),
               ),
             ],
@@ -1324,10 +1453,12 @@ class _ClientJobDetailsScreenState
     );
   }
 
+  // ── Worker Start Deadline Banner (now for both urgent and scheduled) ──
   Widget _buildWorkerStartDeadlineBanner(bool isDark, bool isUrdu) {
     final minutes = (_workerStartRemainingSeconds / 60).floor();
     final seconds = _workerStartRemainingSeconds % 60;
     final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final isUrgent = widget.job.isUrgent;
     return Container(
       padding: const EdgeInsets.all(CSizes.md),
       decoration: BoxDecoration(
@@ -1340,7 +1471,7 @@ class _ClientJobDetailsScreenState
           Icon(Icons.hourglass_empty, color: CColors.info),
           const SizedBox(width: 8),
           Expanded(child: Text(
-            'Waiting for worker to start the job',
+            isUrgent ? 'Waiting for worker to start the urgent job' : 'Worker must start within 2 hours of scheduled time',
             style: const TextStyle(fontWeight: FontWeight.bold, color: CColors.info),
           )),
         ]),
@@ -1348,7 +1479,9 @@ class _ClientJobDetailsScreenState
         Text('Worker has $timeStr to start', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: CColors.info)),
         const SizedBox(height: 8),
         Text(
-          'If worker does not start within this time, the job will be reopened as urgent and the worker will be banned.',
+          isUrgent
+              ? 'If worker does not start within this time, the job will be reopened as urgent and the worker will be banned.'
+              : 'If worker does not start within this time, the job will be reopened and the worker will be banned.',
           style: TextStyle(fontSize: 12, color: CColors.darkGrey),
         ),
       ]),
@@ -2100,12 +2233,21 @@ class _ClientJobDetailsScreenState
     final isUrdu = context.locale.languageCode == 'ur';
 
     // Determine if client can propose a new time:
-    // - job status is 'scheduled'
-    // - not urgent
-    // - no pending proposal (from either side) OR existing proposal is not pending (i.e., rejected)
     bool canProposeTime = _jobStatus == 'scheduled' &&
         !widget.job.isUrgent &&
-        (_pendingTimeProposal == null || _pendingTimeProposal?['status'] != 'pending');
+        (_pendingTimeProposal == null ||
+            (_pendingTimeProposal?['status'] != 'pending' &&
+                _pendingTimeProposal?['status'] != 'rejected_by_worker'));
+
+    // ── NEW: Condition for showing worker deadline banner ──
+    bool showWorkerDeadline = false;
+    if (_jobStatus == 'active' && _workerStartDeadline != null && _workerStartRemainingSeconds > 0) {
+      showWorkerDeadline = true;
+    } else if (_jobStatus == 'scheduled' && _workerStartDeadline != null && _workerStartRemainingSeconds > 0) {
+      if (_scheduledRemainingSeconds <= 0) {
+        showWorkerDeadline = true;
+      }
+    }
 
     return Scaffold(
       backgroundColor: isDark ? CColors.dark : CColors.lightGrey,
@@ -2129,7 +2271,8 @@ class _ClientJobDetailsScreenState
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildGracePeriodBanner(isDark, isUrdu),
                     ],
-                    if ((_jobStatus == 'active' || _jobStatus == 'scheduled') && widget.job.isUrgent && _workerStartDeadline != null && _workerStartRemainingSeconds > 0) ...[
+                    // 👇 Worker start deadline banner – only show conditionally
+                    if (showWorkerDeadline) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildWorkerStartDeadlineBanner(isDark, isUrdu),
                     ],
@@ -2141,6 +2284,11 @@ class _ClientJobDetailsScreenState
                     if (_jobStatus == 'scheduled' && !widget.job.isUrgent) ...[
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildWorkerTimeProposalBanner(isDark, isUrdu),
+                    ],
+                    // --- Client decision banner when worker rejected proposal ---
+                    if (_pendingTimeProposal != null && _pendingTimeProposal!['status'] == 'rejected_by_worker') ...[
+                      const SizedBox(height: CSizes.spaceBtwItems),
+                      _buildRejectedProposalClientBanner(isDark, isUrdu),
                     ],
                     // --- NEW: Client proposes a new time (only when no pending proposal) ---
                     if (canProposeTime) ...[

@@ -112,6 +112,9 @@ class _WorkerJobDetailsScreenState
   bool _showRejectedProposalOptions = false;
   bool _isRespondingToRejectedProposal = false;
 
+  // ── Worker bid status ────────────────────────────────────────────
+  String? _workerBidStatus; // 'pending', 'accepted', 'rejected', or null
+
   @override
   void initState() {
     super.initState();
@@ -305,23 +308,32 @@ class _WorkerJobDetailsScreenState
 
   Future<void> _checkExistingBid() async {
     try {
-      final hasBid = await _bidService.hasWorkerBidOnJob(widget.workerId, widget.job.id!);
-      if (mounted) setState(() => _hasExistingBid = hasBid);
-      if (hasBid) {
-        final snapshot = await FirebaseFirestore.instance
-            .collection('bids')
-            .where('jobId', isEqualTo: widget.job.id)
-            .where('workerId', isEqualTo: widget.workerId)
-            .where('status', isEqualTo: 'accepted')
-            .limit(1)
-            .get();
-        if (snapshot.docs.isNotEmpty && mounted) {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('bids')
+          .where('jobId', isEqualTo: widget.job.id)
+          .where('workerId', isEqualTo: widget.workerId)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final doc = querySnapshot.docs.first;
+        final status = doc.data()['status'] as String?;
+        setState(() {
+          _hasExistingBid = true;
+          _workerBidStatus = status;
+        });
+        if (status == 'accepted') {
           setState(() {
             _acceptedBid = BidModel.fromSnapshot(
-              snapshot.docs.first as DocumentSnapshot<Map<String, dynamic>>,
+              doc as DocumentSnapshot<Map<String, dynamic>>,
             );
           });
         }
+      } else {
+        setState(() {
+          _hasExistingBid = false;
+          _workerBidStatus = null;
+          _acceptedBid = null;
+        });
       }
     } catch (e) {
       debugPrint('Error checking existing bid: $e');
@@ -602,23 +614,31 @@ class _WorkerJobDetailsScreenState
             content: Text('You accepted the proposal. New start time set.'),
             backgroundColor: CColors.success,
           ));
+          // Refresh the job data
+          setState(() {
+            _pendingTimeProposal = null;
+            _isLoading = false;
+          });
         } else {
+          // Worker rejected client's proposal – banned and job reopened
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('You rejected the proposal. Job reopened as urgent and you cannot rebid.'),
+            content: Text('You rejected the proposal. You have been banned from this job and it is reopened for other workers.'),
             backgroundColor: CColors.warning,
           ));
+          // Navigate back to the previous screen
           Navigator.pop(context);
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: CColors.error));
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: CColors.error,
+        ));
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
-
   // ── Handling rejected proposal: continue or cancel ──────────────────
   Future<void> _continueWithOriginalTime() async {
     setState(() => _isRespondingToRejectedProposal = true);
@@ -676,7 +696,12 @@ class _WorkerJobDetailsScreenState
         reason: 'Cancelled after rejected time proposal',
         makeUrgent: makeUrgent, // this flag will be used by service
       );
+      // Clear the rejected proposal flag since we're cancelling
       if (mounted) {
+        setState(() {
+          _showRejectedProposalOptions = false;
+          _pendingTimeProposal = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(makeUrgent ? 'Job reopened as urgent.' : 'Job cancelled.'),
           backgroundColor: CColors.warning,
@@ -685,6 +710,12 @@ class _WorkerJobDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
+        // Even on error, we clear the flag to avoid stuck banner
+        setState(() {
+          _showRejectedProposalOptions = false;
+          _pendingTimeProposal = null;
+          _isRespondingToRejectedProposal = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Error: $e'),
           backgroundColor: CColors.error,
@@ -1145,6 +1176,36 @@ class _WorkerJobDetailsScreenState
             const SizedBox(height: 12),
             _buildBudgetScheduleRow(isDark, isUrdu),
           ],
+          // 👇 SCHEDULED COUNTDOWN – visible to all workers when job is scheduled and time not yet passed
+          if (!widget.job.isUrgent &&
+              _liveJobStatus == 'scheduled' &&
+              _scheduledStartTime != null &&
+              _scheduledRemainingSeconds > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: CColors.info.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, size: 16, color: CColors.info),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Scheduled start in ${_formatDuration(Duration(seconds: _scheduledRemainingSeconds))}',
+                      style: TextStyle(
+                        fontSize: isUrdu ? 14 : 12,
+                        fontWeight: FontWeight.w500,
+                        color: CColors.info,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (widget.job.hasMedia) ...[
             const SizedBox(height: CSizes.spaceBtwItems),
             JobMediaGallery(
@@ -1578,8 +1639,37 @@ class _WorkerJobDetailsScreenState
     final proposal = _pendingTimeProposal!;
     final proposedBy = proposal['proposedBy'] as String;
     if (proposedBy != 'client') return const SizedBox.shrink();
+    final status = proposal['status'] as String;
     final proposedTime = (proposal['proposedTime'] as Timestamp).toDate();
-    return AppCard(
+
+    if (status == 'rejected_by_worker') {
+      // Worker already rejected; waiting for client decision
+      return Container(
+        padding: const EdgeInsets.all(CSizes.md),
+        decoration: BoxDecoration(
+          color: CColors.info.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusMd),
+          border: Border.all(color: CColors.info.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, color: CColors.info, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'You rejected the client\'s proposed time. Waiting for client\'s decision.',
+                style: TextStyle(
+                  fontSize: isUrdu ? 13 : 12,
+                  color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (status != 'pending') return const SizedBox.shrink();    return AppCard(
       margin: EdgeInsets.zero,
       headerGradient: widget.job.isUrgent ? AppCardGradients.urgent() : AppCardGradients.scheduled(),
       headerTitle: Row(children: [
@@ -1994,53 +2084,61 @@ class _WorkerJobDetailsScreenState
     }
   }
 
+  // ── New bid form builder that shows status ──────────────────────────
   Widget _buildBidForm(bool isDark, bool isUrdu) {
-    final isAccepted = _acceptedBid != null;
-    final isJobOpenForBidding = widget.job.status == 'open' && !isAccepted && !_hasExistingBid;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => LiveBiddingScreen(
-                  job: widget.job,
-                  workerId: widget.workerId,
-                ),
-              ),
-            ),
-            icon: const Icon(Icons.list_alt_rounded, size: 20, color: CColors.primary),
-            label: Text(
-              'View Bids',
-              style: TextStyle(
-                fontSize: isUrdu ? 16 : 14,
-                fontWeight: FontWeight.w600,
-                color: CColors.primary,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: CColors.primary),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(CSizes.borderRadiusLg),
-              ),
-            ),
-          ),
+    // If no bid placed yet and job is open → show place bid form
+    if (_workerBidStatus == null && widget.job.status == 'open') {
+      return _buildPlaceBidForm(isDark, isUrdu);
+    }
+
+    // If bid rejected → show red banner
+    if (_workerBidStatus == 'rejected') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(CSizes.lg),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+          color: CColors.error.withValues(alpha: 0.1),
+          border: Border.all(color: CColors.error.withValues(alpha: 0.3)),
         ),
-        const SizedBox(height: CSizes.spaceBtwItems),
-        if (isAccepted && (_liveJobStatus == 'active' || _liveJobStatus == 'scheduled'))
-          _buildAcceptedPanel(isDark, isUrdu)
-        else if (_hasExistingBid)
-          _buildAlreadyPlacedMessage(isDark, isUrdu)
-        else if (!isJobOpenForBidding)
-            _buildJobClosedMessage(isDark, isUrdu)
-          else
-            _buildPlaceBidForm(isDark, isUrdu),
-      ],
-    );
+        child: Column(
+          children: [
+            const Icon(Icons.cancel_outlined, size: 40, color: CColors.error),
+            const SizedBox(height: 12),
+            Text(
+              'Your bid was rejected',
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: CColors.error,
+                fontSize: isUrdu ? 20 : 18,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'The client has selected another worker. You may not bid again on this job.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+                fontSize: isUrdu ? 16 : 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // If bid pending → show "already placed" message
+    if (_workerBidStatus == 'pending') {
+      return _buildAlreadyPlacedMessage(isDark, isUrdu);
+    }
+
+    // If bid accepted → show accepted panel
+    if (_workerBidStatus == 'accepted' && _acceptedBid != null) {
+      return _buildAcceptedPanel(isDark, isUrdu);
+    }
+
+    // Fallback: if job not open and no bid, show job closed message
+    return _buildJobClosedMessage(isDark, isUrdu);
   }
 
   Widget _buildAcceptedPanel(bool isDark, bool isUrdu) {
@@ -2769,8 +2867,6 @@ class _WorkerJobDetailsScreenState
                       const SizedBox(height: CSizes.spaceBtwItems),
                       _buildCashConfirmBanner(isDark, isUrdu),
                     ],
-
-                    // --- Removed the duplicate client proposal banner from here ---
 
                     const SizedBox(height: CSizes.spaceBtwSections),
                     _buildBidForm(isDark, isUrdu),

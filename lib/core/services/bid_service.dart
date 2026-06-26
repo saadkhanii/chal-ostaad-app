@@ -404,6 +404,7 @@ class BidService {
       'cancelledBy': 'worker',
       'cancelledAt': now,
       'updatedAt': now,
+      'pendingTimeProposal': FieldValue.delete(), // <-- added
     };
 
     if (reopenAsUrgent) {
@@ -467,6 +468,7 @@ class BidService {
       'cancelledBy': 'worker_no_action',
       'cancelledAt': now,
       'updatedAt': now,
+      'pendingTimeProposal': FieldValue.delete(), // clean up
     });
 
     // Also update bid status
@@ -614,12 +616,10 @@ class BidService {
 
     // Check responder is the other party
     if (proposedBy == 'client') {
-      // Responder must be the worker
       if (responderId != workerId) {
         throw Exception('Only worker can respond to client proposal');
       }
     } else if (proposedBy == 'worker') {
-      // Responder must be the client
       if (responderId != clientId) {
         throw Exception('Only client can respond to worker proposal');
       }
@@ -630,7 +630,7 @@ class BidService {
     final batch = _firestore.batch();
 
     if (accept) {
-      // Update job with new scheduled time
+      // Accept: update job with new scheduled time
       final newScheduled = newTime ?? proposedTime;
       batch.update(_firestore.collection('jobs').doc(jobId), {
         'scheduledAt': Timestamp.fromDate(newScheduled),
@@ -638,17 +638,25 @@ class BidService {
         'status': 'scheduled',
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      // Also update workerStartDeadline based on new scheduled time
       final deadline = newScheduled.add(const Duration(hours: 2));
       batch.update(_firestore.collection('jobs').doc(jobId), {
         'workerStartDeadline': Timestamp.fromDate(deadline),
       });
     } else {
-      // Reject: only mark proposal as rejected, do NOT reopen job or ban worker.
-      batch.update(_firestore.collection('jobs').doc(jobId), {
-        'pendingTimeProposal.status': 'rejected',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      // ── REJECT branch ──────────────────────────────────────────────
+      if (proposedBy == 'client' && responderId == workerId) {
+        // Worker rejects client's proposal → mark as rejected_by_worker, let client decide
+        batch.update(_firestore.collection('jobs').doc(jobId), {
+          'pendingTimeProposal.status': 'rejected_by_worker',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Other rejections: only mark proposal as rejected
+        batch.update(_firestore.collection('jobs').doc(jobId), {
+          'pendingTimeProposal.status': 'rejected',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
     }
 
     await batch.commit();
@@ -656,7 +664,6 @@ class BidService {
     // Notify both parties
     final jobTitle = jobData['title'] ?? 'a job';
     try {
-      // We can send a generic notification; the service already has a method
       await _notificationService.sendTimeProposalResponseNotification(
         jobId: jobId,
         jobTitle: jobTitle,
@@ -665,6 +672,69 @@ class BidService {
         accepted: accept,
       );
     } catch (_) {}
+  }
+
+  // ── Client continues with original time after worker rejected proposal ──
+  Future<void> continueWithOriginalTime(String jobId) async {
+    final jobDoc = await _firestore.collection('jobs').doc(jobId).get();
+    if (!jobDoc.exists) throw Exception('Job not found');
+    final data = jobDoc.data()!;
+    final proposal = data['pendingTimeProposal'] as Map<String, dynamic>?;
+    if (proposal == null || proposal['status'] != 'rejected_by_worker') {
+      throw Exception('No rejected worker proposal to continue from');
+    }
+    await _firestore.collection('jobs').doc(jobId).update({
+      'pendingTimeProposal': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ── Client reopens job with the proposed new time after worker rejected ──
+  Future<void> reopenJobWithNewTime(String jobId) async {
+    final jobDoc = await _firestore.collection('jobs').doc(jobId).get();
+    if (!jobDoc.exists) throw Exception('Job not found');
+    final data = jobDoc.data()!;
+    final proposal = data['pendingTimeProposal'] as Map<String, dynamic>?;
+    if (proposal == null || proposal['status'] != 'rejected_by_worker') {
+      throw Exception('No rejected worker proposal to act on');
+    }
+    final proposedTime = (proposal['proposedTime'] as Timestamp).toDate();
+
+    final acceptedBid = await _firestore
+        .collection('bids')
+        .where('jobId', isEqualTo: jobId)
+        .where('status', isEqualTo: 'accepted')
+        .limit(1)
+        .get();
+    if (acceptedBid.docs.isEmpty) throw Exception('No accepted bid found');
+    final workerId = acceptedBid.docs.first.data()['workerId'] as String;
+
+    final batch = _firestore.batch();
+
+    // Ban worker
+    final banned = List<String>.from(data['bannedWorkerIds'] as List? ?? []);
+    if (!banned.contains(workerId)) {
+      batch.update(_firestore.collection('jobs').doc(jobId), {
+        'bannedWorkerIds': FieldValue.arrayUnion([workerId]),
+      });
+    }
+
+    // Reopen job as open with proposed time
+    batch.update(_firestore.collection('jobs').doc(jobId), {
+      'status': 'open',
+      'scheduledAt': Timestamp.fromDate(proposedTime),
+      'pendingTimeProposal': FieldValue.delete(),
+      'workerStartDeadline': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // Update accepted bid status
+    batch.update(
+      _firestore.collection('bids').doc(acceptedBid.docs.first.id),
+      {'status': 'cancelled_by_worker', 'updatedAt': FieldValue.serverTimestamp()},
+    );
+
+    await batch.commit();
   }
 
   // ── Accept worker's time proposal (client) ──────────────────────
