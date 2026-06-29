@@ -207,20 +207,22 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       };
     }
     try {
-      // Bids
-      final bidsSnap = await _firestore
-          .collection('bids')
-          .where('workerId', isEqualTo: _workerId)
-          .get();
+      // Bids, payments, and worker doc are independent — fetch concurrently.
+      // (Removed the unused `jobs where clientId == _workerId` query —
+      // its result, jobsSnap, was never read anywhere in the original code.)
+      final results = await Future.wait([
+        _firestore.collection('bids').where('workerId', isEqualTo: _workerId).get(),
+        _firestore.collection('payments').where('workerId', isEqualTo: _workerId).get(),
+        _firestore.collection('workers').doc(_workerId).get(),
+      ]);
+      final bidsSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      final paymentsSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
+      final workerDoc = results[2] as DocumentSnapshot<Map<String, dynamic>>;
+
       final totalBids = bidsSnap.docs.length;
       final acceptedBids =
           bidsSnap.docs.where((d) => d['status'] == 'accepted').length;
 
-      // Payments from payments collection (source of truth)
-      final paymentsSnap = await _firestore
-          .collection('payments')
-          .where('workerId', isEqualTo: _workerId)
-          .get();
       final payments = paymentsSnap.docs
           .map((d) => PaymentModel.fromSnapshot(
           d as DocumentSnapshot<Map<String, dynamic>>))
@@ -237,15 +239,17 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       double stripeEarnings = stripeDone.fold(0, (s, p) => s + p.amount);
       double pendingCashAmt = pendingCash.fold(0, (s, p) => s + p.amount);
 
-      // Platform fee stored per payment; fall back to calculating it
+      // Platform fee — reuse paymentsSnap docs instead of re-fetching each one.
+      final paymentDataById = {
+        for (final d in paymentsSnap.docs) d.id: d.data(),
+      };
       double platformFees = 0;
       double netEarnings = 0;
       for (final p in completed) {
-        final snap = await _firestore.collection('payments').doc(p.id).get();
-        final fee = (snap.data()?['platformFee'] as num?)?.toDouble() ??
+        final data = paymentDataById[p.id];
+        final fee = (data?['platformFee'] as num?)?.toDouble() ??
             PaymentService.calcPlatformFee(p.amount);
-        final net =
-            (snap.data()?['workerNet'] as num?)?.toDouble() ?? (p.amount - fee);
+        final net = (data?['workerNet'] as num?)?.toDouble() ?? (p.amount - fee);
         platformFees += fee;
         netEarnings += net;
       }
@@ -259,12 +263,7 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
           p.completedAt!.toDate().isAfter(monthStart))
           .fold(0, (s, p) => s + p.amount);
 
-      // Jobs count
-      final jobsSnap = await _firestore
-          .collection('jobs')
-          .where('clientId', isEqualTo: _workerId)
-          .get();
-      // Actually count jobs this worker was accepted for via bids
+      // Jobs count via accepted bids (unchanged logic)
       final acceptedJobIds = bidsSnap.docs
           .where((d) => d['status'] == 'accepted')
           .map((d) => d['jobId'] as String)
@@ -273,7 +272,6 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       int completedJobs = 0;
       int inProgressJobs = 0;
       if (acceptedJobIds.isNotEmpty) {
-        // Batch in chunks of 10 (Firestore whereIn limit)
         for (int i = 0; i < acceptedJobIds.length; i += 10) {
           final chunk = acceptedJobIds.sublist(i,
               i + 10 > acceptedJobIds.length ? acceptedJobIds.length : i + 10);
@@ -289,10 +287,8 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
         }
       }
 
-      // Rating
+      // Rating — reuse workerDoc fetched above instead of a separate .get().
       String ratingText = 'N/A';
-      final workerDoc =
-      await _firestore.collection('workers').doc(_workerId).get();
       if (workerDoc.exists) {
         final ratings = workerDoc.data()?['ratings'] as Map<String, dynamic>?;
         final avgRating = ratings?['average'] as num?;

@@ -193,18 +193,22 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       };
     }
     try {
-      // Jobs
-      final jobsSnap = await _firestore
-          .collection('jobs')
-          .where('clientId', isEqualTo: _clientId)
-          .get();
+      // Jobs + payments are independent queries — run them concurrently
+      // instead of awaiting one after the other.
+      final results = await Future.wait([
+        _firestore.collection('jobs').where('clientId', isEqualTo: _clientId).get(),
+        _firestore.collection('payments').where('clientId', isEqualTo: _clientId).get(),
+      ]);
+      final jobsSnap = results[0];
+      final paymentsSnap = results[1];
+
       final jobs = jobsSnap.docs;
       final total = jobs.length;
       final active = jobs.where((d) => d['status'] == 'in-progress').length;
       final completed = jobs.where((d) => d['status'] == 'completed').length;
       final cancelled = jobs.where((d) => d['status'] == 'cancelled').length;
 
-      // Open bids across all jobs
+      // Open bids across all jobs (unchanged — depends on jobIds from above)
       final jobIds = jobs.map((d) => d.id).toList();
       int openBids = 0;
       if (jobIds.isNotEmpty) {
@@ -221,10 +225,6 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       }
 
       // Real payment data
-      final paymentsSnap = await _firestore
-          .collection('payments')
-          .where('clientId', isEqualTo: _clientId)
-          .get();
       final payments = paymentsSnap.docs
           .map((d) => PaymentModel.fromSnapshot(
           d as DocumentSnapshot<Map<String, dynamic>>))
@@ -242,11 +242,15 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       paid.where((p) => p.isCash).fold(0.0, (s, p) => s + p.amount);
       double pendingAmt = pending.fold(0.0, (s, p) => s + p.amount);
 
-      // Platform fees paid
+      // Platform fees paid — reuse paymentsSnap docs we already fetched,
+      // instead of re-fetching each payment doc one-by-one.
+      final paymentDataById = {
+        for (final d in paymentsSnap.docs) d.id: d.data(),
+      };
       double platformFees = 0;
       for (final p in paid) {
-        final snap = await _firestore.collection('payments').doc(p.id).get();
-        final fee = (snap.data()?['platformFee'] as num?)?.toDouble() ??
+        final data = paymentDataById[p.id];
+        final fee = (data?['platformFee'] as num?)?.toDouble() ??
             PaymentService.calcPlatformFee(p.amount);
         platformFees += fee;
       }
