@@ -115,13 +115,16 @@ class _WorkerJobDetailsScreenState
   // ── Worker bid status ────────────────────────────────────────────
   String? _workerBidStatus; // 'pending', 'accepted', 'rejected', or null
 
+  // ── BAN STATUS ────────────────────────────────────────────────────
+  bool _isBanned = false;
+
   @override
   void initState() {
     super.initState();
     _liveJobStatus = widget.job.status;
     _checkExistingBid();
     _loadClientName();
-    _loadWorkerName();
+    _loadWorkerData(); // now loads both name and ban status
     _loadDistanceToJob();
     _subscribeToJob();
     _listenToBids();
@@ -365,16 +368,27 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  Future<void> _loadWorkerName() async {
+  // ── UPDATED: Load worker data including ban status ──────────────
+  Future<void> _loadWorkerData() async {
     try {
       final doc = await FirebaseFirestore.instance
           .collection('workers')
           .doc(widget.workerId)
           .get();
       if (doc.exists) {
-        final info = doc.data()?['personalInfo'] as Map<String, dynamic>? ?? {};
+        final data = doc.data()!;
+        final info = data['personalInfo'] as Map<String, dynamic>? ?? {};
         final name = info['fullName'] as String? ?? '';
         if (name.isNotEmpty && mounted) setState(() => _workerName = name);
+
+        // Check verification status for ban
+        final verification = data['verification'] as Map<String, dynamic>?;
+        final status = verification?['status'] as String?;
+        if (status == 'banned' && mounted) {
+          setState(() => _isBanned = true);
+        } else {
+          setState(() => _isBanned = false);
+        }
       }
     } catch (_) {}
   }
@@ -639,11 +653,11 @@ class _WorkerJobDetailsScreenState
       }
     }
   }
+
   // ── Handling rejected proposal: continue or cancel ──────────────────
   Future<void> _continueWithOriginalTime() async {
     setState(() => _isRespondingToRejectedProposal = true);
     try {
-      // Clear the proposal from job doc (or set to ignored)
       await _bidService.clearTimeProposal(widget.job.id!);
       if (mounted) {
         setState(() {
@@ -684,19 +698,17 @@ class _WorkerJobDetailsScreenState
     if (confirmed != true) return;
     setState(() => _isRespondingToRejectedProposal = true);
     try {
-      // Check remaining time until original scheduledAt
       final now = DateTime.now();
       final originalStart = widget.job.scheduledAt!.toDate();
       final remaining = originalStart.difference(now);
-      final makeUrgent = remaining.inHours < 2; // less than 2 hours
+      final makeUrgent = remaining.inHours < 2;
 
       await _bidService.workerCancelJob(
         widget.job.id!,
         widget.workerId,
         reason: 'Cancelled after rejected time proposal',
-        makeUrgent: makeUrgent, // this flag will be used by service
+        makeUrgent: makeUrgent,
       );
-      // Clear the rejected proposal flag since we're cancelling
       if (mounted) {
         setState(() {
           _showRejectedProposalOptions = false;
@@ -710,7 +722,6 @@ class _WorkerJobDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
-        // Even on error, we clear the flag to avoid stuck banner
         setState(() {
           _showRejectedProposalOptions = false;
           _pendingTimeProposal = null;
@@ -780,7 +791,17 @@ class _WorkerJobDetailsScreenState
     }
   }
 
+  // ── UPDATED: placeBid with ban check (redundant but safe) ──────
   Future<void> _placeBid() async {
+    if (_isBanned) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Your account is banned. You cannot place bids.'),
+        backgroundColor: CColors.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -860,11 +881,12 @@ class _WorkerJobDetailsScreenState
     setState(() => _workerProposedStartTime = chosen);
   }
 
+  // ── UPDATED: openPreBidChat uses _loadWorkerData ────────────────
   Future<void> _openPreBidChat() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      if (_workerName.isEmpty) await _loadWorkerName();
+      if (_workerName.isEmpty) await _loadWorkerData();
       final chatId = await _chatService.createOrGetChat(
         jobId: widget.job.id!,
         jobTitle: widget.job.title,
@@ -900,11 +922,12 @@ class _WorkerJobDetailsScreenState
     }
   }
 
+  // ── UPDATED: openChat uses _loadWorkerData ──────────────────────
   Future<void> _openChat() async {
     if (_acceptedBid == null || !mounted) return;
     setState(() => _isLoading = true);
     try {
-      if (_workerName.isEmpty) await _loadWorkerName();
+      if (_workerName.isEmpty) await _loadWorkerData();
       final chatId = await _chatService.createOrGetChat(
         jobId: widget.job.id!,
         jobTitle: widget.job.title,
@@ -1704,7 +1727,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── New: Rejected proposal banner ─────────────────────────────────────
+  // ── Rejected proposal banner ─────────────────────────────────────
   Widget _buildRejectedProposalBanner(bool isDark, bool isUrdu) {
     if (!_showRejectedProposalOptions) return const SizedBox.shrink();
     return Container(
@@ -1773,7 +1796,7 @@ class _WorkerJobDetailsScreenState
     );
   }
 
-  // ── STYLED SCHEDULED START CARD (matches client's banner style) ──
+  // ── STYLED SCHEDULED START CARD ──────────────────────────────────
   Widget _buildScheduledStartCard(bool isDark, bool isUrdu) {
     final bool isScheduledTimePast = _scheduledRemainingSeconds <= 0;
     final bool hasDeadline = _scheduledWorkerDeadline != null;
@@ -1786,7 +1809,6 @@ class _WorkerJobDetailsScreenState
     Color primaryColor;
     String? scheduledDisplay;
 
-    // Format scheduled start time for display
     if (_scheduledStartTime != null) {
       scheduledDisplay = DateFormat('d MMM yyyy, hh:mm a').format(_scheduledStartTime!);
     }
@@ -1844,7 +1866,6 @@ class _WorkerJobDetailsScreenState
             ],
           ),
           const SizedBox(height: 8),
-          // Display scheduled time if available (like client's banner)
           if (_scheduledStartTime != null) ...[
             Text(
               scheduledDisplay!,
@@ -1856,7 +1877,6 @@ class _WorkerJobDetailsScreenState
             ),
             const SizedBox(height: 6),
           ],
-          // Countdown
           Text(
             countdownText,
             style: TextStyle(
@@ -2084,8 +2104,13 @@ class _WorkerJobDetailsScreenState
     }
   }
 
-  // ── New bid form builder that shows status ──────────────────────────
+  // ── UPDATED: Build bid form with ban check at top ────────────────
   Widget _buildBidForm(bool isDark, bool isUrdu) {
+    // 🔒 Banned check – always show banned message if true
+    if (_isBanned) {
+      return _buildBannedMessage(isDark, isUrdu);
+    }
+
     // If no bid placed yet and job is open → show place bid form
     if (_workerBidStatus == null && widget.job.status == 'open') {
       return _buildPlaceBidForm(isDark, isUrdu);
@@ -2139,6 +2164,42 @@ class _WorkerJobDetailsScreenState
 
     // Fallback: if job not open and no bid, show job closed message
     return _buildJobClosedMessage(isDark, isUrdu);
+  }
+
+  // ── NEW: Banned message widget ────────────────────────────────────
+  Widget _buildBannedMessage(bool isDark, bool isUrdu) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(CSizes.lg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CSizes.cardRadiusLg),
+        color: CColors.error.withValues(alpha: 0.1),
+        border: Border.all(color: CColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.block_rounded, size: 40, color: CColors.error),
+          const SizedBox(height: 12),
+          Text(
+            'You are Banned',
+            style: Theme.of(context).textTheme.titleMedium!.copyWith(
+              fontWeight: FontWeight.w700,
+              color: CColors.error,
+              fontSize: isUrdu ? 20 : 18,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'You cannot place bids because your account has been banned. Please contact admin to resolve the status.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+              color: isDark ? CColors.textWhite.withValues(alpha: 0.8) : CColors.darkerGrey,
+              fontSize: isUrdu ? 16 : 14,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildAcceptedPanel(bool isDark, bool isUrdu) {

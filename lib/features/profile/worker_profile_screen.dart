@@ -47,7 +47,7 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
   String _officeCity = '';
 
   // ── Verification ───────────────────────────────────────────────
-  String _verificationStatus = 'pending'; // pending | verified | rejected
+  String _verificationStatus = 'pending'; // pending | verified | rejected | banned
 
   // ── Stats ──────────────────────────────────────────────────────
   int    _bidsPlaced  = 0;
@@ -625,6 +625,11 @@ class _WorkerProfileScreenState extends ConsumerState<WorkerProfileScreen> {
         badgeColor = CColors.error;
         badgeIcon  = Icons.cancel;
         badgeText  = 'Rejected';
+        break;
+      case 'banned': // 🆕 Added ban status
+        badgeColor = CColors.error;
+        badgeIcon  = Icons.block;
+        badgeText  = 'Banned';
         break;
       default:
         badgeColor = CColors.warning;
