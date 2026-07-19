@@ -256,13 +256,22 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard>
       }
 
       // This month
+      // Mirrors totalSpent's definition: includes completed payments AND
+      // pending cash payments (client has committed to pay, worker just
+      // hasn't confirmed receipt yet). Falls back to createdAt when
+      // completedAt is missing so a payment isn't silently dropped.
       final now = DateTime.now();
       final monthStart = DateTime(now.year, now.month, 1);
       double thisMonth = paid
-          .where((p) =>
-      p.completedAt != null &&
-          p.completedAt!.toDate().isAfter(monthStart))
-          .fold(0, (s, p) => s + p.amount);
+          .where((p) {
+        final ts = p.completedAt ?? p.createdAt;
+        return ts != null && ts.toDate().isAfter(monthStart);
+      })
+          .fold(0.0, (s, p) => s + p.amount)
+          + pending
+              .where((p) =>
+          p.createdAt != null && p.createdAt!.toDate().isAfter(monthStart))
+              .fold(0.0, (s, p) => s + p.amount);
 
       return {
         'postedJobs': total,
@@ -1359,8 +1368,10 @@ class _TornCard extends StatelessWidget {
             ),
             // ✨ Thin white jagged stroke overlay ✨
             Positioned.fill(
-              child: CustomPaint(
-                painter: _TearStrokePainter(),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _TearStrokePainter(),
+                ),
               ),
             ),
           ],

@@ -55,6 +55,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final _descriptionController = TextEditingController();
   final _minAmountController   = TextEditingController();
   final _maxAmountController   = TextEditingController();
+  final _minAmountFocusNode    = FocusNode();
+  final _maxAmountFocusNode    = FocusNode();
   final _mapService            = MapService();
   final _cloudinary            = CloudinaryService();
 
@@ -79,7 +81,9 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
   final List<String> _mediaTypes         = [];
   final List<String> _existingMediaUrls  = [];
   final List<String> _existingMediaTypes = [];
-  static const int   _maxMedia           = 3;
+  static const int   _maxMedia           = 10;
+  static const double _minBudget         = 10;
+  static const double _maxBudget         = 10000000; // 1 Crore (PKR)
 
   // ── Upload progress ─────────────────────────────────
   int    _uploadTotal   = 0;
@@ -99,6 +103,33 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     _loadClientInfo();
     _fetchCategories();
     if (_isEditMode) _prefillFromExistingJob();
+
+    // Auto-round to the nearest multiple of 10 once the user leaves the field.
+    _minAmountFocusNode.addListener(() {
+      if (!_minAmountFocusNode.hasFocus) {
+        _roundControllerToNearest10(_minAmountController);
+      }
+    });
+    _maxAmountFocusNode.addListener(() {
+      if (!_maxAmountFocusNode.hasFocus) {
+        _roundControllerToNearest10(_maxAmountController);
+      }
+    });
+  }
+
+  /// Rounds the numeric value in [controller] to the nearest multiple of 10,
+  /// then clamps it within the allowed budget range (PKR 10 – 1 Crore).
+  /// Leaves the field untouched if it's empty or not a valid number.
+  void _roundControllerToNearest10(TextEditingController controller) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return;
+    final value = double.tryParse(text);
+    if (value == null) return;
+    var rounded = (value / 10).round() * 10;
+    rounded = rounded.clamp(_minBudget.toInt(), _maxBudget.toInt());
+    if (rounded.toString() != text) {
+      controller.text = rounded.toString();
+    }
   }
 
   /// Pre-fill all fields from the existing job when editing.
@@ -202,6 +233,39 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     });
   }
 
+  // ── Pick multiple images from gallery ─────────────────────────────
+  Future<void> _pickMultipleImages() async {
+    final remaining = _maxMedia - _totalMediaCount;
+    if (remaining <= 0) {
+      _showErrorMessage('Maximum $_maxMedia media items allowed.');
+      return;
+    }
+    final picker = ImagePicker();
+    final picked = await picker.pickMultiImage(
+      maxWidth:     1280,
+      maxHeight:    1280,
+      imageQuality: 80,
+      limit:        remaining,
+    );
+    if (picked.isEmpty || !mounted) return;
+
+    // Respect the remaining slot count even if the OS picker allowed more.
+    final toAdd = picked.length > remaining
+        ? picked.sublist(0, remaining)
+        : picked;
+    if (picked.length > remaining) {
+      _showErrorMessage(
+          'Only $remaining more item(s) could be added (max $_maxMedia total).');
+    }
+
+    setState(() {
+      for (final file in toAdd) {
+        _pickedFiles.add(File(file.path));
+        _mediaTypes.add('image');
+      }
+    });
+  }
+
   // ── Pick video ───────────────────────────────────────────────────
   Future<void> _pickVideo(ImageSource source) async {
     if (_totalMediaCount >= _maxMedia) {
@@ -269,7 +333,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
               Navigator.pop(context);
               isVideo
                   ? _pickVideo(ImageSource.gallery)
-                  : _pickImage(ImageSource.gallery);
+                  : _pickMultipleImages();
             },
           ),
         ]),
@@ -412,6 +476,14 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
     if (min == null || min < 0) return 'Minimum amount is invalid.';
     if (max == null || max < 0) return 'Maximum amount is invalid.';
+    if (min % 10 != 0) return 'Minimum amount must be a multiple of 10.';
+    if (max % 10 != 0) return 'Maximum amount must be a multiple of 10.';
+    if (min < _minBudget) {
+      return 'Minimum amount must be at least PKR ${_minBudget.toStringAsFixed(0)}.';
+    }
+    if (max > _maxBudget) {
+      return 'Maximum amount cannot exceed PKR 1 Crore.';
+    }
     if (min >= max) return 'Minimum must be less than maximum amount.';
 
     return null;
@@ -419,6 +491,10 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
 
   // ── Submit (create or update) ────────────────────────────────────
   Future<void> _handleSubmit() async {
+    // 0. Make sure budget values are rounded even if focus never left the field.
+    _roundControllerToNearest10(_minAmountController);
+    _roundControllerToNearest10(_maxAmountController);
+
     // 1. Validate form fields (title, category)
     if (!_formKey.currentState!.validate()) return;
 
@@ -606,6 +682,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
     _descriptionController.dispose();
     _minAmountController.dispose();
     _maxAmountController.dispose();
+    _minAmountFocusNode.dispose();
+    _maxAmountFocusNode.dispose();
     _progressNotifier.dispose();
     super.dispose();
   }
@@ -740,6 +818,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             Expanded(
               child: TextFormField(
                 controller:  _minAmountController,
+                focusNode:   _minAmountFocusNode,
                 keyboardType: const TextInputType.numberWithOptions(
                     decimal: false),
                 inputFormatters: [
@@ -749,6 +828,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                   labelText:   'Min',
                   prefixText:  'PKR ',
                   hintText:    '500',
+                  helperText:  'PKR 10 – 1 Crore',
+                  helperStyle: const TextStyle(fontSize: 10),
                   labelStyle:  TextStyle(
                       fontSize: isUrdu ? 15 : 13,
                       color:    isDark ? CColors.light : CColors.dark),
@@ -767,6 +848,7 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
             Expanded(
               child: TextFormField(
                 controller:  _maxAmountController,
+                focusNode:   _maxAmountFocusNode,
                 keyboardType: const TextInputType.numberWithOptions(
                     decimal: false),
                 inputFormatters: [
@@ -776,6 +858,8 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                   labelText:  'Max',
                   prefixText: 'PKR ',
                   hintText:   '2,000',
+                  helperText: 'PKR 10 – 1 Crore',
+                  helperStyle: const TextStyle(fontSize: 10),
                   labelStyle: TextStyle(
                       fontSize: isUrdu ? 15 : 13,
                       color:    isDark ? CColors.light : CColors.dark),

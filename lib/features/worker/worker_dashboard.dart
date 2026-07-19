@@ -255,12 +255,16 @@ class _WorkerDashboardState extends ConsumerState<WorkerDashboard>
       }
 
       // This month
+      // Falls back to createdAt when completedAt is missing (e.g. legacy or
+      // manually-seeded payment docs) so a payment isn't silently dropped
+      // from this total just because one timestamp field wasn't set.
       final now = DateTime.now();
       final monthStart = DateTime(now.year, now.month, 1);
       double thisMonth = completed
-          .where((p) =>
-      p.completedAt != null &&
-          p.completedAt!.toDate().isAfter(monthStart))
+          .where((p) {
+        final ts = p.completedAt ?? p.createdAt;
+        return ts != null && ts.toDate().isAfter(monthStart);
+      })
           .fold(0, (s, p) => s + p.amount);
 
       // Jobs count via accepted bids (unchanged logic)
@@ -1480,8 +1484,10 @@ class _TornCard extends StatelessWidget {
             ),
             // ✨ Thin white jagged stroke overlay ✨
             Positioned.fill(
-              child: CustomPaint(
-                painter: _TearStrokePainter(),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _TearStrokePainter(),
+                ),
               ),
             ),
           ],
